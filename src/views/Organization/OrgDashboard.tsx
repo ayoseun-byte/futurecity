@@ -1,4 +1,5 @@
 import React, { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import type { Merchant, Paylink, Transaction } from '../../types'
 import { StatusBadge } from '../../components/StatusBadge'
 import { AddMerchantModal } from './AddMerchantModal'
@@ -36,6 +37,7 @@ export const OrgDashboard: React.FC<OrgDashboardProps> = ({
   onToggleMerchantStatus,
   onSelectMerchantForDashboard,
 }) => {
+  const navigate = useNavigate()
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
   const [isAddModalOpen, setIsAddModalOpen] = useState(false)
@@ -235,7 +237,7 @@ export const OrgDashboard: React.FC<OrgDashboardProps> = ({
                     </td>
                     <td className="py-3.5 px-5 text-right space-x-2">
                       <button
-                        onClick={() => setSelectedMerchant(merchant)}
+                        onClick={() => navigate(`/org/merchants/${merchant.id}`)}
                         className="inline-flex items-center space-x-1 px-2.5 py-1.5 rounded-lg bg-onion-50 text-onion-800 hover:bg-onion-100 font-bold text-xs transition"
                       >
                         <Eye className="w-3.5 h-3.5 text-onion-700" />

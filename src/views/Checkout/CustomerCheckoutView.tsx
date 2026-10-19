@@ -1,16 +1,26 @@
 import React, { useState, useEffect } from 'react'
+import { useParams } from 'react-router-dom'
 import type { Paylink, Transaction } from '../../types'
 import { QrCode, Clock, ShieldCheck, CheckCircle2, ArrowRight, Copy, Check, Zap } from 'lucide-react'
 
 interface CustomerCheckoutViewProps {
-  activePaylink: Paylink | null
+  activePaylink?: Paylink | null
+  allPaylinks?: Paylink[]
   onPaymentSettled: (newTransaction: Transaction) => void
 }
 
 export const CustomerCheckoutView: React.FC<CustomerCheckoutViewProps> = ({
-  activePaylink,
+  activePaylink: propActivePaylink,
+  allPaylinks = [],
   onPaymentSettled,
 }) => {
+  const { slug } = useParams<{ slug: string }>()
+  const activePaylink =
+    propActivePaylink ||
+    allPaylinks.find((p) => p.slug === slug) ||
+    allPaylinks[0] ||
+    null
+
   const [selectedChain, setSelectedChain] = useState<'base' | 'solana'>('base')
   const [secondsRemaining, setSecondsRemaining] = useState(900) // 15-minute lock
   const [isCopied, setIsCopied] = useState(false)

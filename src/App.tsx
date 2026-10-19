@@ -1,7 +1,11 @@
 import { useState } from 'react'
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { AuthProvider, useAuth } from './context/AuthContext'
+import type { UserRole } from './context/AuthContext'
 import { Header } from './components/Header'
-import type { ActiveRole } from './components/Header'
+import { LoginView } from './views/Auth/LoginView'
 import { OrgDashboard } from './views/Organization/OrgDashboard'
+import { MerchantDetailPage } from './views/Organization/MerchantDetailPage'
 import { MerchantDashboard } from './views/Merchant/MerchantDashboard'
 import { CustomerCheckoutView } from './views/Checkout/CustomerCheckoutView'
 import { AdminPortalView } from './views/Admin/AdminPortalView'
@@ -12,14 +16,58 @@ import {
   INITIAL_TRANSACTIONS,
 } from './services/mockData'
 
-export function App() {
-  const [activeRole, setActiveRole] = useState<ActiveRole>('org')
+// Protected Route Guard
+function ProtectedRoute({
+  children,
+  allowedRoles,
+}: {
+  children: React.ReactNode
+  allowedRoles: UserRole[]
+}) {
+  const { user, isAuthenticated } = useAuth()
+
+  if (!isAuthenticated || !user) {
+    return <Navigate to="/login" replace />
+  }
+
+  if (!allowedRoles.includes(user.role)) {
+    if (user.role === 'org') return <Navigate to="/org" replace />
+    if (user.role === 'merchant') return <Navigate to="/merchant" replace />
+    if (user.role === 'admin') return <Navigate to="/admin" replace />
+    return <Navigate to="/login" replace />
+  }
+
+  return <>{children}</>
+}
+
+// Main Authenticated Layout
+function AppLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="min-h-screen bg-slate-50 flex flex-col font-sans">
+      <Header />
+      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {children}
+      </main>
+      <footer className="border-t border-slate-200 bg-white py-6 text-center text-xs text-slate-500">
+        <p className="font-medium text-slate-700">
+          Orki × PSP Multi-Tenancy Architecture · Non-Custodial Stablecoin & Fiat Settlement Core
+        </p>
+        <p className="text-[11px] text-slate-400 mt-1">
+          Base (EVM) · Solana (SVM) · Bridge Liquidity Rails · Sumsub KYB · ZeroDev Passkeys
+        </p>
+      </footer>
+    </div>
+  )
+}
+
+function MainRoutes() {
+  const { user, isAuthenticated } = useAuth()
   const [merchants, setMerchants] = useState<Merchant[]>(INITIAL_MERCHANTS)
   const [paylinks, setPaylinks] = useState<Paylink[]>(INITIAL_PAYLINKS)
   const [transactions, setTransactions] = useState<Transaction[]>(INITIAL_TRANSACTIONS)
-  const [activeMerchantId, setActiveMerchantId] = useState<string>('mrch_9f2a1c')
-  const [checkoutTargetPaylink, setCheckoutTargetPaylink] = useState<Paylink | null>(INITIAL_PAYLINKS[0])
 
+  // Derive active merchant for merchant view based on auth user
+  const activeMerchantId = user?.merchantId || 'mrch_9f2a1c'
   const activeMerchant =
     merchants.find((m) => m.id === activeMerchantId) || merchants[0]
 
@@ -27,7 +75,9 @@ export function App() {
   const handleAddMerchant = (newMerchantData: Partial<Merchant>) => {
     const newMerchant: Merchant = {
       id: 'mrch_' + Math.random().toString(36).substring(7),
-      externalId: newMerchantData.externalId || 'XSQ-MERCH-' + Math.floor(1000 + Math.random() * 9000),
+      externalId:
+        newMerchantData.externalId ||
+        'XSQ-MERCH-' + Math.floor(1000 + Math.random() * 9000),
       legalBusinessName: newMerchantData.legalBusinessName || 'New Merchant LLC',
       tradeLicenseNumber: newMerchantData.tradeLicenseNumber || 'TL-00000',
       jurisdiction: newMerchantData.jurisdiction || 'Dubai DED',
@@ -38,7 +88,6 @@ export function App() {
       createdAt: new Date().toISOString(),
       volumeUsdc: 0.0,
     }
-
     setMerchants([newMerchant, ...merchants])
   }
 
@@ -67,74 +116,146 @@ export function App() {
     setPaylinks([newPaylink, ...paylinks])
   }
 
-  const handleLaunchCheckout = (paylink: Paylink) => {
-    setCheckoutTargetPaylink(paylink)
-    setActiveRole('checkout')
-  }
-
   const handlePaymentSettled = (newTx: Transaction) => {
     setTransactions([newTx, ...transactions])
   }
 
-  const handleSelectMerchantForDashboard = (merchantId: string) => {
-    setActiveMerchantId(merchantId)
-    setActiveRole('merchant')
-  }
-
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col font-sans">
-      <Header
-        activeRole={activeRole}
-        onRoleChange={setActiveRole}
-        activeMerchantName={activeMerchant?.legalBusinessName}
+    <Routes>
+      {/* Public Login Route */}
+      <Route
+        path="/login"
+        element={
+          isAuthenticated ? (
+            user?.role === 'org' ? (
+              <Navigate to="/org" replace />
+            ) : user?.role === 'merchant' ? (
+              <Navigate to="/merchant" replace />
+            ) : (
+              <Navigate to="/admin" replace />
+            )
+          ) : (
+            <LoginView />
+          )
+        }
       />
 
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {activeRole === 'org' && (
-          <OrgDashboard
-            merchants={merchants}
-            paylinks={paylinks}
-            transactions={transactions}
-            onAddMerchant={handleAddMerchant}
-            onBatchCreated={handleBatchCreated}
-            onToggleMerchantStatus={handleToggleMerchantStatus}
-            onSelectMerchantForDashboard={handleSelectMerchantForDashboard}
-          />
-        )}
+      {/* Organization Portal */}
+      <Route
+        path="/org"
+        element={
+          <ProtectedRoute allowedRoles={['org']}>
+            <AppLayout>
+              <OrgDashboard
+                merchants={merchants}
+                paylinks={paylinks}
+                transactions={transactions}
+                onAddMerchant={handleAddMerchant}
+                onBatchCreated={handleBatchCreated}
+                onToggleMerchantStatus={handleToggleMerchantStatus}
+                onSelectMerchantForDashboard={(id) => {
+                  window.location.href = `/org/merchants/${id}`
+                }}
+              />
+            </AppLayout>
+          </ProtectedRoute>
+        }
+      />
 
-        {activeRole === 'merchant' && (
-          <MerchantDashboard
-            merchant={activeMerchant}
-            paylinks={paylinks.filter(
-              (p) => p.status === 'active' || p.status === 'disabled'
-            )}
-            transactions={transactions}
-            onUpdateMerchant={handleUpdateActiveMerchant}
-            onPaylinkCreated={handlePaylinkCreated}
-            onLaunchCheckout={handleLaunchCheckout}
-          />
-        )}
+      {/* Dedicated Merchant Detail / Inspection Route */}
+      <Route
+        path="/org/merchants/:id"
+        element={
+          <ProtectedRoute allowedRoles={['org']}>
+            <AppLayout>
+              <MerchantDetailPage
+                merchants={merchants}
+                paylinks={paylinks}
+                transactions={transactions}
+                onToggleStatus={handleToggleMerchantStatus}
+              />
+            </AppLayout>
+          </ProtectedRoute>
+        }
+      />
 
-        {activeRole === 'checkout' && (
+      {/* Merchant Portal */}
+      <Route
+        path="/merchant"
+        element={
+          <ProtectedRoute allowedRoles={['merchant']}>
+            <AppLayout>
+              <MerchantDashboard
+                merchant={activeMerchant}
+                paylinks={paylinks.filter(
+                  (p) => p.status === 'active' || p.status === 'disabled'
+                )}
+                transactions={transactions}
+                onUpdateMerchant={handleUpdateActiveMerchant}
+                onPaylinkCreated={handlePaylinkCreated}
+                onLaunchCheckout={(plk) => {
+                  window.open(`/checkout/${plk.slug}`, '_blank')
+                }}
+              />
+            </AppLayout>
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Admin Portal */}
+      <Route
+        path="/admin"
+        element={
+          <ProtectedRoute allowedRoles={['admin']}>
+            <AppLayout>
+              <AdminPortalView />
+            </AppLayout>
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Standalone Hosted Customer Checkout */}
+      <Route
+        path="/checkout/:slug"
+        element={
           <CustomerCheckoutView
-            activePaylink={checkoutTargetPaylink}
+            allPaylinks={paylinks}
             onPaymentSettled={handlePaymentSettled}
           />
-        )}
+        }
+      />
 
-        {activeRole === 'admin' && <AdminPortalView />}
-      </main>
+      {/* Root redirect */}
+      <Route
+        path="/"
+        element={
+          isAuthenticated ? (
+            user?.role === 'org' ? (
+              <Navigate to="/org" replace />
+            ) : user?.role === 'merchant' ? (
+              <Navigate to="/merchant" replace />
+            ) : (
+              <Navigate to="/admin" replace />
+            )
+          ) : (
+            <Navigate to="/login" replace />
+          )
+        }
+      />
 
-      {/* Footer */}
-      <footer className="border-t border-slate-200 bg-white py-6 text-center text-xs text-slate-500">
-        <p className="font-medium text-slate-700">
-          Orki × PSP Multi-Tenancy Architecture · Non-Custodial Stablecoin & Fiat Settlement Core
-        </p>
-        <p className="text-[11px] text-slate-400 mt-1">
-          Base (EVM) · Solana (SVM) · Bridge Liquidity Rails · Sumsub KYB · ZeroDev Passkeys
-        </p>
-      </footer>
-    </div>
+      {/* Catch-all redirect */}
+      <Route path="*" element={<Navigate to="/login" replace />} />
+    </Routes>
+  )
+}
+
+export function App() {
+  return (
+    <BrowserRouter>
+      <AuthProvider>
+        <MainRoutes />
+      </AuthProvider>
+    </BrowserRouter>
   )
 }
 
