@@ -8,9 +8,10 @@ import { OrgDashboard } from './views/Organization/OrgDashboard'
 import { MerchantDetailPage } from './views/Organization/MerchantDetailPage'
 import { MerchantDashboard } from './views/Merchant/MerchantDashboard'
 import { CustomerCheckoutView } from './views/Checkout/CustomerCheckoutView'
-import { AdminPortalView } from './views/Admin/AdminPortalView'
-import type { Merchant, Paylink, Transaction } from './types'
+import { OrkiAdminPortal } from './views/Admin/OrkiAdminPortal'
+import type { Merchant, Paylink, Transaction, Organization } from './types'
 import {
+  INITIAL_ORGANIZATIONS,
   INITIAL_MERCHANTS,
   INITIAL_PAYLINKS,
   INITIAL_TRANSACTIONS,
@@ -62,19 +63,55 @@ function AppLayout({ children }: { children: React.ReactNode }) {
 
 function MainRoutes() {
   const { user, isAuthenticated } = useAuth()
+  const [organizations, setOrganizations] = useState<Organization[]>(INITIAL_ORGANIZATIONS)
   const [merchants, setMerchants] = useState<Merchant[]>(INITIAL_MERCHANTS)
   const [paylinks, setPaylinks] = useState<Paylink[]>(INITIAL_PAYLINKS)
   const [transactions, setTransactions] = useState<Transaction[]>(INITIAL_TRANSACTIONS)
+
+  // Derive active organization for org view based on auth user
+  const activeOrgId = user?.organizationId || 'psp_xsquare01'
+  const activeOrg =
+    organizations.find((o) => o.id === activeOrgId) || organizations[0]
 
   // Derive active merchant for merchant view based on auth user
   const activeMerchantId = user?.merchantId || 'mrch_9f2a1c'
   const activeMerchant =
     merchants.find((m) => m.id === activeMerchantId) || merchants[0]
 
-  // Handlers
+  // Organization Handlers
+  const handleUpdateOrganization = (updated: Organization) => {
+    setOrganizations(
+      organizations.map((org) => (org.id === updated.id ? updated : org))
+    )
+  }
+
+  const handleAddOrganization = (newOrg: Organization) => {
+    setOrganizations([newOrg, ...organizations])
+  }
+
+  const handleUpdateFeeSchedule = (orgId: string, newMarkupBps: number) => {
+    setOrganizations(
+      organizations.map((org) => {
+        if (org.id === orgId && org.feeSchedule) {
+          return {
+            ...org,
+            feeSchedule: {
+              ...org.feeSchedule,
+              pspMarkupBps: newMarkupBps,
+              lockedUntil: new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString(),
+            },
+          }
+        }
+        return org
+      })
+    )
+  }
+
+  // Merchant Handlers
   const handleAddMerchant = (newMerchantData: Partial<Merchant>) => {
     const newMerchant: Merchant = {
       id: 'mrch_' + Math.random().toString(36).substring(7),
+      organizationId: activeOrg.id,
       externalId:
         newMerchantData.externalId ||
         'XSQ-MERCH-' + Math.floor(1000 + Math.random() * 9000),
@@ -92,7 +129,8 @@ function MainRoutes() {
   }
 
   const handleBatchCreated = (newMerchants: Merchant[]) => {
-    setMerchants([...newMerchants, ...merchants])
+    const tagged = newMerchants.map((m) => ({ ...m, organizationId: activeOrg.id }))
+    setMerchants([...tagged, ...merchants])
   }
 
   const handleToggleMerchantStatus = (
@@ -147,6 +185,7 @@ function MainRoutes() {
           <ProtectedRoute allowedRoles={['org']}>
             <AppLayout>
               <OrgDashboard
+                organization={activeOrg}
                 merchants={merchants}
                 paylinks={paylinks}
                 transactions={transactions}
@@ -156,6 +195,7 @@ function MainRoutes() {
                 onSelectMerchantForDashboard={(id) => {
                   window.location.href = `/org/merchants/${id}`
                 }}
+                onUpdateFeeSchedule={handleUpdateFeeSchedule}
               />
             </AppLayout>
           </ProtectedRoute>
@@ -202,13 +242,17 @@ function MainRoutes() {
         }
       />
 
-      {/* Admin Portal */}
+      {/* Orki Headquarters Admin Portal (Part 1 8-Stage Onboarding) */}
       <Route
         path="/admin"
         element={
           <ProtectedRoute allowedRoles={['admin']}>
             <AppLayout>
-              <AdminPortalView />
+              <OrkiAdminPortal
+                organizations={organizations}
+                onUpdateOrganization={handleUpdateOrganization}
+                onAddOrganization={handleAddOrganization}
+              />
             </AppLayout>
           </ProtectedRoute>
         }

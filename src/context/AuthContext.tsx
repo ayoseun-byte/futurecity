@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react'
+import { INITIAL_ORGANIZATIONS, INITIAL_MERCHANTS } from '../services/mockData'
 
 export type UserRole = 'org' | 'merchant' | 'admin'
 
@@ -10,6 +11,7 @@ export interface AuthUser {
   organizationId: string
   merchantId?: string
   status?: string
+  isRegulatedEntity?: boolean
 }
 
 interface AuthContextType {
@@ -31,7 +33,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return null
       }
     }
-    // Start unauthenticated so user sees the login page first
     return null
   })
 
@@ -45,29 +46,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const login = (role: UserRole, entityId?: string) => {
     if (role === 'org') {
+      const targetOrg = INITIAL_ORGANIZATIONS.find((o) => o.id === entityId) || INITIAL_ORGANIZATIONS[0]
+      const primaryContact = targetOrg.contacts[0]
+
       setUser({
-        id: 'usr_org_' + (entityId || 'xsquare'),
-        name: entityId === 'psp_sandbox02' ? 'Apex Pay Global' : 'XSquare Financial Technologies',
-        email: entityId === 'psp_sandbox02' ? 'liam@apexpay.io' : 'tariq@xsquare.example',
+        id: 'usr_org_' + targetOrg.id,
+        name: targetOrg.name,
+        email: primaryContact?.email || 'ops@' + targetOrg.id + '.example',
         role: 'org',
-        organizationId: entityId || 'psp_xsquare01',
-        status: entityId === 'psp_sandbox02' ? 'sandbox' : 'approved',
+        organizationId: targetOrg.id,
+        status: targetOrg.status,
+        isRegulatedEntity: targetOrg.isRegulatedEntity,
       })
     } else if (role === 'merchant') {
-      const merchantNames: Record<string, string> = {
-        mrch_9f2a1c: 'Falcon Luxury Goods FZ-LLC',
-        mrch_3d8b2e: 'Al-Noor Electronics Trading',
-        mrch_7c1a9f: 'Desert Oasis Hospitality Ltd',
-      }
-      const targetId = entityId || 'mrch_9f2a1c'
+      const targetMerch = INITIAL_MERCHANTS.find((m) => m.id === entityId) || INITIAL_MERCHANTS[0]
+
       setUser({
-        id: 'usr_merch_' + targetId,
-        name: merchantNames[targetId] || 'Merchant Portal',
-        email: 'billing@' + targetId + '.example',
+        id: 'usr_merch_' + targetMerch.id,
+        name: targetMerch.legalBusinessName,
+        email: targetMerch.representativeEmail,
         role: 'merchant',
-        organizationId: 'psp_xsquare01',
-        merchantId: targetId,
-        status: targetId === 'mrch_9f2a1c' ? 'active' : 'pending_verification',
+        organizationId: targetMerch.organizationId || 'psp_xsquare01',
+        merchantId: targetMerch.id,
+        status: targetMerch.status,
       })
     } else if (role === 'admin') {
       setUser({
@@ -76,6 +77,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         email: 'sarah.ops@orki.com',
         role: 'admin',
         organizationId: 'orki_hq',
+        status: 'active',
       })
     }
   }
