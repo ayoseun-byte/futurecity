@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import type { UserRole } from './context/AuthContext'
@@ -9,13 +9,21 @@ import { MerchantDetailPage } from './views/Organization/MerchantDetailPage'
 import { MerchantDashboard } from './views/Merchant/MerchantDashboard'
 import { CustomerCheckoutView } from './views/Checkout/CustomerCheckoutView'
 import { OrkiAdminPortal } from './views/Admin/OrkiAdminPortal'
+import { SumsubVerifyPage } from './views/Onboarding/SumsubVerifyPage'
+import { PasskeyCeremonyPage } from './views/Onboarding/PasskeyCeremonyPage'
 import type { Merchant, Paylink, Transaction, Organization } from './types'
 import {
-  INITIAL_ORGANIZATIONS,
-  INITIAL_MERCHANTS,
-  INITIAL_PAYLINKS,
-  INITIAL_TRANSACTIONS,
-} from './services/mockData'
+  getStoredOrganizations,
+  saveStoredOrganizations,
+  getStoredMerchants,
+  saveStoredMerchants,
+  getStoredPaylinks,
+  saveStoredPaylinks,
+  getStoredTransactions,
+  saveStoredTransactions,
+  clearAllStoredData,
+} from './services/storageService'
+import { AlertCircle, ArrowRight } from 'lucide-react'
 
 // Protected Route Guard
 function ProtectedRoute({
@@ -56,6 +64,19 @@ function AppLayout({ children }: { children: React.ReactNode }) {
         <p className="text-[11px] text-slate-400 mt-1">
           Base (EVM) · Solana (SVM) · Bridge Liquidity Rails · Sumsub KYB · ZeroDev Passkeys
         </p>
+        <div className="mt-2">
+          <button
+            onClick={() => {
+              if (window.confirm('Reset all locally stored organizations and merchants?')) {
+                clearAllStoredData()
+                window.location.href = '/login'
+              }
+            }}
+            className="text-[10px] text-slate-400 hover:text-slate-600 underline"
+          >
+            Clear Local Test Data
+          </button>
+        </div>
       </footer>
     </div>
   )
@@ -63,20 +84,37 @@ function AppLayout({ children }: { children: React.ReactNode }) {
 
 function MainRoutes() {
   const { user, isAuthenticated } = useAuth()
-  const [organizations, setOrganizations] = useState<Organization[]>(INITIAL_ORGANIZATIONS)
-  const [merchants, setMerchants] = useState<Merchant[]>(INITIAL_MERCHANTS)
-  const [paylinks, setPaylinks] = useState<Paylink[]>(INITIAL_PAYLINKS)
-  const [transactions, setTransactions] = useState<Transaction[]>(INITIAL_TRANSACTIONS)
+  const [organizations, setOrganizations] = useState<Organization[]>(getStoredOrganizations)
+  const [merchants, setMerchants] = useState<Merchant[]>(getStoredMerchants)
+  const [paylinks, setPaylinks] = useState<Paylink[]>(getStoredPaylinks)
+  const [transactions, setTransactions] = useState<Transaction[]>(getStoredTransactions)
+
+  // Persist state changes to storageService
+  useEffect(() => {
+    saveStoredOrganizations(organizations)
+  }, [organizations])
+
+  useEffect(() => {
+    saveStoredMerchants(merchants)
+  }, [merchants])
+
+  useEffect(() => {
+    saveStoredPaylinks(paylinks)
+  }, [paylinks])
+
+  useEffect(() => {
+    saveStoredTransactions(transactions)
+  }, [transactions])
 
   // Derive active organization for org view based on auth user
-  const activeOrgId = user?.organizationId || 'psp_xsquare01'
   const activeOrg =
-    organizations.find((o) => o.id === activeOrgId) || organizations[0]
+    organizations.find((o) => o.id === user?.organizationId) ||
+    organizations[0]
 
   // Derive active merchant for merchant view based on auth user
-  const activeMerchantId = user?.merchantId || 'mrch_9f2a1c'
   const activeMerchant =
-    merchants.find((m) => m.id === activeMerchantId) || merchants[0]
+    merchants.find((m) => m.id === user?.merchantId) ||
+    merchants[0]
 
   // Organization Handlers
   const handleUpdateOrganization = (updated: Organization) => {
@@ -109,9 +147,10 @@ function MainRoutes() {
 
   // Merchant Handlers
   const handleAddMerchant = (newMerchantData: Partial<Merchant>) => {
+    const orgId = activeOrg?.id || 'psp_default'
     const newMerchant: Merchant = {
       id: 'mrch_' + Math.random().toString(36).substring(7),
-      organizationId: activeOrg.id,
+      organizationId: orgId,
       externalId:
         newMerchantData.externalId ||
         'XSQ-MERCH-' + Math.floor(1000 + Math.random() * 9000),
@@ -121,15 +160,24 @@ function MainRoutes() {
       representativeName: newMerchantData.representativeName || 'Signer',
       representativeEmail: newMerchantData.representativeEmail || 'signer@example.com',
       status: 'invited',
+      nextStep: 'OPT_IN',
       settlementMode: newMerchantData.settlementMode || 'hold_as_received',
+      orkiFeeWallet: '0xOrkiProtocolFeeVault0000000000000000001',
+      pspFeeWallet: activeOrg?.feeWallet || '0xPspXsquareVault000000000000000000001',
+      orkiFeeBps: activeOrg?.feeSchedule?.orkiFeeBps || 100,
+      orkiFeeCapPercent: activeOrg?.feeSchedule?.orkiFeeCapPercent || 1.00,
+      orkiFeeCapAmount: activeOrg?.feeSchedule?.orkiFeeCapAmount || 25.00,
+      pspFeeBps: activeOrg?.feeSchedule?.pspMarkupBps || 35,
       createdAt: new Date().toISOString(),
       volumeUsdc: 0.0,
+      balanceUsdc: 0.0,
     }
     setMerchants([newMerchant, ...merchants])
   }
 
   const handleBatchCreated = (newMerchants: Merchant[]) => {
-    const tagged = newMerchants.map((m) => ({ ...m, organizationId: activeOrg.id }))
+    const orgId = activeOrg?.id || 'psp_default'
+    const tagged = newMerchants.map((m) => ({ ...m, organizationId: orgId, nextStep: 'OPT_IN' as const }))
     setMerchants([...tagged, ...merchants])
   }
 
@@ -143,6 +191,7 @@ function MainRoutes() {
   }
 
   const handleUpdateActiveMerchant = (updated: Partial<Merchant>) => {
+    if (!activeMerchant) return
     setMerchants(
       merchants.map((m) =>
         m.id === activeMerchant.id ? { ...m, ...updated } : m
@@ -154,29 +203,33 @@ function MainRoutes() {
     setPaylinks([newPaylink, ...paylinks])
   }
 
-  const handlePaymentSettled = (newTx: Transaction) => {
-    setTransactions([newTx, ...transactions])
+  const handlePaymentSettled = (transaction: Transaction) => {
+    setTransactions([transaction, ...transactions])
+    if (activeMerchant) {
+      setMerchants(
+        merchants.map((m) => {
+          if (m.id === activeMerchant.id) {
+            const currentVol = m.volumeUsdc || 0
+            const currentBal = m.balanceUsdc || 0
+            return {
+              ...m,
+              volumeUsdc: currentVol + transaction.grossAmount,
+              balanceUsdc: currentBal + transaction.netAmount,
+            }
+          }
+          return m
+        })
+      )
+    }
   }
 
   return (
     <Routes>
-      {/* Public Login Route */}
-      <Route
-        path="/login"
-        element={
-          isAuthenticated ? (
-            user?.role === 'org' ? (
-              <Navigate to="/org" replace />
-            ) : user?.role === 'merchant' ? (
-              <Navigate to="/merchant" replace />
-            ) : (
-              <Navigate to="/admin" replace />
-            )
-          ) : (
-            <LoginView />
-          )
-        }
-      />
+      <Route path="/login" element={<LoginView />} />
+
+      {/* External Ceremony Routes (Open in New Tab) */}
+      <Route path="/verify/sumsub" element={<SumsubVerifyPage />} />
+      <Route path="/onboarding/passkey" element={<PasskeyCeremonyPage />} />
 
       {/* Organization Portal */}
       <Route
@@ -184,19 +237,40 @@ function MainRoutes() {
         element={
           <ProtectedRoute allowedRoles={['org']}>
             <AppLayout>
-              <OrgDashboard
-                organization={activeOrg}
-                merchants={merchants}
-                paylinks={paylinks}
-                transactions={transactions}
-                onAddMerchant={handleAddMerchant}
-                onBatchCreated={handleBatchCreated}
-                onToggleMerchantStatus={handleToggleMerchantStatus}
-                onSelectMerchantForDashboard={(id) => {
-                  window.location.href = `/org/merchants/${id}`
-                }}
-                onUpdateFeeSchedule={handleUpdateFeeSchedule}
-              />
+              {activeOrg ? (
+                <OrgDashboard
+                  organization={activeOrg}
+                  merchants={merchants}
+                  paylinks={paylinks}
+                  transactions={transactions}
+                  onAddMerchant={handleAddMerchant}
+                  onBatchCreated={handleBatchCreated}
+                  onToggleMerchantStatus={handleToggleMerchantStatus}
+                  onSelectMerchantForDashboard={(id) => {
+                    window.location.href = `/org/merchants/${id}`
+                  }}
+                  onUpdateFeeSchedule={handleUpdateFeeSchedule}
+                />
+              ) : (
+                <div className="mat-card p-8 text-center max-w-md mx-auto space-y-4">
+                  <div className="w-12 h-12 rounded-xl bg-amber-50 text-amber-600 border border-amber-200 flex items-center justify-center mx-auto">
+                    <AlertCircle className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h2 className="text-base font-bold text-slate-900">No Organization Registered</h2>
+                    <p className="text-xs text-slate-500 mt-1">
+                      You need to register a PSP or FinTech in the Orki Admin Portal first.
+                    </p>
+                  </div>
+                  <a
+                    href="/admin"
+                    className="mat-btn-primary py-2.5 px-4 text-xs font-semibold inline-flex items-center space-x-1.5"
+                  >
+                    <span>Go to Orki Admin</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </a>
+                </div>
+              )}
             </AppLayout>
           </ProtectedRoute>
         }
@@ -225,18 +299,39 @@ function MainRoutes() {
         element={
           <ProtectedRoute allowedRoles={['merchant']}>
             <AppLayout>
-              <MerchantDashboard
-                merchant={activeMerchant}
-                paylinks={paylinks.filter(
-                  (p) => p.status === 'active' || p.status === 'disabled'
-                )}
-                transactions={transactions}
-                onUpdateMerchant={handleUpdateActiveMerchant}
-                onPaylinkCreated={handlePaylinkCreated}
-                onLaunchCheckout={(plk) => {
-                  window.open(`/checkout/${plk.slug}`, '_blank')
-                }}
-              />
+              {activeMerchant ? (
+                <MerchantDashboard
+                  merchant={activeMerchant}
+                  paylinks={paylinks.filter(
+                    (p) => p.status === 'active' || p.status === 'disabled'
+                  )}
+                  transactions={transactions}
+                  onUpdateMerchant={handleUpdateActiveMerchant}
+                  onPaylinkCreated={handlePaylinkCreated}
+                  onLaunchCheckout={(plk) => {
+                    window.open(`/checkout/${plk.slug}`, '_blank')
+                  }}
+                />
+              ) : (
+                <div className="mat-card p-8 text-center max-w-md mx-auto space-y-4">
+                  <div className="w-12 h-12 rounded-xl bg-amber-50 text-amber-600 border border-amber-200 flex items-center justify-center mx-auto">
+                    <AlertCircle className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h2 className="text-base font-bold text-slate-900">No Merchant Profile Found</h2>
+                    <p className="text-xs text-slate-500 mt-1">
+                      Merchants must be invited by their PSP first. Log into your PSP dashboard to add this business.
+                    </p>
+                  </div>
+                  <a
+                    href="/org"
+                    className="mat-btn-primary py-2.5 px-4 text-xs font-semibold inline-flex items-center space-x-1.5"
+                  >
+                    <span>Go to PSP Portal</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </a>
+                </div>
+              )}
             </AppLayout>
           </ProtectedRoute>
         }

@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react'
-import { INITIAL_ORGANIZATIONS, INITIAL_MERCHANTS } from '../services/mockData'
+import { getStoredOrganizations, getStoredMerchants } from '../services/storageService'
 
 export type UserRole = 'org' | 'merchant' | 'admin'
 
@@ -16,7 +16,7 @@ export interface AuthUser {
 
 interface AuthContextType {
   user: AuthUser | null
-  login: (role: UserRole, entityId?: string) => void
+  login: (role: UserRole, entityId?: string, customUser?: Partial<AuthUser>) => void
   logout: () => void
   isAuthenticated: boolean
 }
@@ -44,32 +44,50 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [user])
 
-  const login = (role: UserRole, entityId?: string) => {
+  const login = (role: UserRole, entityId?: string, customUser?: Partial<AuthUser>) => {
+    if (customUser && customUser.email) {
+      setUser({
+        id: customUser.id || 'usr_' + Math.random().toString(36).substring(2, 9),
+        name: customUser.name || 'User',
+        email: customUser.email,
+        role: role,
+        organizationId: customUser.organizationId || 'orki_default',
+        merchantId: customUser.merchantId,
+        status: customUser.status || 'active',
+        isRegulatedEntity: customUser.isRegulatedEntity,
+      })
+      return
+    }
+
     if (role === 'org') {
-      const targetOrg = INITIAL_ORGANIZATIONS.find((o) => o.id === entityId) || INITIAL_ORGANIZATIONS[0]
-      const primaryContact = targetOrg.contacts[0]
-
-      setUser({
-        id: 'usr_org_' + targetOrg.id,
-        name: targetOrg.name,
-        email: primaryContact?.email || 'ops@' + targetOrg.id + '.example',
-        role: 'org',
-        organizationId: targetOrg.id,
-        status: targetOrg.status,
-        isRegulatedEntity: targetOrg.isRegulatedEntity,
-      })
+      const orgs = getStoredOrganizations()
+      const targetOrg = orgs.find((o) => o.id === entityId) || orgs[0]
+      if (targetOrg) {
+        const primaryContact = targetOrg.contacts[0]
+        setUser({
+          id: 'usr_org_' + targetOrg.id,
+          name: targetOrg.name,
+          email: primaryContact?.email || 'ops@' + targetOrg.id + '.example',
+          role: 'org',
+          organizationId: targetOrg.id,
+          status: targetOrg.status,
+          isRegulatedEntity: targetOrg.isRegulatedEntity,
+        })
+      }
     } else if (role === 'merchant') {
-      const targetMerch = INITIAL_MERCHANTS.find((m) => m.id === entityId) || INITIAL_MERCHANTS[0]
-
-      setUser({
-        id: 'usr_merch_' + targetMerch.id,
-        name: targetMerch.legalBusinessName,
-        email: targetMerch.representativeEmail,
-        role: 'merchant',
-        organizationId: targetMerch.organizationId || 'psp_xsquare01',
-        merchantId: targetMerch.id,
-        status: targetMerch.status,
-      })
+      const merchants = getStoredMerchants()
+      const targetMerch = merchants.find((m) => m.id === entityId) || merchants[0]
+      if (targetMerch) {
+        setUser({
+          id: 'usr_merch_' + targetMerch.id,
+          name: targetMerch.legalBusinessName,
+          email: targetMerch.representativeEmail,
+          role: 'merchant',
+          organizationId: targetMerch.organizationId || 'psp_default',
+          merchantId: targetMerch.id,
+          status: targetMerch.status,
+        })
+      }
     } else if (role === 'admin') {
       setUser({
         id: 'usr_admin_01',
