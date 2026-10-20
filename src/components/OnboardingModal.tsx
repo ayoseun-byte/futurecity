@@ -1,12 +1,28 @@
 import React, { useState } from 'react'
-import type { Merchant } from '../types'
-import { X, ShieldCheck, CheckCircle2, Key, Fingerprint, Lock, UploadCloud, AlertCircle } from 'lucide-react'
+import type { Merchant, OnboardingStep } from '../types'
+import {
+  X,
+  ShieldCheck,
+  CheckCircle2,
+  Fingerprint,
+  ExternalLink,
+  ChevronRight,
+  KeyRound,
+  ArrowRight,
+} from 'lucide-react'
 
 interface OnboardingModalProps {
   merchant: Merchant
   isOpen: boolean
   onClose: () => void
-  onComplete: (merchantId: string, baseWallet: string, solanaWallet: string, passkeyId: string) => void
+  onComplete: (
+    merchantId: string,
+    merchantWallet: string,
+    pspWallet: string,
+    orkiWallet: string,
+    passkeyId: string
+  ) => void
+  onStepChange?: (step: OnboardingStep | null) => void
 }
 
 export const OnboardingModal: React.FC<OnboardingModalProps> = ({
@@ -14,268 +30,423 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
   isOpen,
   onClose,
   onComplete,
+  onStepChange,
 }) => {
-  const [step, setStep] = useState<1 | 2 | 3>(1)
+  // Determine initial step based on merchant's current nextStep or default to 'NOTICE'
+  const getInitialStep = (): OnboardingStep => {
+    if (merchant.nextStep === 'OPT_IN' || !merchant.nextStep) return 'NOTICE'
+    return merchant.nextStep
+  }
+
+  const [currentStep, setCurrentStep] = useState<OnboardingStep>(getInitialStep)
+  const [noticeAccepted, setNoticeAccepted] = useState(false)
   const [termsAccepted, setTermsAccepted] = useState(false)
-  const [kybResult, setKybResult] = useState<'pending' | 'green' | 'retry' | 'red'>('pending')
-  const [isSecureWindowOpen, setIsSecureWindowOpen] = useState(false)
-  const [emailCode, setEmailCode] = useState('849201')
-  const [passkeyCreated, setPasskeyCreated] = useState(false)
+
+  // Sumsub simulation states
+  const [isSumsubOpen, setIsSumsubOpen] = useState(false)
+  const [sumsubProgress, setSumsubProgress] = useState<
+    'idle' | 'uploading_doc' | 'scanning_face' | 'registry_check' | 'approved'
+  >('idle')
+
+  // Passkey simulation states
+  const [isCreatingPasskey, setIsCreatingPasskey] = useState(false)
+  const [passkeySuccess, setPasskeySuccess] = useState(false)
 
   if (!isOpen) return null
 
-  const handleTermsSubmit = () => {
-    if (!termsAccepted) return
-    setStep(2)
+  // 1. Advance to Terms after Notice
+  const handleAcknowledgeNotice = () => {
+    setCurrentStep('TERMS')
+    onStepChange?.('TERMS')
   }
 
-  const handleSimulateKyb = (result: 'green' | 'retry' | 'red') => {
-    setKybResult(result)
-    if (result === 'green') {
+  // 2. Advance to SumSub after Terms
+  const handleAcceptTerms = () => {
+    if (!termsAccepted) return
+    setCurrentStep('SUMSUB')
+    onStepChange?.('SUMSUB')
+  }
+
+  // 3. Launch SumSub Window
+  const handleStartSumsub = () => {
+    setIsSumsubOpen(true)
+    setSumsubProgress('uploading_doc')
+
+    setTimeout(() => {
+      setSumsubProgress('scanning_face')
+    }, 1500)
+
+    setTimeout(() => {
+      setSumsubProgress('registry_check')
+    }, 3000)
+
+    setTimeout(() => {
+      setSumsubProgress('approved')
       setTimeout(() => {
-        setStep(3)
-      }, 700)
+        // Automatically closes Sumsub window and moves back to dashboard passkey step
+        setIsSumsubOpen(false)
+        setCurrentStep('PASSKEY')
+        onStepChange?.('PASSKEY')
+      }, 1000)
+    }, 4500)
+  }
+
+  // 4. Biometric Passkey Ceremony
+  const handleRegisterPasskey = async () => {
+    setIsCreatingPasskey(true)
+
+    try {
+      // Attempt native WebAuthn if available, or fall back to high-grade simulated credential
+      if (window.PublicKeyCredential) {
+        // WebAuthn ceremony signature placeholder
+        await new Promise((resolve) => setTimeout(resolve, 1200))
+      } else {
+        await new Promise((resolve) => setTimeout(resolve, 1200))
+      }
+
+      setPasskeySuccess(true)
+      const passkeyId = 'pk_bio_' + Math.random().toString(36).substring(2, 10)
+      const merchantWallet = merchant.merchantWallet || '0x71C25e36F7682245353526E3d2a7620E15dB949A'
+      const pspWallet = merchant.pspFeeWallet || '0xPspXsquareVault000000000000000000001'
+      const orkiWallet = merchant.orkiFeeWallet || '0xOrkiProtocolFeeVault0000000000000000001'
+
+      setTimeout(() => {
+        onComplete(merchant.id, merchantWallet, pspWallet, orkiWallet, passkeyId)
+        onClose()
+      }, 1200)
+    } catch {
+      setIsCreatingPasskey(false)
     }
   }
 
-  const handleCompleteSetup = () => {
-    const baseWallet = '0x71C25e36F7682245353526E3d2a7620E15dB949A'
-    const solanaWallet = '4Nd1mBQtrMJVYVfKf2PJyGChdLkeR428kwBpdWgw6P58'
-    const passkeyId = 'cred_passkey_' + Math.random().toString(36).substring(7)
-
-    onComplete(merchant.id, baseWallet, solanaWallet, passkeyId)
-    onClose()
-  }
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 overflow-y-auto">
-      <div className="relative w-full max-w-[500px] bg-white rounded-2xl shadow-2xl border border-onion-200 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-        {/* Header */}
-        <div className="bg-onion p-5 text-white flex items-center justify-between border-b border-onion-700">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 overflow-y-auto">
+      <div className="relative w-full max-w-xl bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+        {/* Modal Header */}
+        <div className="p-6 border-b border-slate-100 flex items-center justify-between">
           <div className="flex items-center space-x-3">
-            <div className="w-8 h-8 rounded-lg bg-white text-onion flex items-center justify-center font-bold text-sm">
+            <div className="w-10 h-10 rounded-xl bg-onion-50 text-onion-800 border border-onion-200/60 flex items-center justify-center font-bold text-lg">
               O
             </div>
             <div>
-              <h2 className="font-bold text-base leading-tight">Set up USDC payments</h2>
-              <p className="text-xs text-onion-200">Powered by Orki · XSquare Integration</p>
+              <h2 className="text-base font-bold text-slate-900 tracking-tight leading-tight">
+                USDC Merchant Activation
+              </h2>
+              <p className="text-xs text-slate-500 mt-0.5">
+                {merchant.legalBusinessName} · {merchant.jurisdiction}
+              </p>
             </div>
           </div>
-          <div className="flex items-center space-x-2">
-            <span className="text-xs px-2.5 py-1 rounded-full bg-onion-700/80 font-semibold text-onion-100">
-              Step {step} of 3
-            </span>
-            <button
-              onClick={onClose}
-              className="p-1 rounded-lg hover:bg-onion-700/60 transition text-onion-200 hover:text-white"
+          <button
+            onClick={onClose}
+            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Step Progression Indicator */}
+        <div className="px-6 py-3 bg-slate-50/70 border-b border-slate-100 flex items-center justify-between text-xs">
+          <div className="flex items-center space-x-1 sm:space-x-2">
+            <span
+              className={`px-2 py-0.5 rounded font-medium text-[11px] ${
+                currentStep === 'NOTICE'
+                  ? 'bg-onion-100 text-onion-900 font-semibold'
+                  : 'text-slate-400'
+              }`}
             >
-              <X className="w-5 h-5" />
-            </button>
+              1. Notice
+            </span>
+            <ChevronRight className="w-3 h-3 text-slate-300" />
+            <span
+              className={`px-2 py-0.5 rounded font-medium text-[11px] ${
+                currentStep === 'TERMS'
+                  ? 'bg-onion-100 text-onion-900 font-semibold'
+                  : 'text-slate-400'
+              }`}
+            >
+              2. Terms & Split
+            </span>
+            <ChevronRight className="w-3 h-3 text-slate-300" />
+            <span
+              className={`px-2 py-0.5 rounded font-medium text-[11px] ${
+                currentStep === 'SUMSUB'
+                  ? 'bg-onion-100 text-onion-900 font-semibold'
+                  : 'text-slate-400'
+              }`}
+            >
+              3. SumSub KYB
+            </span>
+            <ChevronRight className="w-3 h-3 text-slate-300" />
+            <span
+              className={`px-2 py-0.5 rounded font-medium text-[11px] ${
+                currentStep === 'PASSKEY'
+                  ? 'bg-onion-100 text-onion-900 font-semibold'
+                  : 'text-slate-400'
+              }`}
+            >
+              4. Passkey
+            </span>
           </div>
         </div>
 
         {/* Modal Body */}
         <div className="p-6">
-          {/* STEP 1: TERMS */}
-          {step === 1 && (
+          {/* STEP 1: NOTICE API */}
+          {currentStep === 'NOTICE' && (
             <div className="space-y-4">
               <div>
-                <h3 className="font-bold text-slate-900 text-base">Step 1: Merchant Terms & Privacy Notice</h3>
-                <p className="text-xs text-slate-500 mt-1">
-                  Orki records your browser fingerprint, direct IP address, and cryptographic text hash.
+                <h3 className="text-sm font-semibold text-slate-900">
+                  Regulatory & Stablecoin Operations Notice
+                </h3>
+                <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                  Please review the mandatory disclosures regarding non-custodial stablecoin processing, smart accounts, and settlement routing.
                 </p>
               </div>
 
-              <div className="h-44 p-3 bg-slate-50 border border-slate-200 rounded-xl overflow-y-auto text-xs text-slate-600 leading-relaxed space-y-2">
-                <p className="font-semibold text-slate-800">1. Non-Custodial Stablecoin Operations</p>
-                <p>
-                  Neither Orki nor your Payment Service Provider (XSquare) ever takes custody of merchant float. All payments settle directly to your self-custody smart account or route non-custodially to UAE AED bank rails.
-                </p>
-                <p className="font-semibold text-slate-800">2. Passkey Authentication & Key Custody</p>
-                <p>
-                  Your browser passkey is held strictly on your device. Orki cannot recover or sign transactions on your behalf without your explicit biometric authorization.
-                </p>
-                <p className="font-semibold text-slate-800">3. Fee Schedule Enforcement</p>
-                <p>
-                  Platform fee (1.00%) and PSP markup are deducted on-chain at point of payment. AED off-ramp fees apply on conversion.
-                </p>
+              <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3 text-xs text-slate-600 max-h-52 overflow-y-auto leading-relaxed">
+                <div>
+                  <p className="font-semibold text-slate-800">1. Non-Custodial Multi-Chain Float</p>
+                  <p className="mt-0.5">
+                    Neither Orki nor your PSP holds your funds in custody. Customer payments transfer directly into your smart account on Base or Solana, or auto-offramp into your verified bank account.
+                  </p>
+                </div>
+                <div>
+                  <p className="font-semibold text-slate-800">2. Tri-Wallet Atomic Split Settlement</p>
+                  <p className="mt-0.5">
+                    On every checkout, fees are divided at point of transaction into designated fee vaults: Orki Protocol Fee (1.00%), PSP Markup Fee, and your Net Proceeds.
+                  </p>
+                </div>
+                <div>
+                  <p className="font-semibold text-slate-800">3. Off-Ramp Exclusivity</p>
+                  <p className="mt-0.5">
+                    PSPs cannot charge conversion markups on fiat off-ramping. Only Orki applies standard conversion spreads to liquid bank rail off-ramps.
+                  </p>
+                </div>
               </div>
 
-              <div className="flex items-start space-x-2 pt-2">
+              <label className="flex items-start space-x-2.5 pt-1 cursor-pointer">
                 <input
-                  id="terms-check"
+                  type="checkbox"
+                  checked={noticeAccepted}
+                  onChange={(e) => setNoticeAccepted(e.target.checked)}
+                  className="mt-0.5 rounded border-slate-300 text-onion focus:ring-onion-500/20"
+                />
+                <span className="text-xs font-medium text-slate-700">
+                  I acknowledge receipt and understanding of the regulatory notice.
+                </span>
+              </label>
+
+              <div className="flex justify-end pt-3">
+                <button
+                  onClick={handleAcknowledgeNotice}
+                  disabled={!noticeAccepted}
+                  className="mat-btn-primary px-5 py-2 text-xs font-semibold disabled:opacity-40 disabled:cursor-not-allowed flex items-center space-x-1.5"
+                >
+                  <span>Continue to Terms</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* STEP 2: TERMS AND CONDITIONS & SPLIT BREAKDOWN */}
+          {currentStep === 'TERMS' && (
+            <div className="space-y-4">
+              <div>
+                <h3 className="text-sm font-semibold text-slate-900">
+                  Orki Terms & Conditions & Fee Split Schedule
+                </h3>
+                <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                  Upon contract activation, your payments will automatically split into the designated smart account vaults below.
+                </p>
+              </div>
+
+              {/* Fee Breakdown Box */}
+              <div className="grid grid-cols-2 gap-3 p-3.5 bg-slate-50 border border-slate-200 rounded-xl">
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+                    Orki Base Fee
+                  </p>
+                  <p className="text-sm font-bold text-slate-900 font-mono mt-0.5">
+                    1.00% <span className="text-xs font-normal text-slate-500">(Cap $25.00)</span>
+                  </p>
+                  <p className="text-[11px] text-slate-400 mt-0.5 truncate">
+                    Vault: {merchant.orkiFeeWallet?.substring(0, 10)}...
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+                    PSP Commission Markup
+                  </p>
+                  <p className="text-sm font-bold text-slate-900 font-mono mt-0.5">
+                    {(merchant.pspFeeBps || 35) / 100}%{' '}
+                    <span className="text-xs font-normal text-emerald-600">(Under 1.00% Cap)</span>
+                  </p>
+                  <p className="text-[11px] text-slate-400 mt-0.5 truncate">
+                    Vault: {merchant.pspFeeWallet?.substring(0, 10)}...
+                  </p>
+                </div>
+              </div>
+
+              {/* Terms Clauses */}
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5 text-xs text-slate-600 max-h-36 overflow-y-auto">
+                <p className="flex items-center space-x-1.5">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                  <span>30-Day Rate Lock: Processing fee changes are locked for 30 days.</span>
+                </p>
+                <p className="flex items-center space-x-1.5">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                  <span>No Off-Ramp Markups from PSP: Off-ramp is handled exclusively by Orki.</span>
+                </p>
+                <p className="flex items-center space-x-1.5">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                  <span>Direct settlement to verified merchant non-custodial smart wallet.</span>
+                </p>
+              </div>
+
+              <label className="flex items-start space-x-2.5 pt-1 cursor-pointer">
+                <input
                   type="checkbox"
                   checked={termsAccepted}
                   onChange={(e) => setTermsAccepted(e.target.checked)}
-                  className="mt-0.5 rounded border-slate-300 text-onion focus:ring-onion-500 w-4 h-4"
+                  className="mt-0.5 rounded border-slate-300 text-onion focus:ring-onion-500/20"
                 />
-                <label htmlFor="terms-check" className="text-xs text-slate-700 font-medium cursor-pointer">
-                  I confirm I am an authorized representative of <span className="font-bold">{merchant.legalBusinessName}</span> and accept Orki's Merchant Terms.
-                </label>
-              </div>
+                <span className="text-xs font-medium text-slate-700">
+                  I accept the Orki Merchant Agreement and authorize automatic tri-wallet split settlements.
+                </span>
+              </label>
 
-              <button
-                disabled={!termsAccepted}
-                onClick={handleTermsSubmit}
-                className="w-full mt-4 py-2.5 px-4 bg-onion hover:bg-onion-700 disabled:opacity-50 text-white font-semibold rounded-xl text-sm transition shadow-md"
-              >
-                Accept and continue
-              </button>
+              <div className="flex justify-between items-center pt-3">
+                <button
+                  onClick={() => setCurrentStep('NOTICE')}
+                  className="text-xs font-medium text-slate-500 hover:text-slate-800"
+                >
+                  Back
+                </button>
+                <button
+                  onClick={handleAcceptTerms}
+                  disabled={!termsAccepted}
+                  className="mat-btn-primary px-5 py-2 text-xs font-semibold disabled:opacity-40 disabled:cursor-not-allowed flex items-center space-x-1.5"
+                >
+                  <span>Proceed to Identity Check</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
             </div>
           )}
 
-          {/* STEP 2: VERIFY BUSINESS (SUMSUB) */}
-          {step === 2 && (
+          {/* STEP 3: SUMSUB IDENTITY VERIFICATION */}
+          {currentStep === 'SUMSUB' && (
             <div className="space-y-4">
               <div>
-                <h3 className="font-bold text-slate-900 text-base">Step 2: Business Verification (Sumsub)</h3>
-                <p className="text-xs text-slate-500 mt-1">
-                  Pre-filled from XSquare. Documents are reviewed directly by Sumsub.
+                <h3 className="text-sm font-semibold text-slate-900">
+                  Business Identity Verification (SumSub)
+                </h3>
+                <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                  We verify your trade license and representative credentials via SumSub. A verification session will open in a secure window.
                 </p>
               </div>
 
-              <div className="grid grid-cols-2 gap-3 text-xs">
-                <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-200">
-                  <span className="text-slate-400 block text-[10px] uppercase">Business Name</span>
-                  <span className="font-semibold text-slate-800">{merchant.legalBusinessName}</span>
+              {/* Status Box */}
+              <div className="p-5 border border-dashed border-slate-300 rounded-xl bg-slate-50/50 flex flex-col items-center justify-center text-center space-y-3">
+                <div className="w-12 h-12 rounded-full bg-onion-50 text-onion border border-onion-200 flex items-center justify-center">
+                  <ShieldCheck className="w-6 h-6" />
                 </div>
-                <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-200">
-                  <span className="text-slate-400 block text-[10px] uppercase">Trade Licence</span>
-                  <span className="font-semibold text-slate-800">{merchant.tradeLicenseNumber}</span>
+                <div>
+                  <h4 className="text-xs font-bold text-slate-900">
+                    Trade License & Representative KYC
+                  </h4>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    {merchant.tradeLicenseNumber} · {merchant.jurisdiction}
+                  </p>
                 </div>
+
+                <button
+                  onClick={handleStartSumsub}
+                  disabled={isSumsubOpen}
+                  className="mat-btn-primary px-4 py-2 text-xs font-medium flex items-center space-x-1.5 shadow-sm"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  <span>Launch SumSub Verification</span>
+                </button>
               </div>
 
-              <div className="border-2 border-dashed border-slate-200 rounded-xl p-4 text-center">
-                <UploadCloud className="w-8 h-8 text-onion-500 mx-auto mb-1" />
-                <p className="text-xs font-medium text-slate-700">Company Trade Licence & Articles</p>
-                <p className="text-[10px] text-slate-400">PDF, JPG, PNG up to 10MB</p>
-              </div>
-
-              {/* Sumsub Simulator Controls */}
-              <div className="bg-onion-50 border border-onion-200 p-3 rounded-xl space-y-2">
-                <div className="flex items-center space-x-1.5 text-xs font-semibold text-onion-900">
-                  <ShieldCheck className="w-4 h-4 text-onion-700" />
-                  <span>Sumsub Sandbox Simulation:</span>
-                </div>
-                <div className="grid grid-cols-3 gap-2">
-                  <button
-                    onClick={() => handleSimulateKyb('green')}
-                    className="py-1.5 px-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition shadow-sm"
-                  >
-                    Pass (GREEN)
-                  </button>
-                  <button
-                    onClick={() => handleSimulateKyb('retry')}
-                    className="py-1.5 px-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold transition shadow-sm"
-                  >
-                    Action Needed
-                  </button>
-                  <button
-                    onClick={() => handleSimulateKyb('red')}
-                    className="py-1.5 px-2 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold transition shadow-sm"
-                  >
-                    Decline (RED)
-                  </button>
-                </div>
-              </div>
-
-              {kybResult === 'green' && (
-                <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-lg flex items-center text-xs text-emerald-700 font-medium">
-                  <CheckCircle2 className="w-4 h-4 mr-1.5 text-emerald-500" />
-                  Verification approved! Advancing to wallet setup...
-                </div>
-              )}
-
-              {kybResult === 'retry' && (
-                <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-lg flex items-center text-xs text-amber-800">
-                  <AlertCircle className="w-4 h-4 mr-1.5 text-amber-600" />
-                  Proof of address required: please provide utility bill or bank statement.
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* STEP 3: WALLET & PASSKEY (SECURE WINDOW) */}
-          {step === 3 && (
-            <div className="space-y-4">
-              <div>
-                <h3 className="font-bold text-slate-900 text-base">Step 3: Wallet & Passkey</h3>
-                <p className="text-xs text-slate-500 mt-1">
-                  Passkeys are origin-locked to Orki's secure domain for non-custodial protection.
-                </p>
-              </div>
-
-              {!isSecureWindowOpen ? (
-                <div className="p-5 border border-slate-200 rounded-2xl text-center space-y-3 bg-slate-50/50">
-                  <div className="w-12 h-12 rounded-2xl bg-onion-100 text-onion-700 flex items-center justify-center mx-auto">
-                    <Key className="w-6 h-6" />
-                  </div>
-                  <div>
-                    <h4 className="font-bold text-sm text-slate-800">Create Passkey Signer</h4>
-                    <p className="text-xs text-slate-500 max-w-xs mx-auto mt-1">
-                      To safeguard your funds, passkey creation runs in a dedicated Orki window.
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => setIsSecureWindowOpen(true)}
-                    className="py-2.5 px-5 bg-onion hover:bg-onion-700 text-white text-xs font-bold rounded-xl transition shadow-md"
-                  >
-                    Continue in a secure window
-                  </button>
-                </div>
-              ) : (
-                <div className="p-4 border-2 border-onion-300 rounded-2xl bg-onion-50/50 space-y-3">
-                  <div className="flex items-center justify-between border-b border-onion-200 pb-2">
-                    <div className="flex items-center space-x-1.5 text-xs font-bold text-onion-900">
-                      <Lock className="w-3.5 h-3.5 text-onion-600" />
-                      <span>https://auth.orki.io/secure-window</span>
-                    </div>
-                    <span className="text-[10px] text-emerald-600 font-bold bg-emerald-100 px-2 py-0.5 rounded-full">
-                      SSL Verified
+              {/* Sumsub Simulated Window */}
+              {isSumsubOpen && (
+                <div className="p-4 bg-slate-900 text-white rounded-xl shadow-lg space-y-3 animate-in fade-in duration-200 border border-slate-800">
+                  <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                    <span className="text-[11px] font-mono text-emerald-400 flex items-center">
+                      <span className="w-2 h-2 rounded-full bg-emerald-400 mr-1.5 animate-pulse"></span>
+                      SumSub Secure Verification Window
                     </span>
+                    <span className="text-[10px] text-slate-400">Auto-closing on complete</span>
                   </div>
 
-                  <div className="space-y-2 text-xs">
-                    <label className="text-slate-700 font-medium block">
-                      Security Code sent to {merchant.representativeEmail}:
-                    </label>
-                    <input
-                      type="text"
-                      value={emailCode}
-                      onChange={(e) => setEmailCode(e.target.value)}
-                      className="w-full px-3 py-2 border border-slate-300 rounded-lg text-center tracking-widest font-mono text-base font-bold text-slate-800"
-                    />
+                  <div className="text-xs space-y-1.5 py-1">
+                    {sumsubProgress === 'uploading_doc' && (
+                      <p className="text-slate-300">Scanning Trade License DMCC-2024-88912...</p>
+                    )}
+                    {sumsubProgress === 'scanning_face' && (
+                      <p className="text-slate-300">Biometric Liveness Check in progress...</p>
+                    )}
+                    {sumsubProgress === 'registry_check' && (
+                      <p className="text-slate-300">Verifying Public Chamber of Commerce registry...</p>
+                    )}
+                    {sumsubProgress === 'approved' && (
+                      <p className="text-emerald-400 font-bold flex items-center">
+                        <CheckCircle2 className="w-4 h-4 mr-1.5" />
+                        Verification Passed! Closing window & returning to dashboard...
+                      </p>
+                    )}
                   </div>
-
-                  {!passkeyCreated ? (
-                    <button
-                      onClick={() => setPasskeyCreated(true)}
-                      className="w-full py-2.5 bg-onion hover:bg-onion-700 text-white font-bold rounded-xl text-xs flex items-center justify-center space-x-2 transition shadow-md"
-                    >
-                      <Fingerprint className="w-4 h-4" />
-                      <span>Create Biometric Passkey (Touch ID / Face ID)</span>
-                    </button>
-                  ) : (
-                    <div className="space-y-2">
-                      <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-800 space-y-1">
-                        <div className="flex items-center font-bold">
-                          <CheckCircle2 className="w-4 h-4 mr-1 text-emerald-600" />
-                          <span>Passkey Bound & Smart Accounts Derived:</span>
-                        </div>
-                        <p className="font-mono text-[11px] text-slate-600">Base: 0x71C25e36...949A</p>
-                        <p className="font-mono text-[11px] text-slate-600">Solana: 4Nd1mBQtr...6P58</p>
-                      </div>
-
-                      <button
-                        onClick={handleCompleteSetup}
-                        className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs transition shadow-md"
-                      >
-                        You're set up! Activate USDC Payments
-                      </button>
-                    </div>
-                  )}
                 </div>
               )}
+            </div>
+          )}
+
+          {/* STEP 4: PASSKEY REGISTRATION & CONTRACT DEPLOYMENT */}
+          {currentStep === 'PASSKEY' && (
+            <div className="space-y-4">
+              <div>
+                <h3 className="text-sm font-semibold text-slate-900">
+                  Register Biometric Passkey
+                </h3>
+                <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                  Your WebAuthn passkey enables non-custodial authorization for float off-ramping and multi-chain payments directly via your device hardware.
+                </p>
+              </div>
+
+              {/* Passkey Visual Surface */}
+              <div className="p-6 bg-slate-50 border border-slate-200 rounded-xl text-center space-y-4">
+                <div className="w-14 h-14 mx-auto rounded-full bg-onion-50 text-onion-800 border border-onion-200/80 flex items-center justify-center">
+                  <Fingerprint className="w-7 h-7" />
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-slate-900">
+                    Touch ID / Face ID / Platform Authenticator
+                  </p>
+                  <p className="text-[11px] text-slate-500 mt-1 max-w-sm mx-auto">
+                    Never stored on Orki servers. Your cryptographic key remains sealed inside your device secure enclave.
+                  </p>
+                </div>
+
+                {!passkeySuccess ? (
+                  <button
+                    onClick={handleRegisterPasskey}
+                    disabled={isCreatingPasskey}
+                    className="mat-btn-primary px-6 py-2.5 text-xs font-semibold flex items-center space-x-2 mx-auto disabled:opacity-60"
+                  >
+                    <KeyRound className="w-4 h-4" />
+                    <span>{isCreatingPasskey ? 'Prompting Device Authenticator...' : 'Register Passkey Now'}</span>
+                  </button>
+                ) : (
+                  <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-emerald-800 text-xs font-semibold flex items-center justify-center space-x-2">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                    <span>Passkey Enrolled! Deploying Tri-Wallet Contract...</span>
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </div>

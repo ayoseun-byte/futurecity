@@ -6,6 +6,8 @@ import {
   Store,
   ShieldCheck,
   LogOut,
+  ChevronRight,
+  ExternalLink,
 } from 'lucide-react'
 
 export const Header: React.FC = () => {
@@ -21,46 +23,81 @@ export const Header: React.FC = () => {
     navigate('/login')
   }
 
+  const getPortalLabel = () => {
+    if (user.role === 'org') return 'PSP & FinTech Network'
+    if (user.role === 'merchant') return 'Merchant Portal'
+    return 'Orki Protocol Headquarters'
+  }
+
+  const getPortalHome = () => {
+    if (user.role === 'org') return '/org'
+    if (user.role === 'merchant') return '/merchant'
+    return '/admin'
+  }
+
   return (
-    <header className="bg-onion text-white sticky top-0 z-40 shadow-lg border-b border-onion-700">
+    <header className="bg-white/95 backdrop-blur-md sticky top-0 z-40 border-b border-slate-200 shadow-[0_1px_2px_rgba(0,0,0,0.03)]">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
-          {/* Logo & Platform Info */}
-          <div className="flex items-center space-x-3">
-            <Link to={user.role === 'org' ? '/org' : user.role === 'merchant' ? '/merchant' : '/admin'} className="flex items-center space-x-3 group">
-              <div className="w-10 h-10 rounded-xl bg-white text-onion flex items-center justify-center font-black text-xl shadow-inner group-hover:scale-105 transition-transform">
+          {/* Brand Mark & Breadcrumb Navigation */}
+          <div className="flex items-center space-x-3.5">
+            <Link
+              to={getPortalHome()}
+              className="flex items-center space-x-3 group focus:outline-none"
+            >
+              <div className="w-9 h-9 rounded-lg bg-onion text-white flex items-center justify-center font-bold text-lg shadow-sm transition-transform group-hover:scale-105">
                 O
               </div>
               <div>
                 <div className="flex items-center space-x-2">
-                  <span className="font-extrabold text-lg tracking-tight">ORKI</span>
-                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-onion-700 text-onion-100 font-semibold uppercase tracking-wider">
-                    {user.role === 'org' ? 'PSP Portal' : user.role === 'merchant' ? 'Merchant Hub' : 'Admin'}
+                  <span className="font-extrabold text-base tracking-tight text-slate-900">
+                    ORKI
+                  </span>
+                  <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-slate-100 text-slate-700 border border-slate-200 uppercase tracking-wider">
+                    {user.role === 'org' ? 'PSP' : user.role === 'merchant' ? 'Merchant' : 'Admin'}
                   </span>
                 </div>
-                <p className="text-[11px] text-onion-200">
-                  Non-Custodial Settlement Core
+                <p className="text-[11px] font-medium text-slate-400 leading-none mt-0.5">
+                  Split Settlement Core
                 </p>
               </div>
             </Link>
+
+            <div className="hidden lg:flex items-center space-x-2 pl-4 border-l border-slate-200 text-xs text-slate-500">
+              <span>{getPortalLabel()}</span>
+              <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
+              <span className="font-semibold text-slate-800">{user.name}</span>
+            </div>
           </div>
 
-          {/* Current Active Tenant Identity Badge */}
-          <div className="hidden md:flex items-center space-x-2 bg-onion-900/60 py-1.5 px-3.5 rounded-xl border border-onion-700/50">
-            {user.role === 'org' && <Building2 className="w-4 h-4 text-onion-200" />}
-            {user.role === 'merchant' && <Store className="w-4 h-4 text-onion-200" />}
-            {user.role === 'admin' && <ShieldCheck className="w-4 h-4 text-onion-200" />}
-            <span className="text-xs font-bold text-white tracking-wide">{user.name}</span>
-            <span className="text-[10px] uppercase font-bold px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+          {/* Center Identity Chip */}
+          <div className="hidden md:flex items-center space-x-2.5 bg-slate-50 py-1.5 px-3.5 rounded-lg border border-slate-200">
+            {user.role === 'org' && <Building2 className="w-4 h-4 text-slate-500" />}
+            {user.role === 'merchant' && <Store className="w-4 h-4 text-slate-500" />}
+            {user.role === 'admin' && <ShieldCheck className="w-4 h-4 text-slate-500" />}
+            <span className="text-xs font-semibold text-slate-800">{user.name}</span>
+            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1 animate-pulse"></span>
               {user.status || 'Active'}
             </span>
           </div>
 
-          {/* User Profile & Sign Out */}
-          <div className="flex items-center space-x-3">
+          {/* Quick Actions & Logout */}
+          <div className="flex items-center space-x-2.5">
+            {user.role === 'merchant' && (
+              <Link
+                to="/checkout/falcon-vip-concierge"
+                target="_blank"
+                className="hidden sm:inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-slate-600 hover:text-slate-900 bg-slate-50 hover:bg-slate-100 border border-slate-200 transition"
+              >
+                <ExternalLink className="w-3.5 h-3.5" />
+                <span>Buyer Demo</span>
+              </Link>
+            )}
+
             <button
               onClick={handleSignOut}
-              className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-onion-800/80 hover:bg-rose-900/40 text-onion-100 hover:text-rose-200 border border-onion-700/60 hover:border-rose-700/50 transition-all shadow-sm"
+              className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-slate-600 hover:text-rose-600 hover:bg-rose-50 border border-slate-200 hover:border-rose-200 transition"
               title="Sign Out"
             >
               <LogOut className="w-3.5 h-3.5" />

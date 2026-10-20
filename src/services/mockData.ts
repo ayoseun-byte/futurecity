@@ -4,8 +4,10 @@ export const INITIAL_ORGANIZATIONS: Organization[] = [
   {
     id: 'psp_xsquare01',
     name: 'XSquare Financial Technologies',
+    categoryType: 'psp',
     status: 'approved',
     isRegulatedEntity: true, // Licensed
+    feeWallet: '0xPspXsquareVault000000000000000000001',
     contacts: [
       { name: 'Tariq Mansoor', email: 'tariq@xsquare.example', phone: '+971 4 819 2001', role: 'technical' },
       { name: 'Elena Rostova', email: 'elena@xsquare.example', phone: '+971 4 819 2002', role: 'compliance' },
@@ -33,9 +35,14 @@ export const INITIAL_ORGANIZATIONS: Organization[] = [
     },
     feeSchedule: {
       orkiFeeBps: 100, // 1.00%
-      pspMarkupBps: 35, // 0.35%
-      combinedCapBps: 300, // 3.00%
+      orkiFeeCapPercent: 1.00,
+      orkiFeeCapAmount: 25.00, // 25.00 USDC Max Fee
+      pspMarkupBps: 35, // 0.35% (Max 1.00% / 100 bps)
+      combinedCapBps: 200, // 2.00%
       lockedUntil: '2026-11-10T14:00:00Z',
+      orkiFeeWallet: '0xOrkiProtocolFeeVault0000000000000000001',
+      pspFeeWallet: '0xPspXsquareVault000000000000000000001',
+      offrampSpreadBps: 25, // Orki only offramp spread
     },
     goLiveChecklist: {
       webhookSignatureVerified: true,
@@ -82,8 +89,10 @@ export const INITIAL_ORGANIZATIONS: Organization[] = [
   {
     id: 'psp_sandbox02',
     name: 'Apex Pay Global',
+    categoryType: 'fintech',
     status: 'sandbox',
     isRegulatedEntity: false, // Unlicensed FinTech - Heightened UBO Due Diligence
+    feeWallet: '0xPspApexVault00000000000000000000000002',
     contacts: [
       { name: 'Liam Vance', email: 'liam@apexpay.io', phone: '+44 20 7946 0912', role: 'technical' },
       { name: 'Arthur Pendelton', email: 'arthur@apexpay.io', phone: '+44 20 7946 0913', role: 'commercial' },
@@ -97,54 +106,50 @@ export const INITIAL_ORGANIZATIONS: Organization[] = [
       signatoryProofType: 'Certificate of Incorporation & Board Resolution',
     },
     dueDiligence: {
-      isRegulatedEntity: false, // Heightened UBO review required
-      caseReference: 'ORKI-PSP-KYB-9941',
+      isRegulatedEntity: false,
+      caseReference: 'ORKI-FINTECH-UBO-9901',
       riskRating: 'medium',
-      reviewDate: '2026-10-18',
-      nextReviewDate: '2027-10-18',
+      reviewDate: '2026-10-17',
+      nextReviewDate: '2027-04-17',
       amlPolicyVerified: true,
+      notes: 'Unlicensed FinTech entity. Enhanced due diligence on all UBOs holding >= 25% ownership.',
       ubos: [
         {
           name: 'Arthur Pendelton',
-          ownershipPercentage: 45,
-          nationality: 'GB',
+          ownershipPercentage: 55.0,
+          nationality: 'British',
           idDocumentType: 'passport',
           idDocumentVerified: true,
           proofOfAddressVerified: true,
           pepOrSanctionsClear: true,
         },
         {
-          name: 'Eleanor Vance',
-          ownershipPercentage: 30,
-          nationality: 'GB',
+          name: 'Marcus Sterling',
+          ownershipPercentage: 30.0,
+          nationality: 'British',
           idDocumentType: 'passport',
-          idDocumentVerified: true,
-          proofOfAddressVerified: true,
-          pepOrSanctionsClear: true,
-        },
-        {
-          name: 'Venture Seed Fund LP',
-          ownershipPercentage: 25,
-          nationality: 'KY',
-          idDocumentType: 'national_id',
           idDocumentVerified: true,
           proofOfAddressVerified: true,
           pepOrSanctionsClear: true,
         },
       ],
-      notes: 'Unlicensed entity. Enhanced due diligence completed on UBOs holding >= 25%. Sanctions & PEP screening cleared.',
     },
     feeSchedule: {
       orkiFeeBps: 100,
-      pspMarkupBps: 45, // 0.45%
-      combinedCapBps: 300,
+      orkiFeeCapPercent: 1.00,
+      orkiFeeCapAmount: 25.00,
+      pspMarkupBps: 50, // 0.50%
+      combinedCapBps: 200,
       lockedUntil: '2026-11-17T15:00:00Z',
+      orkiFeeWallet: '0xOrkiProtocolFeeVault0000000000000000001',
+      pspFeeWallet: '0xPspApexVault00000000000000000000000002',
+      offrampSpreadBps: 25,
     },
     goLiveChecklist: {
       webhookSignatureVerified: true,
       idempotencyHandled: true,
-      duplicateEventsHandled: true,
-      onboardingComponentMounted: false, // In testing
+      duplicateEventsHandled: false,
+      onboardingComponentMounted: true,
       merchantStatusesHandled: false,
       passkeyHooksVerified: false,
       termsDisclosuresIncluded: true,
@@ -154,39 +159,41 @@ export const INITIAL_ORGANIZATIONS: Organization[] = [
     apiCredentials: {
       sandbox: {
         environment: 'sandbox',
-        publicKey: 'pk_test_apex_338910482910',
-        secretKeyMasked: 'sk_test_••••••••••••••••44c9',
-        webhookSecretMasked: 'whsec_test_••••••••••••••••11d8',
-        shareUrl: 'https://share.1password.com/s#claim_test_apex02',
+        publicKey: 'pk_test_apx_109283019283',
+        secretKeyMasked: 'sk_test_••••••••••••••••55f2',
+        webhookSecretMasked: 'whsec_test_••••••••••••••••44d1',
+        shareUrl: 'https://share.1password.com/s#claim_test_apx02',
         status: 'claimed',
         sentTo: 'l***@apexpay.io',
-        expiresAt: '2026-10-17T11:00:00Z',
+        expiresAt: '2026-10-18T11:00:00Z',
       },
     },
     preparedBy: 'sarah.ops@orki.com',
-    webhookUrl: 'https://sandbox.apexpay.io/api/v1/webhooks',
     createdAt: '2026-10-15T10:00:00Z',
     volumeUsdc: 14200.0,
   },
   {
-    id: 'psp_gulf03',
-    name: 'Gulf Payment Infrastructure Ltd',
+    id: 'psp_gulfpay03',
+    name: 'Gulf Meridian Digital Banking',
+    categoryType: 'bank',
     status: 'in_review',
-    isRegulatedEntity: true, // Licensed
+    isRegulatedEntity: true,
+    feeWallet: '0xPspGulfBankVault0000000000000000000003',
     contacts: [
-      { name: 'Zaid Al-Hashimi', email: 'zaid@gulfpay.example', phone: '+971 2 449 0192', role: 'compliance' },
-      { name: 'Noura Al-Mazrouei', email: 'noura@gulfpay.example', phone: '+971 2 449 0193', role: 'technical' },
+      { name: 'Dr. Salem Al-Husseini', email: 'salem@gulfpay.example', phone: '+971 2 611 9000', role: 'technical' },
+      { name: 'Fatima Al-Kaabi', email: 'fatima@gulfpay.example', phone: '+971 2 611 9001', role: 'compliance' },
+      { name: 'Noura Al-Mazrouei', email: 'noura@gulfpay.example', phone: '+971 2 611 9002', role: 'signatory' },
     ],
     ndaSignedAt: '2026-10-12T10:00:00Z',
     agreementDetails: {
       signedAt: '2026-10-18T09:00:00Z',
-      version: 'v1.1',
-      signatoryName: 'Zaid Al-Hashimi (Chief Compliance Officer)',
-      signatoryProofType: 'Commercial Registration & Board Resolution',
+      version: 'v1.0',
+      signatoryName: 'Noura Al-Mazrouei (VP Digital Assets)',
+      signatoryProofType: 'Central Bank Board Authorization',
     },
     dueDiligence: {
       isRegulatedEntity: true,
-      regulatorName: 'Central Bank of the UAE (CBUAE)',
+      regulatorName: 'CBUAE (Central Bank of the United Arab Emirates)',
       licenseNumber: 'CBUAE-SVF-2023-09',
       licenseVerifiedAt: '2026-10-16T14:00:00Z',
       amlPolicyVerified: true,
@@ -198,9 +205,14 @@ export const INITIAL_ORGANIZATIONS: Organization[] = [
     },
     feeSchedule: {
       orkiFeeBps: 100,
+      orkiFeeCapPercent: 1.00,
+      orkiFeeCapAmount: 25.00,
       pspMarkupBps: 25, // 0.25%
-      combinedCapBps: 300,
+      combinedCapBps: 200,
       lockedUntil: '2026-11-18T09:00:00Z',
+      orkiFeeWallet: '0xOrkiProtocolFeeVault0000000000000000001',
+      pspFeeWallet: '0xPspGulfBankVault0000000000000000000003',
+      offrampSpreadBps: 25,
     },
     goLiveChecklist: {
       webhookSignatureVerified: true,
@@ -226,7 +238,7 @@ export const INITIAL_ORGANIZATIONS: Organization[] = [
         expiresAt: '2026-10-14T10:00:00Z',
       },
     },
-    preparedBy: 'sarah.ops@orki.com', // Awaiting second approver for Part 1 Stage 7!
+    preparedBy: 'sarah.ops@orki.com',
     webhookUrl: 'https://gate.gulfpay.example/orki-events',
     createdAt: '2026-10-12T09:00:00Z',
     volumeUsdc: 0.0,
@@ -234,7 +246,7 @@ export const INITIAL_ORGANIZATIONS: Organization[] = [
 ]
 
 export const INITIAL_MERCHANTS: Merchant[] = [
-  // Merchants under psp_xsquare01
+  // Merchant 1: Fully Active (all steps complete, tri-wallet split active)
   {
     id: 'mrch_9f2a1c',
     organizationId: 'psp_xsquare01',
@@ -242,18 +254,37 @@ export const INITIAL_MERCHANTS: Merchant[] = [
     legalBusinessName: 'Falcon Luxury Goods FZ-LLC',
     tradeLicenseNumber: 'DMCC-2024-88912',
     jurisdiction: 'Dubai DMCC',
+    categoryType: 'luxury_retail',
     representativeName: 'Alice Smith',
     representativeEmail: 'alice@falconluxury.example',
     status: 'active',
     settlementMode: 'hold_as_received',
+    nextStep: null, // Completed!
+
+    // Tri-Wallet Split Topology
+    orkiFeeWallet: '0xOrkiProtocolFeeVault0000000000000000001',
+    pspFeeWallet: '0xPspXsquareVault000000000000000000001',
+    merchantWallet: '0x71C25e36F7682245353526E3d2a7620E15dB949A',
+    orkiFeeBps: 100, // 1.00%
+    orkiFeeCapPercent: 1.00,
+    orkiFeeCapAmount: 25.00, // 25.00 USDC cap
+    pspFeeBps: 35, // 0.35%
+    feeLockUntil: '2026-11-18T10:30:00Z',
+
     baseWalletAddress: '0x71C25e36F7682245353526E3d2a7620E15dB949A',
     solanaWalletAddress: '4Nd1mBQtrMJVYVfKf2PJyGChdLkeR428kwBpdWgw6P58',
     passkeyId: 'cred_passkey_falcon_89f',
+    noticeAcknowledgedAt: '2026-10-18T10:00:00Z',
+    termsAcceptedAt: '2026-10-18T10:05:00Z',
+    sumsubCompletedAt: '2026-10-18T10:15:00Z',
+    passkeyRegisteredAt: '2026-10-18T10:30:00Z',
     verifiedAt: '2026-10-18T10:15:00Z',
     activatedAt: '2026-10-18T10:30:00Z',
     createdAt: '2026-10-17T09:00:00Z',
     volumeUsdc: 48500.0,
+    balanceUsdc: 14250.0,
   },
+  // Merchant 2: Invited / Awaiting Opt-In (nextStep: OPT_IN)
   {
     id: 'mrch_4b8e21',
     organizationId: 'psp_xsquare01',
@@ -261,13 +292,25 @@ export const INITIAL_MERCHANTS: Merchant[] = [
     legalBusinessName: 'Falcon Oasis Logistics FZCO',
     tradeLicenseNumber: 'FZ-2024-88',
     jurisdiction: 'IFZA Dubai',
+    categoryType: 'logistics',
     representativeName: 'Rashid Al-Nuaimi',
     representativeEmail: 'rashid@falconoasis.example',
-    status: 'verifying',
+    status: 'invited',
     settlementMode: 'auto_offramp',
+    nextStep: 'OPT_IN', // User needs to click "Accept USDC"
+
+    orkiFeeWallet: '0xOrkiProtocolFeeVault0000000000000000001',
+    pspFeeWallet: '0xPspXsquareVault000000000000000000001',
+    orkiFeeBps: 100,
+    orkiFeeCapPercent: 1.00,
+    orkiFeeCapAmount: 25.00,
+    pspFeeBps: 35,
+    feeLockUntil: '2026-11-18T10:30:00Z',
+
     createdAt: '2026-10-18T14:20:00Z',
     volumeUsdc: 0.0,
   },
+  // Merchant 3: At Terms Step (nextStep: TERMS)
   {
     id: 'mrch_7c1189',
     organizationId: 'psp_xsquare01',
@@ -275,14 +318,25 @@ export const INITIAL_MERCHANTS: Merchant[] = [
     legalBusinessName: 'Gulf Tech Spares LLC',
     tradeLicenseNumber: 'TL-44109',
     jurisdiction: 'Abu Dhabi DED',
+    categoryType: 'hardware',
     representativeName: 'Tariq Mansoor',
     representativeEmail: 'tariq@gulftech.example',
-    status: 'verification_action_required',
-    statusReason: 'Trade license expiry date mismatch on Sumsub scan. Please re-upload current renewal certificate.',
+    status: 'invited',
     settlementMode: 'hold_as_received',
+    nextStep: 'TERMS',
+
+    orkiFeeWallet: '0xOrkiProtocolFeeVault0000000000000000001',
+    pspFeeWallet: '0xPspXsquareVault000000000000000000001',
+    orkiFeeBps: 100,
+    orkiFeeCapPercent: 1.00,
+    orkiFeeCapAmount: 25.00,
+    pspFeeBps: 35,
+    noticeAcknowledgedAt: '2026-10-19T08:00:00Z',
+
     createdAt: '2026-10-18T16:45:00Z',
     volumeUsdc: 0.0,
   },
+  // Merchant 4: At Sumsub Step (nextStep: SUMSUB)
   {
     id: 'mrch_3d9904',
     organizationId: 'psp_xsquare01',
@@ -290,13 +344,26 @@ export const INITIAL_MERCHANTS: Merchant[] = [
     legalBusinessName: 'Marina Yachts Chartering LLC',
     tradeLicenseNumber: 'TL-11029',
     jurisdiction: 'Dubai DED',
+    categoryType: 'hospitality',
     representativeName: 'Elena Rostova',
     representativeEmail: 'elena@marinayachts.example',
-    status: 'invited',
+    status: 'terms_accepted',
     settlementMode: 'hold_as_received',
+    nextStep: 'SUMSUB',
+
+    orkiFeeWallet: '0xOrkiProtocolFeeVault0000000000000000001',
+    pspFeeWallet: '0xPspXsquareVault000000000000000000001',
+    orkiFeeBps: 100,
+    orkiFeeCapPercent: 1.00,
+    orkiFeeCapAmount: 25.00,
+    pspFeeBps: 35,
+    noticeAcknowledgedAt: '2026-10-19T02:00:00Z',
+    termsAcceptedAt: '2026-10-19T02:10:00Z',
+
     createdAt: '2026-10-19T02:00:00Z',
     volumeUsdc: 0.0,
   },
+  // Merchant 5: At Passkey Step (nextStep: PASSKEY)
   {
     id: 'mrch_desert05',
     organizationId: 'psp_xsquare01',
@@ -304,15 +371,28 @@ export const INITIAL_MERCHANTS: Merchant[] = [
     legalBusinessName: 'Desert Luxury Hospitality Group',
     tradeLicenseNumber: 'ADGM-99120',
     jurisdiction: 'ADGM Abu Dhabi',
+    categoryType: 'hospitality',
     representativeName: 'Farhan Zaidi',
     representativeEmail: 'farhan@deserthospitality.example',
-    status: 'terms_accepted',
+    status: 'verified',
     settlementMode: 'auto_offramp',
+    nextStep: 'PASSKEY',
+
+    orkiFeeWallet: '0xOrkiProtocolFeeVault0000000000000000001',
+    pspFeeWallet: '0xPspXsquareVault000000000000000000001',
+    orkiFeeBps: 100,
+    orkiFeeCapPercent: 1.00,
+    orkiFeeCapAmount: 25.00,
+    pspFeeBps: 35,
+    noticeAcknowledgedAt: '2026-10-19T03:00:00Z',
+    termsAcceptedAt: '2026-10-19T03:05:00Z',
+    sumsubCompletedAt: '2026-10-19T03:20:00Z',
+    verifiedAt: '2026-10-19T03:20:00Z',
+
     createdAt: '2026-10-19T03:00:00Z',
     volumeUsdc: 0.0,
   },
-
-  // Merchants under psp_sandbox02 (Apex Pay Global)
+  // Merchant 6 (Apex Pay Global)
   {
     id: 'mrch_apex_test01',
     organizationId: 'psp_sandbox02',
@@ -320,10 +400,21 @@ export const INITIAL_MERCHANTS: Merchant[] = [
     legalBusinessName: 'FinTech Alpha Labs Ltd',
     tradeLicenseNumber: 'UK-09912401',
     jurisdiction: 'Companies House UK',
+    categoryType: 'fintech_saas',
     representativeName: 'Liam Vance',
     representativeEmail: 'liam@alphafintech.example',
     status: 'active',
     settlementMode: 'hold_as_received',
+    nextStep: null,
+
+    orkiFeeWallet: '0xOrkiProtocolFeeVault0000000000000000001',
+    pspFeeWallet: '0xPspApexVault00000000000000000000000002',
+    merchantWallet: '0x99A10bFe7682245353526E3d2a7620E15dB883F',
+    orkiFeeBps: 100,
+    orkiFeeCapPercent: 1.00,
+    orkiFeeCapAmount: 25.00,
+    pspFeeBps: 50, // 0.50%
+
     baseWalletAddress: '0x99A10bFe7682245353526E3d2a7620E15dB883F',
     solanaWalletAddress: '8xRT1BQtrMJVYVfKf2PJyGChdLkeR428kwBpdWgw881A',
     passkeyId: 'cred_passkey_alpha_77b',
@@ -332,126 +423,111 @@ export const INITIAL_MERCHANTS: Merchant[] = [
     createdAt: '2026-10-16T08:00:00Z',
     volumeUsdc: 14200.0,
   },
-  {
-    id: 'mrch_apex_test02',
-    organizationId: 'psp_sandbox02',
-    externalId: 'APX-M-9002',
-    legalBusinessName: 'London Digital Apparel Ltd',
-    tradeLicenseNumber: 'UK-11029482',
-    jurisdiction: 'Companies House UK',
-    representativeName: 'Arthur Pendelton',
-    representativeEmail: 'billing@londondigital.example',
-    status: 'invited',
-    settlementMode: 'hold_as_received',
-    createdAt: '2026-10-17T09:00:00Z',
-    volumeUsdc: 0.0,
-  },
 ]
 
 export const INITIAL_PAYLINKS: Paylink[] = [
   {
-    id: 'plink_b83f01',
+    id: 'plk_falcon_01',
     merchantId: 'mrch_9f2a1c',
     organizationId: 'psp_xsquare01',
-    slug: 'annual-software-subscription-a1',
-    title: 'Swiss Chronograph Luxury Watch',
-    description: 'Exclusive Limited Run timepiece order',
+    slug: 'falcon-vip-concierge',
+    title: 'VIP Concierge Booking & Luxury Charter Deposit',
+    description: 'Bespoke Arabian Gulf private yacht charter and executive chauffeur service deposit.',
     amountType: 'fixed',
-    amount: 12500.0,
+    amount: 1500.0,
     currency: 'USDC',
     settlementMode: 'hold_as_received',
-    allowedChains: ['base', 'solana', 'ethereum', 'polygon'],
+    allowedChains: ['base', 'solana'],
     status: 'active',
-    checkoutUrl: 'https://pay.orki.com/p/annual-software-subscription-a1',
+    checkoutUrl: '/checkout/falcon-vip-concierge',
     createdAt: '2026-10-18T11:00:00Z',
   },
   {
-    id: 'plink_c94d02',
+    id: 'plk_falcon_02',
     merchantId: 'mrch_9f2a1c',
     organizationId: 'psp_xsquare01',
-    slug: 'bespoke-cashmere-suit-x9',
-    title: 'Bespoke Tailoring & Silk Cashmere Suit',
-    description: 'Custom bespoke luxury tailoring',
+    slug: 'falcon-open-order',
+    title: 'Custom Diamond Jewellery Invoicing',
+    description: 'Fine diamond jewellery and horology invoice payment. Enter total invoice amount in USDC.',
+    amountType: 'open',
+    currency: 'USDC',
+    settlementMode: 'hold_as_received',
+    allowedChains: ['base'],
+    status: 'active',
+    checkoutUrl: '/checkout/falcon-open-order',
+    createdAt: '2026-10-18T12:30:00Z',
+  },
+  {
+    id: 'plk_apex_01',
+    merchantId: 'mrch_apex_test01',
+    organizationId: 'psp_sandbox02',
+    slug: 'alpha-cloud-annual',
+    title: 'Alpha Labs Enterprise Cloud API Tier (Annual)',
+    description: 'Annual enterprise subscription for 10M API calls/month with 99.99% uptime SLA.',
     amountType: 'fixed',
     amount: 3200.0,
     currency: 'USDC',
     settlementMode: 'hold_as_received',
-    allowedChains: ['base', 'solana'],
+    allowedChains: ['base'],
     status: 'active',
-    checkoutUrl: 'https://pay.orki.com/p/bespoke-cashmere-suit-x9',
-    createdAt: '2026-10-18T12:30:00Z',
-  },
-  {
-    id: 'plink_apex01',
-    merchantId: 'mrch_apex_test01',
-    organizationId: 'psp_sandbox02',
-    slug: 'apex-api-developer-tier',
-    title: 'Developer Tier API Quota',
-    description: 'Monthly high-throughput RPC node and gateway access',
-    amountType: 'fixed',
-    amount: 850.0,
-    currency: 'USDC',
-    settlementMode: 'hold_as_received',
-    allowedChains: ['base', 'solana'],
-    status: 'active',
-    checkoutUrl: 'https://pay.orki.com/p/apex-api-developer-tier',
-    createdAt: '2026-10-17T14:00:00Z',
+    checkoutUrl: '/checkout/alpha-cloud-annual',
+    createdAt: '2026-10-17T10:00:00Z',
   },
 ]
 
 export const INITIAL_TRANSACTIONS: Transaction[] = [
   {
-    id: 'tx_88a91c',
+    id: 'tx_88192a01',
     merchantId: 'mrch_9f2a1c',
     organizationId: 'psp_xsquare01',
     type: 'payment_collection',
-    grossAmount: 12500.0,
+    grossAmount: 1500.0,
     currency: 'USDC',
-    orkiFeeBps: 100, // 1.00%
-    orkiFeeAmount: 125.0,
-    pspMarkupBps: 35, // 0.35%
-    pspMarkupAmount: 43.75,
-    netAmount: 12331.25,
+    orkiFeeBps: 100, // 1.00% = $15.00
+    orkiFeeAmount: 15.0,
+    pspMarkupBps: 35, // 0.35% = $5.25
+    pspMarkupAmount: 5.25,
+    netAmount: 1479.75, // Merchant receives $1,479.75
     chain: 'base',
-    txHash: '0x4f8ac291b8a91029381029381029381029381029381029381029381029381029',
-    payerAddress: '0x1A2B3C4D5E6F78901A2B3C4D5E6F78901A2B3C4D',
+    txHash: '0x88f2192a88192837128919283719283719283719283719283719283719283719',
+    payerAddress: '0x49182a0b1234567890abcdef1234567890abcdef',
     status: 'completed',
-    createdAt: '2026-10-18T11:05:22Z',
+    createdAt: '2026-10-18T14:32:10Z',
   },
   {
-    id: 'tx_99b02d',
+    id: 'tx_88192a02',
     merchantId: 'mrch_9f2a1c',
     organizationId: 'psp_xsquare01',
     type: 'payment_collection',
-    grossAmount: 3200.0,
+    grossAmount: 5000.0,
     currency: 'USDC',
-    orkiFeeBps: 100,
-    orkiFeeAmount: 32.0,
-    pspMarkupBps: 35,
-    pspMarkupAmount: 11.2,
-    netAmount: 3156.8,
+    orkiFeeBps: 100, // 1.00% capped at $25.00
+    orkiFeeAmount: 25.0,
+    pspMarkupBps: 35, // 0.35% = $17.50
+    pspMarkupAmount: 17.5,
+    netAmount: 4957.5,
     chain: 'solana',
-    txHash: '5K9jQz7w1mBQtrMJVYVfKf2PJyGChdLkeR428kwBpdWgw6P587xKX9qY1vNpZaBcDe',
-    payerAddress: '7xKX9qY1vNpZaBcDeFgHiJkLmNoPqRsTuVwXyZ12345',
+    txHash: '5K2b891829381928391829381928391829381928391829381928391829381928',
+    payerAddress: '8xRT1BQtrMJVYVfKf2PJyGChdLkeR428kwBpdWgw881A',
     status: 'completed',
-    createdAt: '2026-10-18T12:35:10Z',
+    createdAt: '2026-10-18T16:11:45Z',
   },
   {
-    id: 'tx_apex_dep01',
+    id: 'tx_88192a03',
     merchantId: 'mrch_apex_test01',
     organizationId: 'psp_sandbox02',
     type: 'payment_collection',
-    grossAmount: 850.0,
+    grossAmount: 3200.0,
     currency: 'USDC',
-    orkiFeeBps: 100,
-    orkiFeeAmount: 8.5,
-    pspMarkupBps: 45,
-    pspMarkupAmount: 3.82,
-    netAmount: 837.68,
+    orkiFeeBps: 100, // 1.00% capped at $25.00
+    orkiFeeAmount: 25.0,
+    pspMarkupBps: 50, // 0.50% = $16.00
+    pspMarkupAmount: 16.0,
+    netAmount: 3159.0,
     chain: 'base',
-    txHash: '0x33b8210948102938102938102938102938102938102938102938102938102938',
-    payerAddress: '0x9921092830192830192830192830192830192830',
+    txHash: '0x11a9182391823918239182391823918239182391823918239182391823918239',
+    payerAddress: '0x9921008401920084019200840192008401920084',
     status: 'completed',
-    createdAt: '2026-10-17T15:20:00Z',
+    createdAt: '2026-10-17T11:40:00Z',
   },
 ]

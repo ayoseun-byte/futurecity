@@ -43,6 +43,7 @@ export const OrkiAdminPortal: React.FC<OrkiAdminPortalProps> = ({
   // Registration Form State
   const [newPspForm, setNewPspForm] = useState({
     name: '',
+    categoryType: 'psp' as 'psp' | 'fintech' | 'bank' | 'neo_broker',
     isRegulated: false,
     regulatorName: 'VARA (Dubai)',
     licenseNumber: '',
@@ -114,13 +115,15 @@ export const OrkiAdminPortal: React.FC<OrkiAdminPortalProps> = ({
     if (!newPspForm.name.trim()) return
 
     const pspId = 'psp_' + newPspForm.name.toLowerCase().replace(/[^a-z0-9]/g, '') + Math.floor(10 + Math.random() * 90)
-    const markup = parseInt(newPspForm.initialMarkupBps, 10) || 35
+    const markup = Math.min(parseInt(newPspForm.initialMarkupBps, 10) || 35, 100) // Strictly capped at 1.00% (100 bps)
 
     const newOrg: Organization = {
       id: pspId,
       name: newPspForm.name,
+      categoryType: newPspForm.categoryType,
       status: 'sandbox',
       isRegulatedEntity: newPspForm.isRegulated,
+      feeWallet: '0x' + pspId + 'Vault000000000001',
       contacts: [
         { name: newPspForm.techName || 'Tech Lead', email: newPspForm.techEmail || 'tech@' + pspId + '.example', role: 'technical' },
         { name: newPspForm.commercialName || 'Director', email: newPspForm.commercialEmail || 'dir@' + pspId + '.example', role: 'commercial' },
@@ -151,9 +154,14 @@ export const OrkiAdminPortal: React.FC<OrkiAdminPortalProps> = ({
       },
       feeSchedule: {
         orkiFeeBps: 100,
+        orkiFeeCapPercent: 1.00,
+        orkiFeeCapAmount: 25.00,
         pspMarkupBps: markup,
-        combinedCapBps: 300,
+        combinedCapBps: 200,
         lockedUntil: new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString(),
+        orkiFeeWallet: '0xOrkiProtocolFeeVault0000000000000000001',
+        pspFeeWallet: '0x' + pspId + 'Vault000000000001',
+        offrampSpreadBps: 25,
       },
       goLiveChecklist: {
         webhookSignatureVerified: true,
@@ -187,6 +195,7 @@ export const OrkiAdminPortal: React.FC<OrkiAdminPortalProps> = ({
     setIsRegisterModalOpen(false)
     setNewPspForm({
       name: '',
+      categoryType: 'psp',
       isRegulated: false,
       regulatorName: 'VARA (Dubai)',
       licenseNumber: '',
@@ -358,7 +367,12 @@ export const OrkiAdminPortal: React.FC<OrkiAdminPortalProps> = ({
                           {org.name.substring(0, 2).toUpperCase()}
                         </div>
                         <div>
-                          <p className="font-bold text-slate-900 text-sm">{org.name}</p>
+                          <div className="flex items-center space-x-1.5">
+                            <p className="font-bold text-slate-900 text-sm">{org.name}</p>
+                            <span className="px-1.5 py-0.2 rounded text-[9px] font-mono font-semibold uppercase bg-slate-100 text-slate-600 border border-slate-200">
+                              {org.categoryType?.toUpperCase() || 'PSP'}
+                            </span>
+                          </div>
                           <span className="font-mono text-[11px] text-slate-400">{org.id}</span>
                         </div>
                       </div>

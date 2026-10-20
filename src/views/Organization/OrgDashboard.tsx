@@ -11,14 +11,13 @@ import {
   Plus,
   UploadCloud,
   Search,
-  Eye,
   Lock,
   ShieldCheck,
   UserCheck,
   Send,
   Sliders,
-  AlertCircle,
   X,
+  ArrowRightLeft,
 } from 'lucide-react'
 
 interface OrgDashboardProps {
@@ -48,12 +47,14 @@ export const OrgDashboard: React.FC<OrgDashboardProps> = ({
   const [isAddModalOpen, setIsAddModalOpen] = useState(false)
   const [isBulkModalOpen, setIsBulkModalOpen] = useState(false)
   const [isFeeModalOpen, setIsFeeModalOpen] = useState(false)
+  const [isOfframpModalOpen, setIsOfframpModalOpen] = useState(false)
   const [isWebhookTestSent, setIsWebhookTestSent] = useState(false)
 
-  // Fee Change Form
+  // Fee Change Form (PSP Markup capped strictly at 1.00% / 100 bps)
   const currentMarkupBps = organization.feeSchedule?.pspMarkupBps ?? 35
   const [newMarkupInput, setNewMarkupInput] = useState(currentMarkupBps.toString())
   const [feeRequestSuccess, setFeeRequestSuccess] = useState(false)
+  const [offrampSuccess, setOfframpSuccess] = useState(false)
 
   // Filter merchants scoped to this organization
   const orgMerchants = merchants.filter((m) => m.organizationId === organization.id)
@@ -81,7 +82,8 @@ export const OrgDashboard: React.FC<OrgDashboardProps> = ({
   const handleFeeSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     const bps = parseInt(newMarkupInput, 10)
-    if (!isNaN(bps) && bps >= 0 && bps <= 200) {
+    // Enforce strict 100 bps ceiling (1.00% maximum)
+    if (!isNaN(bps) && bps >= 0 && bps <= 100) {
       if (onUpdateFeeSchedule) {
         onUpdateFeeSchedule(organization.id, bps)
       }
@@ -93,40 +95,43 @@ export const OrgDashboard: React.FC<OrgDashboardProps> = ({
     }
   }
 
+  const handleOfframpFeeSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    setOfframpSuccess(true)
+    setTimeout(() => {
+      setOfframpSuccess(false)
+      setIsOfframpModalOpen(false)
+    }, 1500)
+  }
+
   const handleTestWebhook = () => {
     setIsWebhookTestSent(true)
     setTimeout(() => setIsWebhookTestSent(false), 3000)
   }
 
   return (
-    <div className="space-y-8">
-      {/* PSP Organization Header Card */}
-      <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-6">
-        <div className="flex items-start sm:items-center space-x-4">
-          <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-onion to-onion-700 text-white font-black text-xl flex items-center justify-center shadow-lg shadow-onion/20 border border-onion-300/30">
-            {organization.name.substring(0, 2).toUpperCase()}
+    <div className="space-y-6">
+      {/* PSP Title & Profile Card */}
+      <div className="mat-card p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+        <div className="flex items-center space-x-4">
+          <div className="w-12 h-12 rounded-xl bg-onion-50 text-onion-800 border border-onion-200 flex items-center justify-center font-bold text-xl shadow-xs">
+            {organization.name.charAt(0)}
           </div>
           <div>
             <div className="flex flex-wrap items-center gap-2">
-              <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
+              <h1 className="text-xl font-bold tracking-tight text-slate-900">
                 {organization.name}
               </h1>
-              <span
-                className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
-                  organization.status === 'approved'
-                    ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
-                    : 'bg-amber-100 text-amber-800 border border-amber-300'
-                }`}
-              >
-                {organization.status}
+              <span className="px-2 py-0.5 rounded text-[10px] font-mono font-semibold uppercase bg-slate-100 text-slate-700 border border-slate-200">
+                {organization.categoryType?.toUpperCase() || 'PSP'}
               </span>
               {organization.isRegulatedEntity ? (
-                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-800 border border-blue-200 flex items-center">
+                <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-blue-50 text-blue-700 border border-blue-200 flex items-center">
                   <ShieldCheck className="w-3 h-3 mr-1" />
-                  Licensed ({organization.dueDiligence?.regulatorName || 'VARA'})
+                  Licensed ({organization.dueDiligence?.regulatorName?.split(' ')[0] || 'VARA'})
                 </span>
               ) : (
-                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200 flex items-center">
+                <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-amber-50 text-amber-700 border border-amber-200 flex items-center">
                   <UserCheck className="w-3 h-3 mr-1" />
                   Unlicensed (UBO Vetted)
                 </span>
@@ -139,76 +144,88 @@ export const OrgDashboard: React.FC<OrgDashboardProps> = ({
         </div>
 
         {/* Quick Config Actions */}
-        <div className="flex items-center space-x-3">
+        <div className="flex items-center space-x-2.5">
           <button
             onClick={() => setIsFeeModalOpen(true)}
-            className="flex items-center space-x-1.5 px-4 py-2.5 rounded-xl border border-slate-200 hover:border-onion text-slate-700 hover:text-onion text-xs font-bold transition bg-slate-50 hover:bg-onion-50/50 shadow-sm"
+            className="inline-flex items-center space-x-1.5 px-3.5 py-2 rounded-lg border border-slate-200 hover:border-slate-300 text-slate-700 text-xs font-medium transition bg-white hover:bg-slate-50 shadow-xs"
           >
-            <Sliders className="w-4 h-4 text-onion" />
-            <span>Configure Markup Fee</span>
+            <Sliders className="w-3.5 h-3.5 text-onion" />
+            <span>Configure Fees</span>
+          </button>
+
+          <button
+            onClick={() => setIsOfframpModalOpen(true)}
+            className="inline-flex items-center space-x-1.5 px-3.5 py-2 rounded-lg border border-slate-200 hover:border-slate-300 text-slate-700 text-xs font-medium transition bg-white hover:bg-slate-50 shadow-xs"
+          >
+            <ArrowRightLeft className="w-3.5 h-3.5 text-emerald-600" />
+            <span>Off-Ramp Commissions</span>
           </button>
 
           <button
             onClick={handleTestWebhook}
-            className="flex items-center space-x-1.5 px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition shadow-sm"
+            className="inline-flex items-center space-x-1.5 px-3.5 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-medium transition shadow-xs"
           >
-            <Send className="w-4 h-4" />
-            <span>{isWebhookTestSent ? 'HMAC Ping Sent! ✓' : 'Test Webhook'}</span>
+            <Send className="w-3.5 h-3.5" />
+            <span>{isWebhookTestSent ? 'Ping Delivered!' : 'Test Webhook'}</span>
           </button>
         </div>
       </div>
 
-      {/* Metrics Row */}
+      {/* Financial Metrics Row */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm space-y-2">
-          <div className="flex items-center justify-between text-xs font-bold text-slate-500 uppercase tracking-wider">
-            <span>Gross Volume</span>
-            <TrendingUp className="w-4 h-4 text-onion" />
+        {/* Metric 1 */}
+        <div className="mat-card p-5 space-y-1.5">
+          <div className="flex items-center justify-between text-xs font-medium text-slate-500 uppercase tracking-wider text-[11px]">
+            <span>Gross Merchant Volume</span>
+            <TrendingUp className="w-4 h-4 text-slate-400" />
           </div>
-          <p className="text-2xl font-black text-slate-900">
+          <p className="text-2xl font-bold text-slate-900 font-mono tracking-tight tabular-nums">
             ${totalVolume.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </p>
-          <p className="text-[11px] text-slate-400">Total processed by all your merchants</p>
+          <p className="text-[11px] text-slate-400">Total volume processed by your merchants</p>
         </div>
 
-        <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm space-y-2">
-          <div className="flex items-center justify-between text-xs font-bold text-slate-500 uppercase tracking-wider">
-            <span>PSP Markup Revenue</span>
-            <Coins className="w-4 h-4 text-emerald-600" />
+        {/* Metric 2 */}
+        <div className="mat-card p-5 space-y-1.5">
+          <div className="flex items-center justify-between text-xs font-medium text-slate-500 uppercase tracking-wider text-[11px]">
+            <span>Accrued PSP Markup</span>
+            <Coins className="w-4 h-4 text-emerald-500" />
           </div>
-          <p className="text-2xl font-black text-emerald-700">
+          <p className="text-2xl font-bold text-emerald-700 font-mono tracking-tight tabular-nums">
             +${accruedMarkup.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </p>
-          <p className="text-[11px] text-emerald-600">Stablecoins only (0% share of AED fees)</p>
+          <p className="text-[11px] text-slate-500">In Fee Vault · 0% share on offramp fees</p>
         </div>
 
-        <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm space-y-2">
-          <div className="flex items-center justify-between text-xs font-bold text-slate-500 uppercase tracking-wider">
+        {/* Metric 3 */}
+        <div className="mat-card p-5 space-y-1.5">
+          <div className="flex items-center justify-between text-xs font-medium text-slate-500 uppercase tracking-wider text-[11px]">
             <span>Active Merchants</span>
-            <Users className="w-4 h-4 text-onion" />
+            <Users className="w-4 h-4 text-slate-400" />
           </div>
-          <p className="text-2xl font-black text-slate-900">
-            {activeCount} <span className="text-xs text-slate-400 font-normal">/ {orgMerchants.length} total</span>
+          <p className="text-2xl font-bold text-slate-900 font-mono tracking-tight tabular-nums">
+            {activeCount} <span className="text-xs text-slate-400 font-normal">/ {orgMerchants.length} registered</span>
           </p>
-          <p className="text-[11px] text-slate-400">Onboarded & accepting payments</p>
+          <p className="text-[11px] text-slate-400">Deployed with tri-wallet split contracts</p>
         </div>
 
-        <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm space-y-2">
-          <div className="flex items-center justify-between text-xs font-bold text-slate-500 uppercase tracking-wider">
-            <span>Agreed Fee Schedule</span>
+        {/* Metric 4 */}
+        <div className="mat-card p-5 space-y-1.5">
+          <div className="flex items-center justify-between text-xs font-medium text-slate-500 uppercase tracking-wider text-[11px]">
+            <span>Fee Schedule</span>
             <Lock className="w-4 h-4 text-slate-400" />
           </div>
-          <p className="text-2xl font-black text-slate-900">
+          <p className="text-2xl font-bold text-slate-900 font-mono tracking-tight tabular-nums">
             {((100 + currentMarkupBps) / 100).toFixed(2)}%
           </p>
           <p className="text-[11px] text-slate-400">
-            Orki 1.00% + Markup {(currentMarkupBps / 100).toFixed(2)}% (Cap 3.00%)
+            Orki 1.00% + Markup {(currentMarkupBps / 100).toFixed(2)}% (Max 2.00%)
           </p>
         </div>
       </div>
 
-      {/* Merchants Management Section */}
-      <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+      {/* Merchants Management Surface */}
+      <div className="mat-card overflow-hidden">
         {/* Table Toolbar */}
         <div className="p-5 border-b border-slate-200 flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="flex flex-wrap items-center gap-3">
@@ -219,100 +236,102 @@ export const OrgDashboard: React.FC<OrgDashboardProps> = ({
                 placeholder="Search merchants, external ID..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-9 pr-3 py-1.5 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-onion-500 focus:outline-none"
+                className="w-full pl-9 pr-4 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-onion-500/20 focus:border-onion-700 transition"
               />
             </div>
+
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="px-3 py-1.5 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-onion-500 focus:outline-none text-slate-700 font-medium"
+              className="py-1.5 px-3 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none text-slate-700"
             >
               <option value="all">All Statuses</option>
               <option value="active">Active</option>
+              <option value="invited">Setup Pending</option>
               <option value="verifying">Verifying</option>
               <option value="verification_action_required">Action Required</option>
-              <option value="invited">Invited</option>
-              <option value="terms_accepted">Terms Accepted</option>
-              <option value="disabled">Disabled</option>
             </select>
           </div>
 
-          <div className="flex items-center space-x-2.5 w-full md:w-auto justify-end">
+          <div className="flex items-center space-x-2">
             <button
               onClick={() => setIsBulkModalOpen(true)}
-              className="flex items-center space-x-1.5 px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl text-xs font-bold transition"
+              className="px-3 py-1.5 rounded-lg border border-slate-200 hover:border-slate-300 text-slate-700 text-xs font-medium flex items-center space-x-1.5 bg-white hover:bg-slate-50 transition"
             >
-              <UploadCloud className="w-4 h-4 text-slate-600" />
-              <span>Bulk Ingest (CSV)</span>
+              <UploadCloud className="w-3.5 h-3.5 text-slate-500" />
+              <span>Bulk CSV (Max 50)</span>
             </button>
 
             <button
               onClick={() => setIsAddModalOpen(true)}
-              className="flex items-center space-x-1.5 px-4 py-2 bg-onion hover:bg-onion-700 text-white rounded-xl text-xs font-bold transition shadow-sm"
+              className="mat-btn-primary px-3.5 py-1.5 text-xs font-medium flex items-center space-x-1.5 shadow-xs"
             >
-              <Plus className="w-4 h-4" />
-              <span>Add Single Merchant</span>
+              <Plus className="w-3.5 h-3.5" />
+              <span>Register Merchant</span>
             </button>
           </div>
         </div>
 
         {/* Merchants Table */}
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead className="bg-slate-50/75 border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider text-[10px]">
+          <table className="min-w-full divide-y divide-slate-200 text-xs">
+            <thead className="bg-slate-50/70 text-slate-500 uppercase tracking-wider font-semibold text-[10px]">
               <tr>
-                <th className="py-3 px-5">Merchant / External ID</th>
-                <th className="py-3 px-5">Licence & Jurisdiction</th>
-                <th className="py-3 px-5">Representative</th>
-                <th className="py-3 px-5">Status</th>
-                <th className="py-3 px-5">Settlement Preference</th>
-                <th className="py-3 px-5 text-right">Actions</th>
+                <th className="px-6 py-3 text-left">Legal Entity</th>
+                <th className="px-6 py-3 text-left">External ID</th>
+                <th className="px-6 py-3 text-left">Status / Next Step</th>
+                <th className="px-6 py-3 text-left">Settlement Mode</th>
+                <th className="px-6 py-3 text-left">Volume</th>
+                <th className="px-6 py-3 text-right">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-slate-100 bg-white">
               {filteredMerchants.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="py-8 text-center text-slate-500 font-medium">
-                    No merchants match the selected filters under {organization.name}.
+                  <td colSpan={6} className="px-6 py-8 text-center text-slate-400">
+                    No merchants found matching the filter criteria.
                   </td>
                 </tr>
               ) : (
                 filteredMerchants.map((merchant) => (
-                  <tr key={merchant.id} className="hover:bg-slate-50/80 transition-colors">
-                    <td className="py-3.5 px-5">
-                      <p className="font-bold text-slate-900 text-sm">{merchant.legalBusinessName}</p>
-                      <span className="font-mono text-[11px] text-slate-400">{merchant.externalId}</span>
+                  <tr key={merchant.id} className="hover:bg-slate-50/60 transition">
+                    <td className="px-6 py-3.5">
+                      <div className="font-semibold text-slate-900">{merchant.legalBusinessName}</div>
+                      <div className="text-[11px] text-slate-400">
+                        {merchant.tradeLicenseNumber} · {merchant.jurisdiction}
+                      </div>
                     </td>
-                    <td className="py-3.5 px-5">
-                      <p className="font-semibold text-slate-800">{merchant.tradeLicenseNumber}</p>
-                      <span className="text-[11px] text-slate-500">{merchant.jurisdiction}</span>
+                    <td className="px-6 py-3.5 font-mono text-slate-600">
+                      {merchant.externalId}
                     </td>
-                    <td className="py-3.5 px-5">
-                      <p className="font-medium text-slate-800">{merchant.representativeName}</p>
-                      <span className="text-[11px] text-slate-400">{merchant.representativeEmail}</span>
+                    <td className="px-6 py-3.5">
+                      <div className="flex flex-col space-y-1">
+                        <StatusBadge status={merchant.status} />
+                        {merchant.nextStep && (
+                          <span className="text-[10px] font-mono text-onion-800 font-semibold">
+                            Next: {merchant.nextStep}
+                          </span>
+                        )}
+                      </div>
                     </td>
-                    <td className="py-3.5 px-5">
-                      <StatusBadge status={merchant.status} />
+                    <td className="px-6 py-3.5 text-slate-600 capitalize">
+                      {merchant.settlementMode.replace('_', ' ')}
                     </td>
-                    <td className="py-3.5 px-5">
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-md text-[11px] font-semibold bg-slate-100 text-slate-800">
-                        {merchant.settlementMode === 'auto_offramp' ? 'Auto Off-Ramp (AED)' : 'Hold Stablecoins'}
-                      </span>
+                    <td className="px-6 py-3.5 font-mono font-medium text-slate-900 tabular-nums">
+                      ${(merchant.volumeUsdc || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
                     </td>
-                    <td className="py-3.5 px-5 text-right space-x-2">
+                    <td className="px-6 py-3.5 text-right space-x-2">
                       <button
                         onClick={() => navigate(`/org/merchants/${merchant.id}`)}
-                        className="inline-flex items-center space-x-1 px-2.5 py-1.5 rounded-lg bg-onion-50 text-onion-800 hover:bg-onion-100 font-bold text-xs transition"
+                        className="px-2.5 py-1 rounded text-slate-600 hover:text-slate-900 border border-slate-200 hover:bg-slate-50 transition"
                       >
-                        <Eye className="w-3.5 h-3.5 text-onion-700" />
-                        <span>Inspect</span>
+                        Inspect
                       </button>
-
                       <button
                         onClick={() => onSelectMerchantForDashboard(merchant.id)}
-                        className="inline-flex items-center space-x-1 px-2.5 py-1.5 rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 font-semibold text-xs transition"
+                        className="px-2.5 py-1 rounded text-onion-800 hover:text-onion-900 bg-onion-50 border border-onion-200 transition font-medium"
                       >
-                        <span>Switch To View</span>
+                        Open Portal
                       </button>
                     </td>
                   </tr>
@@ -323,82 +342,111 @@ export const OrgDashboard: React.FC<OrgDashboardProps> = ({
         </div>
       </div>
 
-      {/* ─────────────────────────────────────────────────────────────
-          CONFIGURE FEE SCHEDULE MODAL
-         ───────────────────────────────────────────────────────────── */}
+      {/* CONFIGURE FEES MODAL */}
       {isFeeModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <div className="w-full max-w-md bg-white rounded-3xl shadow-2xl p-6 space-y-4 border border-onion-200">
-            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
-              <h3 className="font-bold text-slate-900 text-sm flex items-center space-x-2">
-                <Sliders className="w-4 h-4 text-onion" />
-                <span>Configure Fee Schedule ({organization.name})</span>
-              </h3>
-              <button onClick={() => setIsFeeModalOpen(false)} className="p-1 text-slate-400">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+          <div className="relative w-full max-w-lg bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            <div className="p-6 border-b border-slate-100 flex items-center justify-between">
+              <div>
+                <h3 className="text-base font-bold text-slate-900 tracking-tight">
+                  Configure Processing Fees
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Orki Protocol Rules & Strict 1.00% PSP Ceiling
+                </p>
+              </div>
+              <button
+                onClick={() => setIsFeeModalOpen(false)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-600"
+              >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-1.5 text-xs">
-              <div className="flex justify-between text-slate-600">
-                <span>Orki Fixed Payment Fee:</span>
-                <span className="font-bold text-slate-900">1.00% (100 bps)</span>
+            <form onSubmit={handleFeeSubmit} className="p-6 space-y-4 text-xs">
+              {/* Fee Structure Summary Box */}
+              <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-600">Orki Protocol Base Fee:</span>
+                  <span className="font-mono font-bold text-slate-900">
+                    1.00% (100 bps) · Cap $25.00 USDC
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-600">PSP Maximum Markup Ceiling:</span>
+                  <span className="font-mono font-bold text-emerald-700">
+                    1.00% (100 bps ceiling)
+                  </span>
+                </div>
+                <div className="flex items-center justify-between border-t border-slate-200/80 pt-2 font-semibold">
+                  <span className="text-slate-800">Max Combined Processing Fee:</span>
+                  <span className="font-mono text-slate-900">2.00% (200 bps)</span>
+                </div>
               </div>
-              <div className="flex justify-between text-slate-600">
-                <span>Current PSP Markup:</span>
-                <span className="font-bold text-onion">{(currentMarkupBps / 100).toFixed(2)}% ({currentMarkupBps} bps)</span>
-              </div>
-              <div className="flex justify-between text-slate-600">
-                <span>Combined Fee Cap:</span>
-                <span className="font-bold text-slate-900">3.00% (300 bps)</span>
-              </div>
-            </div>
 
-            <form onSubmit={handleFeeSubmit} className="space-y-4 text-xs">
+              {/* Input for PSP Markup */}
               <div>
-                <label className="block font-bold text-slate-700 mb-1">
-                  Requested PSP Markup (in Basis Points)
+                <label className="block text-xs font-semibold text-slate-800 mb-1">
+                  PSP Markup (bps):
                 </label>
-                <div className="flex items-center space-x-2">
+                <div className="flex items-center space-x-3">
                   <input
                     type="number"
                     min="0"
-                    max="200"
+                    max="100"
                     value={newMarkupInput}
-                    onChange={(e) => setNewMarkupInput(e.target.value)}
-                    className="w-full p-2.5 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-onion-500 font-mono font-bold"
+                    onChange={(e) => {
+                      const val = parseInt(e.target.value, 10)
+                      if (!isNaN(val) && val > 100) {
+                        setNewMarkupInput('100') // Clamped to 100 bps ceiling
+                      } else {
+                        setNewMarkupInput(e.target.value)
+                      }
+                    }}
+                    className="w-32 px-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg font-mono font-bold"
                   />
-                  <span className="font-bold text-slate-500 text-xs">bps</span>
+                  <span className="text-xs text-slate-500">
+                    = {(parseInt(newMarkupInput || '0', 10) / 100).toFixed(2)}% Markup
+                  </span>
                 </div>
                 <p className="text-[11px] text-slate-400 mt-1">
-                  Preview: Total fee will be {((100 + (parseInt(newMarkupInput, 10) || 0)) / 100).toFixed(2)}% on all stablecoin transactions.
+                  Orki enforces a hard cap: PSP cannot add beyond 1.00% (100 bps) over Orki's base fee.
                 </p>
               </div>
 
-              <div className="p-3 bg-amber-50 rounded-xl border border-amber-200 text-amber-900 text-[11px] flex items-start space-x-2">
-                <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                <span>
-                  <strong>30-Day Lock Rule:</strong> Changes take effect for future transactions only and require dual-review in Orki operations.
-                </span>
+              {/* 30-Day Lock Notice */}
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-900 flex items-start space-x-2">
+                <Lock className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
+                <p className="text-[11px] leading-relaxed">
+                  <span className="font-bold">30-Day Rate Lock:</span> Once updated, stablecoin processing fees cannot be modified again for 30 calendar days to prevent rate volatility for your merchants.
+                </p>
+              </div>
+
+              {/* Offramp Policy */}
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-600">
+                <p className="font-bold text-slate-800 text-[11px]">Off-Ramp Rule:</p>
+                <p className="text-[11px] mt-0.5">
+                  PSPs cannot charge merchants for fiat off-ramping. Only Orki charges a standard conversion spread.
+                </p>
               </div>
 
               {feeRequestSuccess && (
-                <div className="p-2.5 bg-emerald-100 text-emerald-800 font-bold rounded-xl text-center">
-                  Fee schedule updated successfully!
+                <div className="p-2.5 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-lg text-center font-bold">
+                  Fee schedule updated & 30-day lock engaged! ✓
                 </div>
               )}
 
-              <div className="flex space-x-2 pt-2">
+              <div className="flex justify-end space-x-2 pt-2">
                 <button
                   type="button"
                   onClick={() => setIsFeeModalOpen(false)}
-                  className="w-1/2 py-2.5 bg-slate-100 text-slate-700 font-bold rounded-xl"
+                  className="px-4 py-2 border border-slate-200 text-slate-600 rounded-lg text-xs"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="w-1/2 py-2.5 bg-onion text-white font-bold rounded-xl hover:bg-onion-700 shadow-md"
+                  className="mat-btn-primary px-4 py-2 text-xs font-semibold"
                 >
                   Save Fee Schedule
                 </button>
@@ -408,14 +456,88 @@ export const OrgDashboard: React.FC<OrgDashboardProps> = ({
         </div>
       )}
 
-      {/* Add Merchant Modal */}
+      {/* OFFRAMP PSP COMMISSION FLOAT MODAL */}
+      {isOfframpModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+          <div className="relative w-full max-w-md bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            <div className="p-6 border-b border-slate-100 flex items-center justify-between">
+              <div>
+                <h3 className="text-base font-bold text-slate-900 tracking-tight">
+                  Off-Ramp PSP Commission Float
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Liquidate Fee Vault into Corporate Bank Account
+                </p>
+              </div>
+              <button
+                onClick={() => setIsOfframpModalOpen(false)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-600"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleOfframpFeeSubmit} className="p-6 space-y-4 text-xs">
+              <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+                  Accrued Commission Balance
+                </span>
+                <p className="text-xl font-bold font-mono text-slate-900 tabular-nums">
+                  ${accruedMarkup.toFixed(2)} USDC
+                </p>
+                <p className="text-[11px] font-mono text-slate-400 truncate">
+                  Fee Vault: {organization.feeWallet || '0xPspXsquareVault000000000000000000001'}
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-800 mb-1">
+                  Destination Corporate IBAN:
+                </label>
+                <input
+                  type="text"
+                  defaultValue="AE440260009988776655443"
+                  className="w-full px-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg font-mono font-medium"
+                />
+              </div>
+
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-600 text-[11px] leading-relaxed">
+                <span className="font-bold text-slate-800">Orki Protocol Conversion Markup:</span> Orki charges standard 0.25% (25 bps) spread for liquidating stablecoin fee reserves into corporate fiat bank rails.
+              </div>
+
+              {offrampSuccess && (
+                <div className="p-2.5 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-lg text-center font-bold">
+                  Off-ramp instruction submitted to banking rails! ✓
+                </div>
+              )}
+
+              <div className="flex justify-end space-x-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsOfframpModalOpen(false)}
+                  className="px-4 py-2 border border-slate-200 text-slate-600 rounded-lg text-xs"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="mat-btn-primary px-4 py-2 text-xs font-semibold"
+                >
+                  Confirm Off-Ramp
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modals for Add & Bulk */}
       <AddMerchantModal
         isOpen={isAddModalOpen}
         onClose={() => setIsAddModalOpen(false)}
         onAddMerchant={onAddMerchant}
       />
 
-      {/* Bulk Upload Modal */}
       <BulkMerchantUploadModal
         isOpen={isBulkModalOpen}
         onClose={() => setIsBulkModalOpen(false)}

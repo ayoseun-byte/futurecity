@@ -12,6 +12,14 @@ export type MerchantStatus =
 
 export type SettlementMode = 'hold_as_received' | 'auto_offramp'
 
+export type OnboardingStep =
+  | 'OPT_IN'
+  | 'NOTICE'
+  | 'TERMS'
+  | 'SUMSUB'
+  | 'PASSKEY'
+  | 'COMPLETED'
+
 export interface Merchant {
   id: string
   organizationId?: string
@@ -19,18 +27,36 @@ export interface Merchant {
   legalBusinessName: string
   tradeLicenseNumber: string
   jurisdiction: string
+  categoryType?: string
   representativeName: string
   representativeEmail: string
   status: MerchantStatus
   settlementMode: SettlementMode
+  nextStep?: OnboardingStep | null
+
+  // Tri-Wallet Split Topology & Fee Caps
+  orkiFeeWallet?: string
+  pspFeeWallet?: string
+  merchantWallet?: string
+  orkiFeeBps?: number // Customizable by Orki (default 100 = 1.00%)
+  orkiFeeCapPercent?: number // e.g. 1.00%
+  orkiFeeCapAmount?: number // e.g. 25.00 USDC cap
+  pspFeeBps?: number // Customizable by PSP, NEVER beyond 100 bps (1.00%)
+  feeLockUntil?: string // 30-day lock on fee adjustments
+
   baseWalletAddress?: string
   solanaWalletAddress?: string
   passkeyId?: string
   statusReason?: string
+  noticeAcknowledgedAt?: string
+  termsAcceptedAt?: string
+  sumsubCompletedAt?: string
+  passkeyRegisteredAt?: string
   verifiedAt?: string
   activatedAt?: string
   createdAt: string
   volumeUsdc?: number
+  balanceUsdc?: number
 }
 
 export interface Paylink {
@@ -83,8 +109,10 @@ export interface Conversion {
 }
 
 // -----------------------------------------------------------------------------
-// PSP / Organization Domain Types (Part 1 of Darshan Specification)
+// PSP / Organization Domain Types
 // -----------------------------------------------------------------------------
+
+export type OrganizationCategoryType = 'psp' | 'fintech' | 'bank' | 'neo_broker' | 'marketplace'
 
 export type PspStatus = 'sandbox' | 'in_review' | 'approved' | 'suspended' | 'declined'
 
@@ -97,9 +125,14 @@ export interface PspContact {
 
 export interface PspFeeSchedule {
   orkiFeeBps: number // Default 100 bps (1.00%)
-  pspMarkupBps: number // Set by PSP e.g. 35 bps (0.35%)
-  combinedCapBps: number // Safety cap e.g. 300 bps (3.00%)
+  orkiFeeCapPercent: number // e.g. 1.00%
+  orkiFeeCapAmount: number // Max fee amount in USDC e.g. 25.00
+  pspMarkupBps: number // Set by PSP, hard-capped at 100 bps (1.00% max)
+  combinedCapBps: number // Combined cap e.g. 200 bps (2.00%)
   lockedUntil: string // 30-day lock timestamp
+  orkiFeeWallet: string
+  pspFeeWallet: string
+  offrampSpreadBps: number // Orki-only offramp markup (PSP cannot charge offramp)
   pendingChangeRequest?: {
     requestedMarkupBps: number
     requestedAt: string
@@ -127,7 +160,7 @@ export interface PspDueDiligence {
   riskRating: 'low' | 'medium' | 'high'
   reviewDate: string
   nextReviewDate: string
-  ubos?: PspUbo[] // Required if Unlicensed or for major shareholders
+  ubos?: PspUbo[]
   notes?: string
 }
 
@@ -159,8 +192,10 @@ export interface PspKeyDelivery {
 export interface Organization {
   id: string // e.g. psp_xsquare01
   name: string
+  categoryType: OrganizationCategoryType
   status: PspStatus
   isRegulatedEntity: boolean
+  feeWallet: string
   contacts: PspContact[]
   ndaSignedAt?: string
   agreementDetails?: {
@@ -182,4 +217,5 @@ export interface Organization {
   webhookUrl?: string
   createdAt: string
   volumeUsdc?: number
+  balanceUsdc?: number
 }

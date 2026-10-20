@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import type { Merchant, Paylink, SettlementMode, Transaction } from '../../types'
+import type { Merchant, Paylink, SettlementMode, Transaction, OnboardingStep } from '../../types'
 import { StatusBadge } from '../../components/StatusBadge'
 import { OnboardingModal } from '../../components/OnboardingModal'
 import { CreatePaylinkModal } from './CreatePaylinkModal'
@@ -9,13 +9,10 @@ import {
   ArrowRightLeft,
   Send,
   Plus,
-  Copy,
-  Check,
-  ExternalLink,
-  ShieldCheck,
-  QrCode,
-  ArrowUpRight,
-  X,
+  Lock,
+  ChevronRight,
+  Layers,
+  Sparkles,
 } from 'lucide-react'
 
 interface MerchantDashboardProps {
@@ -36,39 +33,38 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
   onLaunchCheckout,
 }) => {
   const [isOnboardingModalOpen, setIsOnboardingModalOpen] = useState(false)
-  const [isConsentNoticeOpen, setIsConsentNoticeOpen] = useState(false)
   const [isPaylinkModalOpen, setIsPaylinkModalOpen] = useState(false)
   const [isOffRampModalOpen, setIsOffRampModalOpen] = useState(false)
   const [isTransferModalOpen, setIsTransferModalOpen] = useState(false)
   const [copiedId, setCopiedId] = useState<string | null>(null)
-  const [activeQrModal, setActiveQrModal] = useState<Paylink | null>(null)
 
-  const isSetupComplete = merchant.status === 'active'
+  const isSetupComplete = merchant.status === 'active' && !merchant.nextStep
 
-  const handleToggleSwitch = () => {
-    if (!isSetupComplete) {
-      setIsConsentNoticeOpen(true)
-    }
-  }
-
-  const handleConsentContinue = () => {
-    setIsConsentNoticeOpen(false)
+  const handleStartOnboarding = () => {
     setIsOnboardingModalOpen(true)
   }
 
   const handleOnboardingComplete = (
     _merchantId: string,
-    baseWallet: string,
-    solanaWallet: string,
+    merchantWallet: string,
+    pspWallet: string,
+    orkiWallet: string,
     passkeyId: string
   ) => {
     onUpdateMerchant({
       status: 'active',
-      baseWalletAddress: baseWallet,
-      solanaWalletAddress: solanaWallet,
+      nextStep: null,
+      merchantWallet: merchantWallet,
+      baseWalletAddress: merchantWallet,
+      pspFeeWallet: pspWallet,
+      orkiFeeWallet: orkiWallet,
       passkeyId: passkeyId,
       activatedAt: new Date().toISOString(),
     })
+  }
+
+  const handleStepChange = (step: OnboardingStep | null) => {
+    onUpdateMerchant({ nextStep: step })
   }
 
   const handleToggleSettlementMode = (newMode: SettlementMode) => {
@@ -83,342 +79,453 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
 
   return (
     <div className="space-y-6">
-      {/* Top Banner: Merchant Business Header */}
-      <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+      {/* Merchant Title & Profile Bar */}
+      <div className="mat-card p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <div className="flex items-center space-x-4">
-          <div className="w-14 h-14 rounded-2xl bg-onion-50 text-onion-800 border border-onion-200 flex items-center justify-center font-black text-2xl shadow-sm">
+          <div className="w-12 h-12 rounded-xl bg-onion-50 text-onion-800 border border-onion-200/80 flex items-center justify-center font-bold text-xl shadow-xs">
             {merchant.legalBusinessName.charAt(0)}
           </div>
           <div>
-            <div className="flex items-center space-x-3">
-              <h1 className="text-xl font-extrabold text-slate-900">{merchant.legalBusinessName}</h1>
+            <div className="flex items-center space-x-2.5">
+              <h1 className="text-xl font-bold tracking-tight text-slate-900">
+                {merchant.legalBusinessName}
+              </h1>
               <StatusBadge status={merchant.status} />
             </div>
             <p className="text-xs text-slate-500 mt-1">
-              Licence: <span className="font-semibold text-slate-800">{merchant.tradeLicenseNumber}</span> · {merchant.jurisdiction} · Rep: {merchant.representativeName}
+              License: <span className="font-semibold text-slate-700">{merchant.tradeLicenseNumber}</span> · {merchant.jurisdiction} · Rep: {merchant.representativeName}
             </p>
           </div>
         </div>
 
-        {/* SETTINGS CARD (Darshan Part 3) */}
-        <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl flex items-center space-x-4">
+        {/* Quick Mode Indicator */}
+        <div className="flex items-center space-x-3 bg-slate-50 border border-slate-200 py-2 px-3.5 rounded-lg text-xs">
           <div>
-            <div className="flex items-center space-x-2">
-              <span className="font-bold text-xs text-slate-900">USDC payments</span>
-              <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
-                isSetupComplete ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-600'
-              }`}>
-                {isSetupComplete ? 'Active' : 'Off'}
-              </span>
-            </div>
-            <p className="text-[11px] text-slate-500 mt-0.5">Accept stablecoin payments from your customers.</p>
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+              Payment Acceptance
+            </p>
+            <p className="font-bold text-slate-800 text-xs mt-0.5">
+              {isSetupComplete ? 'USDC Live (Multi-Chain)' : 'Onboarding Pending'}
+            </p>
           </div>
-
-          <button
-            onClick={handleToggleSwitch}
-            className={`w-12 h-6 flex items-center rounded-full p-1 cursor-pointer transition-colors ${
-              isSetupComplete ? 'bg-onion' : 'bg-slate-300'
-            }`}
-          >
-            <div
-              className={`bg-white w-4 h-4 rounded-full shadow-md transform transition-transform ${
-                isSetupComplete ? 'translate-x-6' : 'translate-x-0'
-              }`}
-            />
-          </button>
+          {!isSetupComplete && (
+            <button
+              onClick={handleStartOnboarding}
+              className="mat-btn-primary px-3 py-1.5 text-xs font-medium ml-2 shadow-xs"
+            >
+              Accept USDC
+            </button>
+          )}
         </div>
       </div>
 
-      {/* If Not Setup: Show Prompt to Complete Verification */}
+      {/* GUIDED ONBOARDING STEPPER HERO (If not yet complete) */}
       {!isSetupComplete && (
-        <div className="bg-onion-50 border-2 border-onion-200 rounded-2xl p-6 text-center space-y-3">
-          <div className="w-12 h-12 rounded-2xl bg-onion text-white flex items-center justify-center mx-auto shadow-md">
-            <ShieldCheck className="w-6 h-6" />
-          </div>
-          <div>
-            <h3 className="font-extrabold text-base text-slate-900">Finish setting up USDC payments</h3>
-            <p className="text-xs text-slate-600 max-w-md mx-auto mt-1">
-              Complete the 3-step Orki setup: Terms acceptance, Sumsub business verification, and Passkey creation.
-            </p>
-          </div>
-          <button
-            onClick={() => setIsConsentNoticeOpen(true)}
-            className="py-2.5 px-6 bg-onion hover:bg-onion-700 text-white font-bold rounded-xl text-xs transition shadow-md"
-          >
-            Start Setup Modal
-          </button>
-        </div>
-      )}
-
-      {/* If Setup Complete: Full Financial Operating Center */}
-      {isSetupComplete && (
-        <>
-          {/* Multi-Chain Balances & Settlement Controls */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
-              <div>
-                <div className="flex items-center justify-between text-xs text-slate-500 font-semibold">
-                  <span>USDC Balance (Base)</span>
-                  <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-[10px] font-bold">
-                    Non-Custodial
-                  </span>
-                </div>
-                <p className="text-2xl font-black text-slate-900 mt-2">12,450.00 <span className="text-xs font-bold text-slate-400">USDC</span></p>
-                <p className="font-mono text-[10px] text-slate-400 mt-1 truncate">
-                  Account: {merchant.baseWalletAddress}
-                </p>
+        <div className="mat-card p-6 border-l-4 border-l-onion bg-gradient-to-r from-onion-50/40 via-white to-white space-y-4">
+          <div className="flex items-start justify-between">
+            <div className="space-y-1">
+              <div className="inline-flex items-center space-x-1.5 text-xs font-semibold text-onion-800 bg-onion-100/80 px-2.5 py-0.5 rounded-md">
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>Next Step: {merchant.nextStep || 'NOTICE'}</span>
               </div>
-              <div className="grid grid-cols-2 gap-2 mt-4">
-                <button
-                  onClick={() => setIsOffRampModalOpen(true)}
-                  className="py-1.5 px-2 bg-onion-50 hover:bg-onion-100 text-onion-800 rounded-lg text-xs font-bold transition flex items-center justify-center space-x-1"
-                >
-                  <ArrowRightLeft className="w-3.5 h-3.5" />
-                  <span>Convert to AED</span>
-                </button>
-                <button
-                  onClick={() => setIsTransferModalOpen(true)}
-                  className="py-1.5 px-2 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-lg text-xs font-bold transition flex items-center justify-center space-x-1"
-                >
-                  <Send className="w-3.5 h-3.5" />
-                  <span>Transfer Out</span>
-                </button>
-              </div>
-            </div>
-
-            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
-              <div>
-                <div className="flex items-center justify-between text-xs text-slate-500 font-semibold">
-                  <span>USDT Balance (Solana)</span>
-                  <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-[10px] font-bold">
-                    Non-Custodial
-                  </span>
-                </div>
-                <p className="text-2xl font-black text-slate-900 mt-2">4,200.00 <span className="text-xs font-bold text-slate-400">USDT</span></p>
-                <p className="font-mono text-[10px] text-slate-400 mt-1 truncate">
-                  Account: {merchant.solanaWalletAddress}
-                </p>
-              </div>
-              <div className="grid grid-cols-2 gap-2 mt-4">
-                <button
-                  onClick={() => setIsOffRampModalOpen(true)}
-                  className="py-1.5 px-2 bg-onion-50 hover:bg-onion-100 text-onion-800 rounded-lg text-xs font-bold transition flex items-center justify-center space-x-1"
-                >
-                  <ArrowRightLeft className="w-3.5 h-3.5" />
-                  <span>Convert to AED</span>
-                </button>
-                <button
-                  onClick={() => setIsTransferModalOpen(true)}
-                  className="py-1.5 px-2 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-lg text-xs font-bold transition flex items-center justify-center space-x-1"
-                >
-                  <Send className="w-3.5 h-3.5" />
-                  <span>Transfer Out</span>
-                </button>
-              </div>
-            </div>
-
-            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
-              <div>
-                <div className="flex items-center justify-between text-xs text-slate-500 font-semibold">
-                  <span>Settled to Bank (AED)</span>
-                  <span className="px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 text-[10px] font-bold">
-                    Emirates NBD
-                  </span>
-                </div>
-                <p className="text-2xl font-black text-slate-900 mt-2">AED 84,120.00</p>
-                <p className="font-mono text-[10px] text-slate-400 mt-1">
-                  IBAN: AE0702600012345678901
-                </p>
-              </div>
-
-              {/* Settlement Preference Toggle */}
-              <div className="mt-4 p-2.5 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between text-xs">
-                <div>
-                  <span className="font-bold text-slate-800 block text-[11px]">Auto Off-Ramp</span>
-                  <span className="text-[10px] text-slate-400">
-                    {merchant.settlementMode === 'auto_offramp' ? 'Bridge Liquidation Active' : 'Hold in Custody'}
-                  </span>
-                </div>
-                <button
-                  onClick={() =>
-                    handleToggleSettlementMode(
-                      merchant.settlementMode === 'auto_offramp' ? 'hold_as_received' : 'auto_offramp'
-                    )
-                  }
-                  className={`w-10 h-5 flex items-center rounded-full p-0.5 cursor-pointer transition-colors ${
-                    merchant.settlementMode === 'auto_offramp' ? 'bg-onion' : 'bg-slate-300'
-                  }`}
-                >
-                  <div
-                    className={`bg-white w-4 h-4 rounded-full shadow transform transition-transform ${
-                      merchant.settlementMode === 'auto_offramp' ? 'translate-x-5' : 'translate-x-0'
-                    }`}
-                  />
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* Paylinks Engine Section */}
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-            <div className="p-5 border-b border-slate-200 flex items-center justify-between">
-              <div>
-                <h2 className="font-extrabold text-base text-slate-900">Payment Links & Checkout IDs</h2>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Shareable buyer links with slippage protection and dynamic deposit addresses.
-                </p>
-              </div>
-              <button
-                onClick={() => setIsPaylinkModalOpen(true)}
-                className="flex items-center space-x-1.5 px-4 py-2 bg-onion hover:bg-onion-700 text-white rounded-xl text-xs font-bold transition shadow-sm"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Create Payment Link</span>
-              </button>
-            </div>
-
-            <div className="divide-y divide-slate-100 text-xs">
-              {paylinks.map((pl) => (
-                <div key={pl.id} className="p-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-3 hover:bg-slate-50/80 transition">
-                  <div className="space-y-1">
-                    <div className="flex items-center space-x-2">
-                      <span className="font-bold text-slate-900 text-sm">{pl.title}</span>
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700">
-                        {pl.settlementMode === 'auto_offramp' ? 'Auto-AED' : 'Crypto Hold'}
-                      </span>
-                    </div>
-                    <p className="text-slate-500">{pl.description || 'No description provided'}</p>
-                    <p className="font-mono text-[11px] text-slate-400">
-                      ID: <span className="font-semibold text-slate-700">{pl.id}</span> · URL: {pl.checkoutUrl}
-                    </p>
-                  </div>
-
-                  <div className="flex items-center space-x-3 w-full md:w-auto justify-between md:justify-end">
-                    <div className="text-right">
-                      <span className="font-black text-slate-900 text-base">
-                        {pl.amountType === 'fixed' ? `${pl.amount} ${pl.currency}` : 'Open Amount'}
-                      </span>
-                      <p className="text-[10px] text-slate-400">Base & Solana Supported</p>
-                    </div>
-
-                    <button
-                      onClick={() => setActiveQrModal(pl)}
-                      className="p-2 border border-slate-200 rounded-lg hover:bg-slate-100 text-slate-600 transition"
-                      title="Show QR Code"
-                    >
-                      <QrCode className="w-4 h-4" />
-                    </button>
-
-                    <button
-                      onClick={() => copyToClipboard(pl.checkoutUrl, pl.id)}
-                      className="p-2 border border-slate-200 rounded-lg hover:bg-slate-100 text-slate-600 transition flex items-center space-x-1"
-                    >
-                      {copiedId === pl.id ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
-                    </button>
-
-                    <button
-                      onClick={() => onLaunchCheckout(pl)}
-                      className="px-3 py-2 bg-onion-50 text-onion-800 hover:bg-onion-100 font-bold rounded-lg transition flex items-center space-x-1"
-                    >
-                      <span>Test Checkout</span>
-                      <ExternalLink className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Granular Transactions & Fee Split Feed */}
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-            <div className="p-5 border-b border-slate-200">
-              <h2 className="font-extrabold text-base text-slate-900">Recent Transactions & On-Chain Splits</h2>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Every payment splits Orki fee (1.00%) + XSquare markup (0.25%) on-chain, and credits 98.75% to your wallet.
+              <h2 className="text-base font-bold text-slate-900 tracking-tight pt-1">
+                Complete Your USDC Merchant Activation
+              </h2>
+              <p className="text-xs text-slate-600 max-w-xl leading-relaxed">
+                Complete the 4-step onboarding journey: Regulatory Notice acknowledgement, Orki Terms & split fee agreement, SumSub KYB identity verification, and hardware Passkey creation.
               </p>
             </div>
 
-            <div className="divide-y divide-slate-100 text-xs">
-              {transactions.map((tx) => (
-                <div key={tx.id} className="p-4 flex items-center justify-between hover:bg-slate-50">
-                  <div className="flex items-center space-x-3">
-                    <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold">
-                      <ArrowUpRight className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <p className="font-bold text-slate-800">{tx.type.replace('_', ' ').toUpperCase()}</p>
-                      <p className="text-[11px] text-slate-400 font-mono mt-0.5">
-                        Tx: {tx.txHash.substring(0, 16)}... · Payer: {tx.payerAddress}
-                      </p>
-                    </div>
-                  </div>
+            <button
+              onClick={handleStartOnboarding}
+              className="mat-btn-primary px-5 py-2.5 text-xs font-semibold flex items-center space-x-2 shrink-0 shadow-sm"
+            >
+              <span>Accept USDC & Continue</span>
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
 
-                  <div className="text-right">
-                    <p className="font-black text-slate-900 text-sm">+{tx.grossAmount} {tx.currency}</p>
-                    <p className="text-[11px] text-slate-400 mt-0.5">
-                      Net: <strong className="text-slate-800">{tx.netAmount}</strong> (Orki -{tx.orkiFeeAmount} · XSquare -{tx.pspMarkupAmount})
-                    </p>
-                  </div>
-                </div>
-              ))}
+          {/* Stepper Progress Bar */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 border-t border-slate-100">
+            <div className={`p-2.5 rounded-lg text-xs border ${
+              merchant.nextStep === 'NOTICE' || !merchant.nextStep
+                ? 'bg-white border-onion-300 shadow-xs'
+                : merchant.noticeAcknowledgedAt
+                ? 'bg-emerald-50/60 border-emerald-200 text-emerald-800'
+                : 'bg-slate-50 border-slate-200 text-slate-400'
+            }`}>
+              <p className="text-[10px] font-semibold uppercase tracking-wider">Step 1</p>
+              <p className="font-bold text-xs mt-0.5">Regulatory Notice</p>
+            </div>
+
+            <div className={`p-2.5 rounded-lg text-xs border ${
+              merchant.nextStep === 'TERMS'
+                ? 'bg-white border-onion-300 shadow-xs'
+                : merchant.termsAcceptedAt
+                ? 'bg-emerald-50/60 border-emerald-200 text-emerald-800'
+                : 'bg-slate-50 border-slate-200 text-slate-400'
+            }`}>
+              <p className="text-[10px] font-semibold uppercase tracking-wider">Step 2</p>
+              <p className="font-bold text-xs mt-0.5">Terms & Fee Split</p>
+            </div>
+
+            <div className={`p-2.5 rounded-lg text-xs border ${
+              merchant.nextStep === 'SUMSUB'
+                ? 'bg-white border-onion-300 shadow-xs'
+                : merchant.sumsubCompletedAt
+                ? 'bg-emerald-50/60 border-emerald-200 text-emerald-800'
+                : 'bg-slate-50 border-slate-200 text-slate-400'
+            }`}>
+              <p className="text-[10px] font-semibold uppercase tracking-wider">Step 3</p>
+              <p className="font-bold text-xs mt-0.5">SumSub KYB Check</p>
+            </div>
+
+            <div className={`p-2.5 rounded-lg text-xs border ${
+              merchant.nextStep === 'PASSKEY'
+                ? 'bg-white border-onion-300 shadow-xs'
+                : merchant.passkeyRegisteredAt
+                ? 'bg-emerald-50/60 border-emerald-200 text-emerald-800'
+                : 'bg-slate-50 border-slate-200 text-slate-400'
+            }`}>
+              <p className="text-[10px] font-semibold uppercase tracking-wider">Step 4</p>
+              <p className="font-bold text-xs mt-0.5">Passkey Biometric</p>
             </div>
           </div>
-        </>
+        </div>
       )}
 
-      {/* Notice Dialog (Darshan Part 3 Screen 2) */}
-      {isConsentNoticeOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl p-6 space-y-4 border border-onion-200 text-xs">
-            <h3 className="font-bold text-base text-slate-900">Set up USDC payments</h3>
-            <p className="text-slate-600 leading-relaxed">
-              To accept USDC payments, <strong className="text-slate-800">XSquare</strong> will share your business name, licence number and contact details with <strong className="text-slate-800">Orki</strong>, which provides the payment and wallet service, so Orki can verify your business. Orki's terms and privacy notice apply.
+      {/* TRI-WALLET SPLIT CONTRACT TOPOLOGY SURFACE */}
+      <div className="mat-card p-6 space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-slate-100 gap-2">
+          <div className="flex items-center space-x-2.5">
+            <Layers className="w-4 h-4 text-onion-700" />
+            <h3 className="text-sm font-bold text-slate-900 tracking-tight">
+              Tri-Wallet Split Contract Architecture
+            </h3>
+          </div>
+          <span className="inline-flex items-center text-[11px] font-mono font-medium text-slate-500 bg-slate-50 border border-slate-200 px-2.5 py-0.5 rounded">
+            <Lock className="w-3 h-3 mr-1 text-slate-400" />
+            30-Day Rate Lock Active
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+          {/* Vault 1: Merchant Net Proceed Wallet */}
+          <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+                1. Merchant Settlement Wallet
+              </span>
+              <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200">
+                Net Proceeds
+              </span>
+            </div>
+            <p className="font-mono text-xs font-semibold text-slate-900 break-all">
+              {merchant.merchantWallet || merchant.baseWalletAddress || 'Pending passkey deployment'}
             </p>
-            <div className="flex justify-end space-x-3 pt-2">
-              <button
-                onClick={() => setIsConsentNoticeOpen(false)}
-                className="py-2 px-4 rounded-xl text-slate-600 hover:bg-slate-100 font-semibold"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleConsentContinue}
-                className="py-2 px-5 bg-onion hover:bg-onion-700 text-white font-bold rounded-xl shadow-md transition"
-              >
-                Continue
-              </button>
+            <p className="text-[11px] text-slate-500">
+              Receives net sales proceeds immediately upon checkout completion.
+            </p>
+          </div>
+
+          {/* Vault 2: PSP Fee Vault */}
+          <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+                2. PSP Commission Wallet
+              </span>
+              <span className="text-[10px] font-bold text-onion-800 bg-onion-50 px-1.5 py-0.2 rounded border border-onion-200">
+                {(merchant.pspFeeBps || 35) / 100}% Markup
+              </span>
             </div>
+            <p className="font-mono text-xs font-semibold text-slate-900 break-all">
+              {merchant.pspFeeWallet || '0xPspXsquareVault000000000000000000001'}
+            </p>
+            <p className="text-[11px] text-slate-500">
+              Receives PSP markup cut (strictly bounded to max 1.00% ceiling).
+            </p>
+          </div>
+
+          {/* Vault 3: Orki Protocol Fee Vault */}
+          <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+                3. Orki Protocol Fee Wallet
+              </span>
+              <span className="text-[10px] font-bold text-slate-700 bg-slate-200/70 px-1.5 py-0.2 rounded">
+                1.00% (Cap $25)
+              </span>
+            </div>
+            <p className="font-mono text-xs font-semibold text-slate-900 break-all">
+              {merchant.orkiFeeWallet || '0xOrkiProtocolFeeVault0000000000000000001'}
+            </p>
+            <p className="text-[11px] text-slate-500">
+              Receives base network fee (1.00%, capped at $25.00 USDC per tx).
+            </p>
           </div>
         </div>
-      )}
+      </div>
 
-      {/* QR Code Popup */}
-      {activeQrModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <div className="w-full max-w-sm bg-white rounded-2xl shadow-2xl p-6 text-center space-y-4 border border-onion-200">
-            <div className="flex justify-between items-center">
-              <h3 className="font-bold text-sm text-slate-900">Scan to Pay with USDC</h3>
-              <button onClick={() => setActiveQrModal(null)} className="p-1 text-slate-400 hover:text-slate-600">
-                <X className="w-5 h-5" />
-              </button>
+      {/* FINANCIAL KPI TILES (Material 3 Cards) */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {/* Base USDC Float */}
+        <div className="mat-card p-5 flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between text-xs text-slate-500 font-semibold">
+              <span>USDC Float (Base)</span>
+              <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
+                Non-Custodial
+              </span>
             </div>
-            <div className="w-48 h-48 bg-slate-100 mx-auto rounded-2xl flex items-center justify-center border-2 border-onion-200">
-              <QrCode className="w-32 h-32 text-onion" />
+            <p className="text-2xl font-bold text-slate-900 font-mono tracking-tight mt-2 tabular-nums">
+              12,450.00 <span className="text-xs font-medium text-slate-400">USDC</span>
+            </p>
+            <p className="font-mono text-[10px] text-slate-400 mt-1 truncate">
+              {merchant.baseWalletAddress || '0x71C25e36...949A'}
+            </p>
+          </div>
+          <div className="grid grid-cols-2 gap-2 mt-4 pt-3 border-t border-slate-100">
+            <button
+              onClick={() => setIsOffRampModalOpen(true)}
+              disabled={!isSetupComplete}
+              className="py-1.5 px-2 bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-800 rounded-lg text-xs font-medium transition flex items-center justify-center space-x-1 disabled:opacity-50"
+            >
+              <ArrowRightLeft className="w-3.5 h-3.5" />
+              <span>Convert AED</span>
+            </button>
+            <button
+              onClick={() => setIsTransferModalOpen(true)}
+              disabled={!isSetupComplete}
+              className="py-1.5 px-2 bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-800 rounded-lg text-xs font-medium transition flex items-center justify-center space-x-1 disabled:opacity-50"
+            >
+              <Send className="w-3.5 h-3.5" />
+              <span>Transfer</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Solana USDT Float */}
+        <div className="mat-card p-5 flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between text-xs text-slate-500 font-semibold">
+              <span>USDT Float (Solana)</span>
+              <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
+                Non-Custodial
+              </span>
             </div>
+            <p className="text-2xl font-bold text-slate-900 font-mono tracking-tight mt-2 tabular-nums">
+              4,200.00 <span className="text-xs font-medium text-slate-400">USDT</span>
+            </p>
+            <p className="font-mono text-[10px] text-slate-400 mt-1 truncate">
+              {merchant.solanaWalletAddress || '4Nd1mBQtr...6P58'}
+            </p>
+          </div>
+          <div className="grid grid-cols-2 gap-2 mt-4 pt-3 border-t border-slate-100">
+            <button
+              onClick={() => setIsOffRampModalOpen(true)}
+              disabled={!isSetupComplete}
+              className="py-1.5 px-2 bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-800 rounded-lg text-xs font-medium transition flex items-center justify-center space-x-1 disabled:opacity-50"
+            >
+              <ArrowRightLeft className="w-3.5 h-3.5" />
+              <span>Convert AED</span>
+            </button>
+            <button
+              onClick={() => setIsTransferModalOpen(true)}
+              disabled={!isSetupComplete}
+              className="py-1.5 px-2 bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-800 rounded-lg text-xs font-medium transition flex items-center justify-center space-x-1 disabled:opacity-50"
+            >
+              <Send className="w-3.5 h-3.5" />
+              <span>Transfer</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Bank Liquidation Setting */}
+        <div className="mat-card p-5 flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between text-xs text-slate-500 font-semibold">
+              <span>Bank Settlement (AED)</span>
+              <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-700 border border-slate-200">
+                Emirates NBD
+              </span>
+            </div>
+            <p className="text-2xl font-bold text-slate-900 font-mono tracking-tight mt-2 tabular-nums">
+              AED 84,120.00
+            </p>
+            <p className="font-mono text-[10px] text-slate-400 mt-1">
+              IBAN: AE0702600012345678901
+            </p>
+          </div>
+
+          <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
             <div>
-              <p className="font-bold text-slate-900 text-sm">{activeQrModal.title}</p>
-              <p className="font-mono text-xs text-slate-500 mt-1 truncate">{activeQrModal.checkoutUrl}</p>
+              <span className="font-semibold text-slate-800 block text-xs">Auto Off-Ramp</span>
+              <span className="text-[10px] text-slate-400">
+                {merchant.settlementMode === 'auto_offramp' ? 'Instant AED Liquidation' : 'Hold in Vault'}
+              </span>
             </div>
+            <button
+              onClick={() =>
+                handleToggleSettlementMode(
+                  merchant.settlementMode === 'auto_offramp' ? 'hold_as_received' : 'auto_offramp'
+                )
+              }
+              className={`w-11 h-6 flex items-center rounded-full p-1 cursor-pointer transition-colors ${
+                merchant.settlementMode === 'auto_offramp' ? 'bg-onion' : 'bg-slate-300'
+              }`}
+            >
+              <div
+                className={`bg-white w-4 h-4 rounded-full shadow-xs transform transition-transform ${
+                  merchant.settlementMode === 'auto_offramp' ? 'translate-x-5' : 'translate-x-0'
+                }`}
+              />
+            </button>
           </div>
         </div>
-      )}
+      </div>
 
-      {/* Modals */}
+      {/* PAYLINKS TABLE */}
+      <div className="mat-card overflow-hidden">
+        <div className="p-6 border-b border-slate-200/80 flex items-center justify-between">
+          <div>
+            <h3 className="text-base font-bold text-slate-900 tracking-tight">Active Paylinks</h3>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Hosted checkout links with built-in 3-wallet split settlement.
+            </p>
+          </div>
+          <button
+            onClick={() => setIsPaylinkModalOpen(true)}
+            disabled={!isSetupComplete}
+            className="mat-btn-primary px-3.5 py-2 text-xs font-medium flex items-center space-x-1.5 disabled:opacity-50"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Create Paylink</span>
+          </button>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-slate-200 text-xs">
+            <thead className="bg-slate-50/70 text-slate-500 uppercase tracking-wider font-semibold text-[10px]">
+              <tr>
+                <th className="px-6 py-3 text-left">Title / Slug</th>
+                <th className="px-6 py-3 text-left">Amount</th>
+                <th className="px-6 py-3 text-left">Chains</th>
+                <th className="px-6 py-3 text-left">Mode</th>
+                <th className="px-6 py-3 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 bg-white">
+              {paylinks.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="px-6 py-8 text-center text-slate-400">
+                    No active paylinks created yet.
+                  </td>
+                </tr>
+              ) : (
+                paylinks.map((link) => (
+                  <tr key={link.id} className="hover:bg-slate-50/60 transition">
+                    <td className="px-6 py-3.5 font-medium text-slate-900">
+                      <div>{link.title}</div>
+                      <span className="font-mono text-[11px] text-slate-400">{link.slug}</span>
+                    </td>
+                    <td className="px-6 py-3.5 font-mono font-semibold text-slate-800 tabular-nums">
+                      {link.amountType === 'fixed' ? `${link.amount?.toFixed(2)} ${link.currency}` : 'Customer Defined'}
+                    </td>
+                    <td className="px-6 py-3.5">
+                      <div className="flex space-x-1">
+                        {link.allowedChains.map((c) => (
+                          <span
+                            key={c}
+                            className="px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold bg-slate-100 text-slate-700 uppercase"
+                          >
+                            {c}
+                          </span>
+                        ))}
+                      </div>
+                    </td>
+                    <td className="px-6 py-3.5 text-slate-600 capitalize">
+                      {link.settlementMode.replace('_', ' ')}
+                    </td>
+                    <td className="px-6 py-3.5 text-right space-x-2">
+                      <button
+                        onClick={() => copyToClipboard(`${window.location.origin}${link.checkoutUrl}`, link.id)}
+                        className="px-2.5 py-1 rounded text-slate-600 hover:text-slate-900 border border-slate-200 hover:bg-slate-50 transition"
+                      >
+                        {copiedId === link.id ? 'Copied!' : 'Copy Link'}
+                      </button>
+                      <button
+                        onClick={() => onLaunchCheckout(link)}
+                        className="px-2.5 py-1 rounded text-onion-800 hover:text-onion-900 bg-onion-50 border border-onion-200 transition font-medium"
+                      >
+                        Launch
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* TRANSACTIONS TABLE */}
+      <div className="mat-card overflow-hidden">
+        <div className="p-6 border-b border-slate-200/80">
+          <h3 className="text-base font-bold text-slate-900 tracking-tight">Recent Payment Settlements</h3>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Atomic on-chain distribution between Merchant Net, PSP Markup, and Orki Base Fee.
+          </p>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-slate-200 text-xs">
+            <thead className="bg-slate-50/70 text-slate-500 uppercase tracking-wider font-semibold text-[10px]">
+              <tr>
+                <th className="px-6 py-3 text-left">Gross Paid</th>
+                <th className="px-6 py-3 text-left">Orki Cut (1%)</th>
+                <th className="px-6 py-3 text-left">PSP Cut</th>
+                <th className="px-6 py-3 text-left">Net Merchant</th>
+                <th className="px-6 py-3 text-left">Chain</th>
+                <th className="px-6 py-3 text-right">Status</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 bg-white font-mono tabular-nums">
+              {transactions.map((tx) => (
+                <tr key={tx.id} className="hover:bg-slate-50/60 transition">
+                  <td className="px-6 py-3.5 font-bold text-slate-900">
+                    {tx.grossAmount.toFixed(2)} {tx.currency}
+                  </td>
+                  <td className="px-6 py-3.5 text-slate-600">
+                    -${tx.orkiFeeAmount.toFixed(2)}
+                  </td>
+                  <td className="px-6 py-3.5 text-onion-700 font-medium">
+                    -${tx.pspMarkupAmount.toFixed(2)}
+                  </td>
+                  <td className="px-6 py-3.5 font-bold text-emerald-700">
+                    +{tx.netAmount.toFixed(2)} {tx.currency}
+                  </td>
+                  <td className="px-6 py-3.5 font-sans uppercase font-medium text-slate-600 text-[11px]">
+                    {tx.chain}
+                  </td>
+                  <td className="px-6 py-3.5 text-right">
+                    <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
+                      Settled
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* MODALS */}
       <OnboardingModal
         merchant={merchant}
         isOpen={isOnboardingModalOpen}
         onClose={() => setIsOnboardingModalOpen(false)}
         onComplete={handleOnboardingComplete}
+        onStepChange={handleStepChange}
       />
 
       <CreatePaylinkModal
@@ -431,13 +538,23 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
       <OffRampModal
         isOpen={isOffRampModalOpen}
         onClose={() => setIsOffRampModalOpen(false)}
-        onCompleteConversion={() => {}}
+        onCompleteConversion={(sourceAmount) => {
+          onUpdateMerchant({
+            balanceUsdc: Math.max(0, (merchant.balanceUsdc || 0) - sourceAmount),
+          })
+          setIsOffRampModalOpen(false)
+        }}
       />
 
       <TransferModal
         isOpen={isTransferModalOpen}
         onClose={() => setIsTransferModalOpen(false)}
-        onCompleteTransfer={() => {}}
+        onCompleteTransfer={(amount) => {
+          onUpdateMerchant({
+            balanceUsdc: Math.max(0, (merchant.balanceUsdc || 0) - amount),
+          })
+          setIsTransferModalOpen(false)
+        }}
       />
     </div>
   )
