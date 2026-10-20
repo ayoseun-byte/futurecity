@@ -20,6 +20,22 @@ export type OnboardingStep =
   | 'PASSKEY'
   | 'COMPLETED'
 
+export interface TosDocumentLinks {
+  tos: string
+  privacyPolicy: string
+}
+
+export interface TosAcceptance {
+  id: string
+  entityName: string
+  status: 'pending' | 'accepted'
+  link: string
+  documentLinks: TosDocumentLinks
+  acceptedAt: string | null
+  token: string
+  ipAddress?: string
+}
+
 export interface Merchant {
   id: string
   organizationId?: string

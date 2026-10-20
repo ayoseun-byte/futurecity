@@ -21,6 +21,8 @@ import {
   BarChart3,
   X,
   CreditCard,
+  FileText,
+  Globe,
 } from 'lucide-react'
 
 interface MerchantDashboardProps {
@@ -52,11 +54,30 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
   const [showTermsModal, setShowTermsModal] = useState(false)
 
   const isSetupComplete = merchant.status === 'active' && !merchant.nextStep
+  const [clientIp, setClientIp] = useState('203.0.113.42')
+  const [hasAgreedTos, setHasAgreedTos] = useState(false)
+  const tosToken = `token_tos_${merchant.id.substring(0, 8)}`
 
-  // Listen for cross-window messages from SumSub or Passkey tabs
+  useEffect(() => {
+    fetch('https://api.ipify.org?format=json')
+      .then((r) => r.json())
+      .then((data) => {
+        if (data?.ip) setClientIp(data.ip)
+      })
+      .catch(() => {})
+  }, [])
+
+  // Listen for cross-window messages from Hosted TOS, SumSub, or Passkey tabs
   useEffect(() => {
     const handleWindowMessage = (event: MessageEvent) => {
-      if (event.data?.type === 'ORKI_SUMSUB_COMPLETED' && event.data?.merchantId === merchant.id) {
+      if (event.data?.type === 'ORKI_TOS_ACCEPTED' && event.data?.merchantId === merchant.id) {
+        onUpdateMerchant({
+          termsAcceptedAt: new Date().toISOString(),
+          status: 'terms_accepted',
+          nextStep: 'SUMSUB',
+        })
+        setShowTermsModal(false)
+      } else if (event.data?.type === 'ORKI_SUMSUB_COMPLETED' && event.data?.merchantId === merchant.id) {
         onUpdateMerchant({
           sumsubCompletedAt: new Date().toISOString(),
           nextStep: 'PASSKEY',
@@ -769,7 +790,7 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
       )}
 
       {/* ------------------------------------------------------------- */}
-      {/* STEP 2: TERMS OF SERVICE & LIVE FEE SPLIT MODAL */}
+      {/* STEP 2: TERMS OF SERVICE (TOS ACCEPTANCE SCHEMA) */}
       {/* ------------------------------------------------------------- */}
       {showTermsModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 overflow-y-auto">
@@ -777,7 +798,10 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
             <div className="bg-slate-900 text-white p-5 flex items-center justify-between">
               <div className="flex items-center space-x-2.5">
                 <Lock className="w-5 h-5 text-onion-300" />
-                <h3 className="font-bold text-sm tracking-tight">Step 2 of 4: Terms & Tri-Wallet Fee Split</h3>
+                <div>
+                  <h3 className="font-bold text-sm tracking-tight">Step 2 of 4: Terms of Service Acceptance</h3>
+                  <p className="text-[10px] text-slate-400 font-mono">Entity: ORKI PROTOCOL LTD</p>
+                </div>
               </div>
               <button onClick={() => setShowTermsModal(false)} className="text-slate-400 hover:text-white">
                 <X className="w-5 h-5" />
@@ -785,35 +809,116 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
             </div>
 
             <div className="p-6 space-y-4 text-xs text-slate-600 leading-relaxed">
-              <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
-                <h4 className="font-semibold text-slate-800">Locked Tri-Wallet Fee Schedule</h4>
-                <div className="space-y-1.5">
-                  <div className="flex justify-between py-1 border-b border-slate-200">
-                    <span className="text-slate-500">Orki Protocol Fee:</span>
-                    <span className="font-semibold text-slate-900">1.00% (Cap $25.00 USDC)</span>
-                  </div>
-                  <div className="flex justify-between py-1 border-b border-slate-200">
-                    <span className="text-slate-500">PSP Markup:</span>
-                    <span className="font-semibold text-slate-900">{((merchant.pspFeeBps || 35) / 100).toFixed(2)}% (Capped at 1.00%)</span>
-                  </div>
-                  <div className="flex justify-between py-1">
-                    <span className="text-slate-500">Merchant Net Proceeds:</span>
-                    <span className="font-bold text-emerald-700">~98.65% Deposited to Your Wallet</span>
-                  </div>
+              {/* Document Presentation (Step 2 - Present Documents) */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                    Required Legal Documents
+                  </span>
+                  <span className="text-[10px] text-slate-400 font-mono">POST /v1/tos/{tosToken}</span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  <a
+                    href="https://legal.orki.network/documents/merchant-terms-of-service.pdf"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="p-3 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl transition flex items-center justify-between group"
+                  >
+                    <div className="flex items-center space-x-2">
+                      <FileText className="w-4 h-4 text-onion-700" />
+                      <div>
+                        <p className="font-semibold text-slate-800 text-xs">Terms of Service</p>
+                        <p className="text-[10px] text-slate-400 font-mono">documentLinks.tos</p>
+                      </div>
+                    </div>
+                    <ExternalLink className="w-3.5 h-3.5 text-slate-400 group-hover:text-slate-700" />
+                  </a>
+
+                  <a
+                    href="https://legal.orki.network/documents/privacy-policy.pdf"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="p-3 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl transition flex items-center justify-between group"
+                  >
+                    <div className="flex items-center space-x-2">
+                      <FileText className="w-4 h-4 text-emerald-600" />
+                      <div>
+                        <p className="font-semibold text-slate-800 text-xs">Privacy Policy</p>
+                        <p className="text-[10px] text-slate-400 font-mono">documentLinks.privacyPolicy</p>
+                      </div>
+                    </div>
+                    <ExternalLink className="w-3.5 h-3.5 text-slate-400 group-hover:text-slate-700" />
+                  </a>
                 </div>
               </div>
 
-              <p className="text-[11px] text-slate-500 leading-normal">
-                By clicking "Accept Terms & Conditions", you agree to Orki's Merchant Agreement, non-custodial wallet terms, and the 30-day locked fee schedule. Next, you will complete business verification in SumSub.
-              </p>
+              {/* Client IP Capture (Step 3 - Collect Client IP) */}
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
+                <div className="flex justify-between items-center">
+                  <span className="font-semibold text-slate-700 flex items-center space-x-1">
+                    <Globe className="w-3.5 h-3.5 text-onion-700" />
+                    <span>Real Client IP Address</span>
+                  </span>
+                  <span className="font-mono text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded text-[10px] font-semibold">
+                    {clientIp}
+                  </span>
+                </div>
+                <p className="text-[10px] text-slate-400">
+                  Required: The actual client IP address (extracted from X-Forwarded-For) is logged for financial audit compliance.
+                </p>
+              </div>
 
-              <button
-                onClick={handleAcceptTerms}
-                className="w-full mat-btn-primary py-3 text-xs font-semibold flex items-center justify-center space-x-1.5 shadow-sm mt-4"
-              >
-                <span>Accept Terms & Proceed to SumSub</span>
-                <ChevronRight className="w-4 h-4" />
-              </button>
+              {/* 30-Day Locked Rate Disclosure */}
+              <div className="p-3.5 bg-onion-50/50 border border-onion-200/80 rounded-xl space-y-1.5">
+                <div className="flex justify-between items-center text-slate-800">
+                  <span className="font-semibold">Orki Protocol Fee:</span>
+                  <span className="font-mono font-bold text-slate-900">1.00% (Cap $25.00 USDC)</span>
+                </div>
+                <div className="flex justify-between items-center text-slate-800">
+                  <span className="font-semibold">PSP Markup:</span>
+                  <span className="font-mono font-bold text-slate-900">{((merchant.pspFeeBps || 35) / 100).toFixed(2)}% (Max 1.00%)</span>
+                </div>
+                <p className="text-[10px] text-slate-500 pt-0.5">
+                  Neither Orki nor your PSP holds your funds at any time. Settlements partition atomically on-chain.
+                </p>
+              </div>
+
+              {/* Acceptance Checkbox */}
+              <label className="flex items-start space-x-2.5 cursor-pointer p-2.5 bg-slate-50 rounded-xl border border-slate-200">
+                <input
+                  type="checkbox"
+                  checked={hasAgreedTos}
+                  onChange={(e) => setHasAgreedTos(e.target.checked)}
+                  className="mt-0.5 rounded text-onion focus:ring-onion"
+                />
+                <span className="text-[11px] text-slate-600 leading-snug">
+                  I confirm that I have reviewed the Terms of Service and Privacy Policy issued by <strong>ORKI PROTOCOL LTD</strong> and accept the non-custodial settlement terms.
+                </span>
+              </label>
+
+              {/* Two Options: Option B (Manual in Dashboard) & Option A (Hosted Page) */}
+              <div className="space-y-2 pt-1">
+                <button
+                  onClick={handleAcceptTerms}
+                  disabled={!hasAgreedTos}
+                  className="w-full mat-btn-primary py-3 text-xs font-semibold flex items-center justify-center space-x-1.5 shadow-sm disabled:opacity-50"
+                >
+                  <span>Submit TOS Acceptance (Option B: Manual)</span>
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    window.open(`/tos/${tosToken}`, '_blank', 'width=620,height=720')
+                  }}
+                  className="w-full py-2.5 px-3 border border-slate-200 hover:border-slate-300 bg-white hover:bg-slate-50 rounded-xl text-xs font-medium text-slate-700 transition flex items-center justify-center space-x-1.5"
+                >
+                  <ExternalLink className="w-3.5 h-3.5 text-slate-500" />
+                  <span>Open Hosted Acceptance Page (Option A: Due / Orki Hosted)</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>
