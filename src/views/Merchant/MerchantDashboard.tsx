@@ -417,38 +417,49 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
           </div>
         </div>
 
-        {/* CARD 3: FEE SCHEDULE & RATE LOCK */}
+        {/* CARD 3: HOSTED PAYLINKS & CHECKOUT */}
         <div className="mat-card p-5 flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between text-xs text-slate-500 font-semibold">
               <span className="flex items-center space-x-1.5">
-                <Lock className="w-4 h-4 text-slate-600" />
-                <span>Locked Fee Schedule</span>
+                <CreditCard className="w-4 h-4 text-onion-700" />
+                <span>Hosted Paylinks</span>
               </span>
               <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-onion-50 text-onion-800 border border-onion-200">
-                30-Day Lock
+                Multi-Chain
               </span>
             </div>
 
-            <div className="mt-2 space-y-1.5 text-xs">
+            <div className="mt-2 space-y-1">
+              <p className="text-2xl font-bold text-slate-900 font-mono tracking-tight tabular-nums">
+                {paylinks.length} <span className="text-xs font-normal text-slate-400">active links</span>
+              </p>
+              <p className="text-xs text-slate-500 font-medium">
+                Base (EVM) · Solana (SVM)
+              </p>
+            </div>
+
+            <div className="mt-3 space-y-1 text-xs text-slate-600">
               <div className="flex justify-between py-1 border-b border-slate-100">
-                <span className="text-slate-500">Orki Protocol Fee:</span>
-                <span className="font-semibold text-slate-800">1.00% (Cap $25.00)</span>
-              </div>
-              <div className="flex justify-between py-1 border-b border-slate-100">
-                <span className="text-slate-500">PSP Markup:</span>
-                <span className="font-semibold text-slate-800">{((merchant.pspFeeBps || 35) / 100).toFixed(2)}% (Max 1.00%)</span>
+                <span className="text-slate-400">Checkout Speed:</span>
+                <span className="font-semibold text-emerald-700 font-mono">&lt; 3.2s</span>
               </div>
               <div className="flex justify-between py-1">
-                <span className="text-slate-500">Off-Ramp Markup:</span>
-                <span className="font-semibold text-emerald-700">0% PSP Markup</span>
+                <span className="text-slate-400">Success Rate:</span>
+                <span className="font-semibold text-slate-900 font-mono">99.4%</span>
               </div>
             </div>
           </div>
 
-          <div className="mt-4 pt-3 border-t border-slate-100 text-[11px] text-slate-400 flex items-center justify-between">
-            <span>Rate Lock Window:</span>
-            <span className="font-mono text-slate-600 font-medium">Valid until Nov 18, 2026</span>
+          <div className="mt-4 pt-3 border-t border-slate-100">
+            <button
+              onClick={() => setIsPaylinkModalOpen(true)}
+              disabled={!isSetupComplete}
+              className="w-full py-1.5 px-3 mat-btn-primary text-xs font-medium flex items-center justify-center space-x-1.5 shadow-xs disabled:opacity-50"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Create New Paylink</span>
+            </button>
           </div>
         </div>
       </div>

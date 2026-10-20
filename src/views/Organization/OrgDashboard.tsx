@@ -224,6 +224,46 @@ export const OrgDashboard: React.FC<OrgDashboardProps> = ({
         </div>
       </div>
 
+      {/* PSP LOCKED FEE SCHEDULE (30-DAY RATE LOCK & ORKI BOUNDS) */}
+      <div className="mat-card p-6 bg-slate-50/70 border border-slate-200 space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-slate-200 gap-2">
+          <div className="flex items-center space-x-2">
+            <Lock className="w-4 h-4 text-onion-700" />
+            <h3 className="text-sm font-bold text-slate-900 tracking-tight">Locked Fee Schedule</h3>
+          </div>
+          <span className="inline-flex items-center text-[11px] font-mono font-semibold text-onion-800 bg-onion-50 border border-onion-200 px-2.5 py-0.5 rounded">
+            30-Day Lock Active
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-xs">
+          <div className="p-3 bg-white border border-slate-200 rounded-xl space-y-1">
+            <span className="text-slate-500 font-medium text-[11px]">Orki Protocol Fee</span>
+            <p className="text-base font-bold text-slate-900 font-mono">1.00%</p>
+            <p className="text-[10px] text-slate-400">Cap $25.00 USDC per transaction</p>
+          </div>
+          <div className="p-3 bg-white border border-slate-200 rounded-xl space-y-1">
+            <span className="text-slate-500 font-medium text-[11px]">PSP Markup</span>
+            <p className="text-base font-bold text-onion-800 font-mono">{(currentMarkupBps / 100).toFixed(2)}%</p>
+            <p className="text-[10px] text-slate-400">Strictly capped at 1.00% ceiling</p>
+          </div>
+          <div className="p-3 bg-white border border-slate-200 rounded-xl space-y-1">
+            <span className="text-slate-500 font-medium text-[11px]">Off-Ramp Markup</span>
+            <p className="text-base font-bold text-emerald-700 font-mono">0% PSP Markup</p>
+            <p className="text-[10px] text-slate-400">Exclusively captured by Orki rails</p>
+          </div>
+          <div className="p-3 bg-white border border-slate-200 rounded-xl space-y-1">
+            <span className="text-slate-500 font-medium text-[11px]">Rate Lock Window</span>
+            <p className="text-xs font-bold text-slate-800 font-mono">
+              {organization.feeSchedule?.lockedUntil
+                ? new Date(organization.feeSchedule.lockedUntil).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                : 'Valid until Nov 18, 2026'}
+            </p>
+            <p className="text-[10px] text-slate-400">Locked for 30 days after signing</p>
+          </div>
+        </div>
+      </div>
+
       {/* Merchants Management Surface */}
       <div className="mat-card overflow-hidden">
         {/* Table Toolbar */}
