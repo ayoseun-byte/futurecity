@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import type { UserRole } from './context/AuthContext'
 import { Header } from './components/Header'
@@ -83,7 +83,8 @@ function AppLayout({ children }: { children: React.ReactNode }) {
 }
 
 function MainRoutes() {
-  const { user, isAuthenticated } = useAuth()
+  const { user, isAuthenticated, login } = useAuth()
+  const navigate = useNavigate()
   const [organizations, setOrganizations] = useState<Organization[]>(getStoredOrganizations)
   const [merchants, setMerchants] = useState<Merchant[]>(getStoredMerchants)
   const [paylinks, setPaylinks] = useState<Paylink[]>(getStoredPaylinks)
@@ -247,7 +248,8 @@ function MainRoutes() {
                   onBatchCreated={handleBatchCreated}
                   onToggleMerchantStatus={handleToggleMerchantStatus}
                   onSelectMerchantForDashboard={(id) => {
-                    window.location.href = `/org/merchants/${id}`
+                    login('merchant', id)
+                    navigate('/merchant')
                   }}
                   onUpdateFeeSchedule={handleUpdateFeeSchedule}
                 />
