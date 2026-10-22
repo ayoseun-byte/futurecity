@@ -128,6 +128,8 @@ export interface Conversion {
 // PSP / Organization Domain Types
 // -----------------------------------------------------------------------------
 
+export type PspCategory = 'LOGISTICS' | 'FINANCE' | 'MARKET'
+
 export type OrganizationCategoryType = 'psp' | 'fintech' | 'bank' | 'neo_broker' | 'marketplace'
 
 export type PspStatus = 'sandbox' | 'in_review' | 'approved' | 'suspended' | 'declined'
@@ -208,6 +210,7 @@ export interface PspKeyDelivery {
 export interface Organization {
   id: string // e.g. psp_xsquare01
   name: string
+  category?: PspCategory
   categoryType: OrganizationCategoryType
   status: PspStatus
   isRegulatedEntity: boolean

@@ -1,4 +1,10 @@
 import type { Organization, Merchant, Paylink, Transaction } from '../types'
+import {
+  INITIAL_ORGANIZATIONS,
+  INITIAL_MERCHANTS,
+  INITIAL_PAYLINKS,
+  INITIAL_TRANSACTIONS,
+} from './mockData'
 
 const STORAGE_KEYS = {
   ORGANIZATIONS: 'orki_organizations_v2',
@@ -13,9 +19,14 @@ const STORAGE_KEYS = {
 export function getStoredOrganizations(): Organization[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEYS.ORGANIZATIONS)
-    return raw ? JSON.parse(raw) : []
+    if (raw) {
+      const parsed = JSON.parse(raw)
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed
+    }
+    saveStoredOrganizations(INITIAL_ORGANIZATIONS)
+    return INITIAL_ORGANIZATIONS
   } catch {
-    return []
+    return INITIAL_ORGANIZATIONS
   }
 }
 
@@ -55,9 +66,14 @@ export function updateStoredOrganization(id: string, updates: Partial<Organizati
 export function getStoredMerchants(): Merchant[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEYS.MERCHANTS)
-    return raw ? JSON.parse(raw) : []
+    if (raw) {
+      const parsed = JSON.parse(raw)
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed
+    }
+    saveStoredMerchants(INITIAL_MERCHANTS)
+    return INITIAL_MERCHANTS
   } catch {
-    return []
+    return INITIAL_MERCHANTS
   }
 }
 
@@ -97,9 +113,14 @@ export function updateStoredMerchant(id: string, updates: Partial<Merchant>): Me
 export function getStoredPaylinks(): Paylink[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEYS.PAYLINKS)
-    return raw ? JSON.parse(raw) : []
+    if (raw) {
+      const parsed = JSON.parse(raw)
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed
+    }
+    saveStoredPaylinks(INITIAL_PAYLINKS)
+    return INITIAL_PAYLINKS
   } catch {
-    return []
+    return INITIAL_PAYLINKS
   }
 }
 
@@ -118,9 +139,14 @@ export function addStoredPaylink(paylink: Paylink): void {
 export function getStoredTransactions(): Transaction[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEYS.TRANSACTIONS)
-    return raw ? JSON.parse(raw) : []
+    if (raw) {
+      const parsed = JSON.parse(raw)
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed
+    }
+    saveStoredTransactions(INITIAL_TRANSACTIONS)
+    return INITIAL_TRANSACTIONS
   } catch {
-    return []
+    return INITIAL_TRANSACTIONS
   }
 }
 

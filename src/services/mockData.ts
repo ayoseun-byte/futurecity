@@ -4,6 +4,7 @@ export const INITIAL_ORGANIZATIONS: Organization[] = [
   {
     id: 'psp_xsquare01',
     name: 'XSquare Financial Technologies',
+    category: 'FINANCE',
     categoryType: 'psp',
     status: 'approved',
     isRegulatedEntity: true, // Licensed
@@ -89,6 +90,7 @@ export const INITIAL_ORGANIZATIONS: Organization[] = [
   {
     id: 'psp_sandbox02',
     name: 'Apex Pay Global',
+    category: 'MARKET',
     categoryType: 'fintech',
     status: 'sandbox',
     isRegulatedEntity: false, // Unlicensed FinTech - Heightened UBO Due Diligence
@@ -175,6 +177,7 @@ export const INITIAL_ORGANIZATIONS: Organization[] = [
   {
     id: 'psp_gulfpay03',
     name: 'Gulf Meridian Digital Banking',
+    category: 'LOGISTICS',
     categoryType: 'bank',
     status: 'in_review',
     isRegulatedEntity: true,

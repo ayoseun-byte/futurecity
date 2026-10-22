@@ -39,10 +39,12 @@ export const OrkiAdminPortal: React.FC<OrkiAdminPortalProps> = ({
   const [isApprovalModalOpen, setIsApprovalModalOpen] = useState(false)
   const [approvalOfficer, setApprovalOfficer] = useState('david.risk@orki.com')
   const [approvalError, setApprovalError] = useState<string | null>(null)
+  const [categoryFilter, setCategoryFilter] = useState<string>('all')
 
   // Registration Form State
   const [newPspForm, setNewPspForm] = useState({
     name: '',
+    category: 'FINANCE' as 'LOGISTICS' | 'FINANCE' | 'MARKET',
     categoryType: 'psp' as 'psp' | 'fintech' | 'bank' | 'neo_broker',
     isRegulated: false,
     regulatorName: 'VARA (Dubai)',
@@ -59,6 +61,7 @@ export const OrkiAdminPortal: React.FC<OrkiAdminPortalProps> = ({
     if (statusFilter !== 'all' && org.status !== statusFilter) return false
     if (licenseFilter === 'licensed' && !org.isRegulatedEntity) return false
     if (licenseFilter === 'unlicensed' && org.isRegulatedEntity) return false
+    if (categoryFilter !== 'all' && (org.category || 'FINANCE') !== categoryFilter) return false
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase()
       return (
@@ -120,6 +123,7 @@ export const OrkiAdminPortal: React.FC<OrkiAdminPortalProps> = ({
     const newOrg: Organization = {
       id: pspId,
       name: newPspForm.name,
+      category: newPspForm.category,
       categoryType: newPspForm.categoryType,
       status: 'sandbox',
       isRegulatedEntity: newPspForm.isRegulated,
@@ -195,6 +199,7 @@ export const OrkiAdminPortal: React.FC<OrkiAdminPortalProps> = ({
     setIsRegisterModalOpen(false)
     setNewPspForm({
       name: '',
+      category: 'FINANCE',
       categoryType: 'psp',
       isRegulated: false,
       regulatorName: 'VARA (Dubai)',
@@ -336,6 +341,17 @@ export const OrkiAdminPortal: React.FC<OrkiAdminPortalProps> = ({
             <option value="sandbox">Sandbox (Testing)</option>
             <option value="suspended">Suspended</option>
           </select>
+
+          <select
+            value={categoryFilter}
+            onChange={(e) => setCategoryFilter(e.target.value)}
+            className="px-3 py-1.5 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-onion-500 focus:outline-none text-slate-700 font-medium"
+          >
+            <option value="all">All Categories</option>
+            <option value="FINANCE">Category: FINANCE</option>
+            <option value="LOGISTICS">Category: LOGISTICS</option>
+            <option value="MARKET">Category: MARKET</option>
+          </select>
         </div>
       </div>
 
@@ -369,6 +385,15 @@ export const OrkiAdminPortal: React.FC<OrkiAdminPortalProps> = ({
                         <div>
                           <div className="flex items-center space-x-1.5">
                             <p className="font-bold text-slate-900 text-sm">{org.name}</p>
+                            <span className={`px-1.5 py-0.5 rounded text-[9px] font-mono font-bold uppercase border ${
+                              (org.category || 'FINANCE') === 'FINANCE'
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                : (org.category || 'FINANCE') === 'LOGISTICS'
+                                ? 'bg-blue-50 text-blue-700 border-blue-200'
+                                : 'bg-purple-50 text-purple-700 border-purple-200'
+                            }`}>
+                              {org.category || 'FINANCE'}
+                            </span>
                             <span className="px-1.5 py-0.2 rounded text-[9px] font-mono font-semibold uppercase bg-slate-100 text-slate-600 border border-slate-200">
                               {org.categoryType?.toUpperCase() || 'PSP'}
                             </span>
@@ -831,6 +856,34 @@ export const OrkiAdminPortal: React.FC<OrkiAdminPortalProps> = ({
                   onChange={(e) => setNewPspForm({ ...newPspForm, name: e.target.value })}
                   className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-onion-500 focus:outline-none"
                 />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">PSP Category</label>
+                  <select
+                    value={newPspForm.category}
+                    onChange={(e) => setNewPspForm({ ...newPspForm, category: e.target.value as any })}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-onion-500 focus:outline-none bg-white font-medium text-slate-800"
+                  >
+                    <option value="FINANCE">FINANCE (FinTech / Banking)</option>
+                    <option value="LOGISTICS">LOGISTICS (Shipping / Supply)</option>
+                    <option value="MARKET">MARKET (Marketplaces / Retail)</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Entity Structure</label>
+                  <select
+                    value={newPspForm.categoryType}
+                    onChange={(e) => setNewPspForm({ ...newPspForm, categoryType: e.target.value as any })}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-onion-500 focus:outline-none bg-white font-medium text-slate-800"
+                  >
+                    <option value="psp">Payment Service Provider (PSP)</option>
+                    <option value="fintech">FinTech Platform</option>
+                    <option value="bank">Digital Bank</option>
+                    <option value="neo_broker">Neo-Broker / Exchange</option>
+                  </select>
+                </div>
               </div>
 
               {/* Regulatory Selection (Licensed vs Unlicensed) */}

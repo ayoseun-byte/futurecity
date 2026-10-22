@@ -320,6 +320,7 @@ export const OrgDashboard: React.FC<OrgDashboardProps> = ({
                 <th className="px-6 py-3 text-left">Legal Entity</th>
                 <th className="px-6 py-3 text-left">External ID</th>
                 <th className="px-6 py-3 text-left">Status / Next Step</th>
+                <th className="px-6 py-3 text-left">Payment Rails</th>
                 <th className="px-6 py-3 text-left">Settlement Mode</th>
                 <th className="px-6 py-3 text-left">Volume</th>
                 <th className="px-6 py-3 text-right">Actions</th>
@@ -328,7 +329,7 @@ export const OrgDashboard: React.FC<OrgDashboardProps> = ({
             <tbody className="divide-y divide-slate-100 bg-white">
               {filteredMerchants.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-8 text-center text-slate-400">
+                  <td colSpan={7} className="px-6 py-8 text-center text-slate-400">
                     No merchants found matching the filter criteria.
                   </td>
                 </tr>
@@ -350,6 +351,40 @@ export const OrgDashboard: React.FC<OrgDashboardProps> = ({
                         {merchant.nextStep && (
                           <span className="text-[10px] font-mono text-onion-800 font-semibold">
                             Next: {merchant.nextStep}
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-6 py-3.5">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {/* Stripe Badge (Active) */}
+                        <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-[#635BFF]/10 text-[#635BFF] border border-[#635BFF]/30">
+                          <span className="w-1.5 h-1.5 rounded-full bg-[#635BFF] mr-1"></span>
+                          Stripe
+                        </span>
+
+                        {/* MoonPay Badge (Active) */}
+                        <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-[#7D00FF]/10 text-[#7D00FF] border border-[#7D00FF]/30">
+                          <span className="w-1.5 h-1.5 rounded-full bg-[#7D00FF] mr-1"></span>
+                          MoonPay
+                        </span>
+
+                        {/* Orki Badge (Active vs Disabled) */}
+                        {merchant.status === 'active' || !!merchant.activatedAt ? (
+                          <span
+                            title="Orki multi-chain USDC settlement active"
+                            className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-300 shadow-xs"
+                          >
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1 animate-pulse"></span>
+                            Orki
+                          </span>
+                        ) : (
+                          <span
+                            title="Merchant has not completed Orki USDC onboarding yet"
+                            className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-400 border border-slate-200 opacity-60"
+                          >
+                            <span className="w-1.5 h-1.5 rounded-full bg-slate-300 mr-1"></span>
+                            Orki (Disabled)
                           </span>
                         )}
                       </div>

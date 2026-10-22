@@ -165,6 +165,45 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
             <p className="text-xs text-slate-500 mt-1">
               License: <span className="font-semibold text-slate-700">{merchant.tradeLicenseNumber}</span> · {merchant.jurisdiction} · Rep: {merchant.representativeName}
             </p>
+
+            {/* Payment Rails / Gateway Badges */}
+            <div className="flex flex-wrap items-center gap-2 mt-2.5 pt-2 border-t border-slate-100">
+              <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mr-1">
+                Connected Rails:
+              </span>
+
+              {/* Stripe (Active) */}
+              <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-[#635BFF]/10 text-[#635BFF] border border-[#635BFF]/30">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#635BFF] mr-1"></span>
+                Stripe
+              </span>
+
+              {/* MoonPay (Active) */}
+              <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-[#7D00FF]/10 text-[#7D00FF] border border-[#7D00FF]/30">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#7D00FF] mr-1"></span>
+                MoonPay
+              </span>
+
+              {/* Orki Badge (Active when onboarded, Disabled look when pending) */}
+              {isSetupComplete ? (
+                <span
+                  title="Orki multi-chain USDC rails active"
+                  className="inline-flex items-center px-2.5 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-300 shadow-xs"
+                >
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1.5 animate-pulse"></span>
+                  Orki (Active · Multi-Chain Live)
+                </span>
+              ) : (
+                <span
+                  title="Click Accept USDC below to complete onboarding and activate Orki"
+                  className="inline-flex items-center px-2.5 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-400 border border-slate-200 opacity-60 cursor-pointer hover:bg-slate-200 transition"
+                  onClick={handleStartOptIn}
+                >
+                  <span className="w-1.5 h-1.5 rounded-full bg-slate-300 mr-1.5"></span>
+                  Orki (Disabled · Setup Pending)
+                </span>
+              )}
+            </div>
           </div>
         </div>
 
@@ -764,24 +803,44 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
             </div>
 
             <div className="p-6 space-y-4 text-xs text-slate-600 leading-relaxed">
-              <div className="p-3.5 bg-onion-50 border border-onion-200 rounded-xl text-slate-800 space-y-1">
-                <p className="font-semibold text-onion-900">Notice of Data Sharing with Orki Protocol</p>
-                <p className="text-[11px] text-slate-600">
-                  To accept USDC payments, your PSP will share your business name, trade licence number, and contact details with Orki Protocol, which provides the non-custodial settlement service under UAE VARA / CBUAE regulations.
+              <div className="p-3.5 bg-onion-50 border border-onion-200 rounded-xl text-slate-800 space-y-2">
+                <p className="font-semibold text-onion-900 text-sm">Notice of Data Sharing with Orki Protocol</p>
+                <p className="text-[11px] text-slate-600 leading-relaxed">
+                  Enabling <strong>Accept USDC</strong> will securely transmit your merchant onboarding information to Orki Protocol to initialize your non-custodial smart wallet settlement rails under UAE VARA / CBUAE regulations.
                 </p>
+
+                {/* Data to be shared preview */}
+                <div className="mt-2 p-2.5 bg-white/80 rounded-lg border border-onion-100 font-mono text-[10px] space-y-1 text-slate-700">
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Legal Entity:</span>
+                    <span className="font-semibold text-slate-900">{merchant.legalBusinessName}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Trade License:</span>
+                    <span className="font-semibold text-slate-900">{merchant.tradeLicenseNumber}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Jurisdiction:</span>
+                    <span className="font-semibold text-slate-900">{merchant.jurisdiction}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Representative:</span>
+                    <span className="font-semibold text-slate-900">{merchant.representativeName} ({merchant.representativeEmail})</span>
+                  </div>
+                </div>
               </div>
 
-              <div className="space-y-2 border-t border-slate-100 pt-3 text-[11px] text-slate-500">
+              <div className="space-y-1.5 border-t border-slate-100 pt-3 text-[11px] text-slate-500">
                 <p>• Neither Orki nor your PSP holds your merchant funds at any time.</p>
                 <p>• Payments are deposited directly to your non-custodial smart wallet.</p>
-                <p>• Your business details are verified once through institutional SumSub KYB.</p>
+                <p>• Your business details are verified through institutional SumSub KYB.</p>
               </div>
 
               <button
                 onClick={handleAcknowledgeNotice}
-                className="w-full mat-btn-primary py-3 text-xs font-semibold flex items-center justify-center space-x-1.5 shadow-sm mt-4"
+                className="w-full mat-btn-primary py-3 text-xs font-semibold flex items-center justify-center space-x-2 shadow-sm mt-4"
               >
-                <span>I Acknowledge & Agree</span>
+                <span>Enable Accept USDC & Share Data with Orki</span>
                 <ChevronRight className="w-4 h-4" />
               </button>
             </div>
