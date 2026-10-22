@@ -166,44 +166,6 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
               License: <span className="font-semibold text-slate-700">{merchant.tradeLicenseNumber}</span> · {merchant.jurisdiction} · Rep: {merchant.representativeName}
             </p>
 
-            {/* Payment Rails / Gateway Badges */}
-            <div className="flex flex-wrap items-center gap-2 mt-2.5 pt-2 border-t border-slate-100">
-              <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mr-1">
-                Connected Rails:
-              </span>
-
-              {/* Stripe (Active) */}
-              <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-[#635BFF]/10 text-[#635BFF] border border-[#635BFF]/30">
-                <span className="w-1.5 h-1.5 rounded-full bg-[#635BFF] mr-1"></span>
-                Stripe
-              </span>
-
-              {/* MoonPay (Active) */}
-              <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-[#7D00FF]/10 text-[#7D00FF] border border-[#7D00FF]/30">
-                <span className="w-1.5 h-1.5 rounded-full bg-[#7D00FF] mr-1"></span>
-                MoonPay
-              </span>
-
-              {/* Orki Badge (Active when onboarded, Disabled look when pending) */}
-              {isSetupComplete ? (
-                <span
-                  title="Orki multi-chain USDC rails active"
-                  className="inline-flex items-center px-2.5 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-300 shadow-xs"
-                >
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1.5 animate-pulse"></span>
-                  Orki (Active · Multi-Chain Live)
-                </span>
-              ) : (
-                <span
-                  title="Click Accept USDC below to complete onboarding and activate Orki"
-                  className="inline-flex items-center px-2.5 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-400 border border-slate-200 opacity-60 cursor-pointer hover:bg-slate-200 transition"
-                  onClick={handleStartOptIn}
-                >
-                  <span className="w-1.5 h-1.5 rounded-full bg-slate-300 mr-1.5"></span>
-                  Orki (Disabled · Setup Pending)
-                </span>
-              )}
-            </div>
           </div>
         </div>
 
