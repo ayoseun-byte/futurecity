@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import type { UserRole } from '../../context/AuthContext'
 import { getStoredOrganizations, getStoredMerchants } from '../../services/storageService'
@@ -371,6 +371,9 @@ export const LoginView: React.FC = () => {
               {organizations.length} Orgs · {merchants.length} Merchants
             </span>
           </div>
+          <Link to="/api-workbench" className="block text-center text-xs font-semibold text-onion hover:underline">
+            Open backend API workbench →
+          </Link>
         </div>
       </div>
     </div>

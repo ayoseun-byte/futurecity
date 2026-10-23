@@ -15,6 +15,7 @@ export type SettlementMode = 'hold_as_received' | 'auto_offramp'
 export type OnboardingStep =
   | 'OPT_IN'
   | 'NOTICE'
+  | 'KYB_INFORMATION'
   | 'TERMS'
   | 'SUMSUB'
   | 'PASSKEY'
@@ -65,6 +66,7 @@ export interface Merchant {
   passkeyId?: string
   statusReason?: string
   noticeAcknowledgedAt?: string
+  kybInformationSubmittedAt?: string
   termsAcceptedAt?: string
   sumsubCompletedAt?: string
   passkeyRegisteredAt?: string
@@ -213,7 +215,7 @@ export interface Organization {
   category?: PspCategory
   categoryType: OrganizationCategoryType
   status: PspStatus
-  isRegulatedEntity: boolean
+  isRegulatedEntity?: boolean
   feeWallet: string
   contacts: PspContact[]
   ndaSignedAt?: string

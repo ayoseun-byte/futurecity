@@ -1,186 +1,221 @@
-import React, { useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
-import { KeyRound, Fingerprint, ShieldCheck, CheckCircle2, Lock, Sparkles, Smartphone } from 'lucide-react'
-import { updateStoredMerchant, getStoredMerchants } from '../../services/storageService'
+import React, { useEffect, useState } from 'react'
+import { Check, Fingerprint, LoaderCircle, LockKeyhole, Wallet } from 'lucide-react'
+import { useWeb3AuthConnect } from '@web3auth/modal/react'
+import { useSolanaWallet } from '@web3auth/modal/react/solana'
+import { useConnection } from 'wagmi'
+
+type OnboardingState = {
+  merchantId: string
+  legalBusinessName?: string
+  status: string
+  nextStep?: string | null
+}
+
+type ApiError = { message?: string; error?: string }
+
+const apiBaseUrl = (import.meta.env.VITE_PSP_API_URL || '').replace(/\/$/, '')
+
+function readSessionFromFragment(): string {
+  const fragment = new URLSearchParams(window.location.hash.slice(1))
+  return fragment.get('session') || ''
+}
+
+async function apiRequest<T>(path: string, session: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(`${apiBaseUrl}/api/v1/merchant${path}`, {
+    ...init,
+    headers: {
+      Accept: 'application/json',
+      Authorization: `Bearer ${session}`,
+      ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
+      ...init?.headers,
+    },
+  })
+
+  if (!response.ok) {
+    const error = (await response.json().catch(() => ({}))) as ApiError
+    throw new Error(error.message || error.error || `Request failed (${response.status})`)
+  }
+
+  return response.json() as Promise<T>
+}
+
+function SetupShell({ children }: { children: React.ReactNode }) {
+  return (
+    <main className="min-h-screen bg-slate-950 px-4 py-10 text-slate-100 sm:py-16">
+      <section className="mx-auto max-w-xl rounded-3xl border border-slate-800 bg-slate-900 p-6 shadow-2xl sm:p-9">
+        <div className="mb-8 flex items-center gap-3 border-b border-slate-800 pb-5">
+          <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-onion-500/30 bg-onion-500/10 text-onion-300">
+            <LockKeyhole className="h-5 w-5" />
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-white">Orki merchant setup</p>
+            <p className="text-xs text-slate-400">Secure wallet setup after KYB approval</p>
+          </div>
+        </div>
+        {children}
+      </section>
+      <p className="mx-auto mt-5 max-w-xl text-center text-xs text-slate-500">
+        Your onboarding session is private. Do not share this setup link.
+      </p>
+    </main>
+  )
+}
 
 export const PasskeyCeremonyPage: React.FC = () => {
-  const [searchParams] = useSearchParams()
-  const merchantId = searchParams.get('merchantId') || ''
-  const merchants = getStoredMerchants()
-  const merchant = merchants.find((m) => m.id === merchantId)
+  const [session] = useState(readSessionFromFragment)
+  const [onboarding, setOnboarding] = useState<OnboardingState | null>(null)
+  const [savedWallets, setSavedWallets] = useState<{ base: string; solana: string } | null>(null)
+  const [loadingState, setLoadingState] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const clientId = import.meta.env.VITE_WEB3AUTH_CLIENT_ID
 
-  const [isCeremonyActive, setIsCeremonyActive] = useState(false)
-  const [isSuccess, setIsSuccess] = useState(false)
-  const [createdWallets, setCreatedWallets] = useState<{ base: string; solana: string } | null>(null)
+  useEffect(() => {
+    if (session && window.location.hash) window.history.replaceState(null, '', '/setup')
+  }, [session])
 
-  const handleStartPasskey = async () => {
-    setIsCeremonyActive(true)
+  useEffect(() => {
+    if (!session || !apiBaseUrl) {
+      setLoadingState(false)
+      return
+    }
 
-    // Simulate WebAuthn biometric prompt delay
-    setTimeout(() => {
-      // Deterministic / realistic mock addresses
-      const randomHex = Math.random().toString(16).substring(2, 10)
-      const baseAddr = `0x71C25e36F7682245353526E3d2a7620E15${randomHex}`
-      const solAddr = `4Nd1mBQtrMJVYVfKf2PJyGChdLkeR428kwBpdWgw6P${randomHex.substring(0, 2)}`
-      const passkeyId = `cred_webauthn_${Math.random().toString(36).substring(2, 12)}`
+    let cancelled = false
+    apiRequest<OnboardingState>('/onboarding', session)
+      .then((state) => {
+        if (!cancelled) setOnboarding(state)
+      })
+      .catch((reason: unknown) => {
+        if (!cancelled) setError(reason instanceof Error ? reason.message : 'Unable to load onboarding.')
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingState(false)
+      })
 
-      if (merchantId) {
-        updateStoredMerchant(merchantId, {
-          merchantWallet: baseAddr,
-          baseWalletAddress: baseAddr,
-          solanaWalletAddress: solAddr,
-          passkeyId: passkeyId,
-          passkeyRegisteredAt: new Date().toISOString(),
-          status: 'active',
-          nextStep: null, // Fully onboarded!
-          activatedAt: new Date().toISOString(),
-        })
-      }
+    return () => { cancelled = true }
+  }, [session])
 
-      setCreatedWallets({ base: baseAddr, solana: solAddr })
-      setIsCeremonyActive(false)
-      setIsSuccess(true)
-
-      // Notify opener window if present
-      if (window.opener && !window.opener.closed) {
-        try {
-          window.opener.postMessage({ type: 'ORKI_PASSKEY_COMPLETED', merchantId, baseAddr, solAddr }, '*')
-        } catch {
-          // ignore
-        }
-      }
-
-      setTimeout(() => {
-        window.close()
-      }, 2500)
-    }, 1800)
+  if (!session) {
+    return <SetupShell><MessagePanel title="Setup link required" message="Open the setup URL returned when your PSP created this merchant onboarding session." /></SetupShell>
+  }
+  if (!apiBaseUrl) {
+    return <SetupShell><MessagePanel title="Setup is not configured" message="The FutureCity app needs its PSP backend URL configured before it can continue." /></SetupShell>
+  }
+  if (!clientId) {
+    return <SetupShell><MessagePanel title="Wallet setup is not configured" message="This deployment is missing its Web3Auth client ID. Contact your PSP to continue." /></SetupShell>
+  }
+  if (loadingState) {
+    return <SetupShell><div className="flex items-center gap-3 py-8 text-sm text-slate-300"><LoaderCircle className="h-5 w-5 animate-spin" /> Loading your onboarding session…</div></SetupShell>
+  }
+  if (error || !onboarding) {
+    return <SetupShell><MessagePanel title="We could not verify this setup link" message={error || 'The onboarding session could not be loaded.'} /></SetupShell>
+  }
+  if (onboarding.status !== 'verified') {
+    return <SetupShell><MessagePanel title="KYB approval is still pending" message="Wallet setup becomes available after the backend confirms your Sumsub KYB result." /></SetupShell>
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col items-center justify-center p-4">
-      {/* Top Security Bar */}
-      <div className="w-full max-w-lg mb-4 flex items-center justify-between text-xs text-slate-400 border-b border-slate-800 pb-3">
-        <div className="flex items-center space-x-2">
-          <Lock className="w-3.5 h-3.5 text-onion-400" />
-          <span className="font-mono text-onion-300">vault.orki.io/onboarding/passkey</span>
-        </div>
-        <div className="flex items-center space-x-1 text-slate-400">
-          <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-          <span>FIDO2 / WebAuthn Level 3</span>
-        </div>
+    <SetupShell>
+      <WalletSetup
+        merchantName={onboarding.legalBusinessName || 'Your business'}
+        savedWallets={savedWallets}
+        saving={saving}
+        error={error}
+        onSave={async (base, solana) => {
+          setSaving(true)
+          setError(null)
+          try {
+            const result = await apiRequest<{ wallets: { base: string; solana: string } }>('/wallets', session, {
+              method: 'POST',
+              body: JSON.stringify({ baseWalletAddress: base, solanaWalletAddress: solana }),
+            })
+            setSavedWallets(result.wallets)
+          } catch (reason) {
+            setError(reason instanceof Error ? reason.message : 'Wallet addresses could not be saved.')
+          } finally {
+            setSaving(false)
+          }
+        }}
+      />
+    </SetupShell>
+  )
+}
+
+function WalletSetup({
+  merchantName,
+  savedWallets,
+  saving,
+  error,
+  onSave,
+}: {
+  merchantName: string
+  savedWallets: { base: string; solana: string } | null
+  saving: boolean
+  error: string | null
+  onSave: (base: string, solana: string) => Promise<void>
+}) {
+  const { connect, loading: connecting, isConnected } = useWeb3AuthConnect()
+  const { address: baseAddress } = useConnection()
+  const { accounts } = useSolanaWallet()
+  const solanaAddress = accounts?.[0]
+  const canSave = isConnected && Boolean(baseAddress && solanaAddress)
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-onion-300">Business</p>
+        <h1 className="mt-1 text-xl font-bold text-white">Set up wallets for {merchantName}</h1>
+        <p className="mt-2 text-sm leading-6 text-slate-400">Connect using Web3Auth to create your EVM and Solana embedded wallet accounts. Addresses are saved to this merchant's onboarding record.</p>
       </div>
 
-      <div className="w-full max-w-lg bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl backdrop-blur-md">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-6 pb-4 border-b border-slate-800">
-          <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 rounded-2xl bg-onion-500/20 border border-onion-500/30 flex items-center justify-center text-onion-400 font-bold">
-              <Fingerprint className="w-6 h-6" />
-            </div>
-            <div>
-              <h2 className="text-base font-bold text-white tracking-tight">Biometric Passkey Ceremony</h2>
-              <p className="text-xs text-slate-400">Non-Custodial Merchant Wallet Signer</p>
-            </div>
-          </div>
-          <span className="px-2.5 py-1 rounded-full text-[10px] font-mono font-semibold bg-onion-500/20 text-onion-300 border border-onion-500/30 uppercase">
-            Web3Auth Core
-          </span>
+      {!isConnected ? (
+        <button type="button" onClick={() => void connect()} disabled={connecting} className="flex w-full items-center justify-center gap-2 rounded-xl bg-onion-700 px-4 py-3 text-sm font-semibold text-white transition hover:bg-onion-600 disabled:opacity-60">
+          {connecting ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Wallet className="h-4 w-4" />}
+          {connecting ? 'Connecting securely…' : 'Connect and create wallets'}
+        </button>
+      ) : (
+        <div className="space-y-3 rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
+          <AddressRow label="EVM wallet" value={baseAddress || 'No EVM address returned'} />
+          <AddressRow label="Solana wallet" value={solanaAddress || 'No Solana address returned'} />
         </div>
+      )}
 
-        {!isSuccess ? (
-          <div className="space-y-6">
-            <div className="text-center py-4 space-y-3">
-              <div className="relative w-24 h-24 mx-auto rounded-3xl bg-slate-800/80 border border-slate-700 flex items-center justify-center">
-                <Fingerprint className={`w-12 h-12 text-onion-400 ${isCeremonyActive ? 'animate-pulse' : ''}`} />
-                {isCeremonyActive && (
-                  <div className="absolute inset-0 rounded-3xl border-2 border-onion-400 animate-ping opacity-30" />
-                )}
-              </div>
+      {error && <p role="alert" className="rounded-xl border border-rose-900/70 bg-rose-950/40 p-3 text-sm text-rose-200">{error}</p>}
 
-              <div>
-                <h3 className="text-base font-bold text-white">Create Passkey Signer</h3>
-                <p className="text-xs text-slate-400 max-w-sm mx-auto mt-1">
-                  Using your device's Touch ID, Face ID, or Windows Hello. Your private credentials never leave this secure enclave.
-                </p>
-              </div>
-            </div>
+      {savedWallets ? (
+        <div className="rounded-xl border border-emerald-900/70 bg-emerald-950/30 p-4 text-sm text-emerald-200">
+          <div className="flex items-center gap-2 font-semibold"><Check className="h-4 w-4" /> Wallet addresses saved</div>
+          <p className="mt-2 text-xs leading-5 text-emerald-100/80">Your merchant remains pending until passkey enrolment is verified. This page does not mark the merchant active.</p>
+        </div>
+      ) : (
+        <button type="button" onClick={() => baseAddress && solanaAddress && void onSave(baseAddress, solanaAddress)} disabled={!canSave || saving} className="w-full rounded-xl border border-slate-700 px-4 py-3 text-sm font-semibold text-slate-100 transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40">
+          {saving ? 'Saving wallet addresses…' : 'Save wallet addresses'}
+        </button>
+      )}
 
-            <div className="bg-slate-800/50 rounded-2xl p-4 border border-slate-800 space-y-2.5 text-xs text-slate-300">
-              <div className="flex items-center space-x-2 text-onion-300 font-medium text-[11px] uppercase tracking-wider">
-                <Smartphone className="w-3.5 h-3.5" />
-                <span>On-Chain Cryptographic Binding</span>
-              </div>
-              <div className="flex justify-between py-1 border-b border-slate-700/60">
-                <span className="text-slate-400">Merchant Entity:</span>
-                <span className="font-medium text-white">{merchant?.legalBusinessName || 'Merchant'}</span>
-              </div>
-              <div className="flex justify-between py-1 border-b border-slate-700/60">
-                <span className="text-slate-400">Networks Enabled:</span>
-                <span className="text-white font-mono">Base (EVM) · Solana (SVM)</span>
-              </div>
-              <div className="flex justify-between py-1">
-                <span className="text-slate-400">Security Architecture:</span>
-                <span className="text-emerald-400 font-semibold">100% Non-Custodial (ZeroDev)</span>
-              </div>
-            </div>
-
-            <button
-              onClick={handleStartPasskey}
-              disabled={isCeremonyActive}
-              className="w-full py-3.5 px-4 rounded-xl bg-onion-700 hover:bg-onion-600 text-white font-semibold text-sm transition shadow-lg shadow-onion-950/60 flex items-center justify-center space-x-2 disabled:opacity-50"
-            >
-              {isCeremonyActive ? (
-                <>
-                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  <span>Prompting Device Biometrics...</span>
-                </>
-              ) : (
-                <>
-                  <KeyRound className="w-4 h-4" />
-                  <span>Authorize Passkey via Touch ID / Face ID</span>
-                </>
-              )}
-            </button>
+      <div className="border-t border-slate-800 pt-5">
+        <div className="flex items-start gap-3">
+          <Fingerprint className="mt-0.5 h-5 w-5 shrink-0 text-onion-300" />
+          <div>
+            <h2 className="text-sm font-semibold text-white">Add a passkey to your Web3Auth account</h2>
+            <p className="mt-1 text-xs leading-5 text-slate-400">Passkey and device recovery factors are required by the Web3Auth setup configured for this app. Merchant activation remains pending until Orki's backend can verify and record that passkey enrolment.</p>
           </div>
-        ) : (
-          <div className="py-6 text-center space-y-5">
-            <div className="w-16 h-16 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center mx-auto">
-              <CheckCircle2 className="w-10 h-10" />
-            </div>
-
-            <div>
-              <h3 className="text-lg font-bold text-white flex items-center justify-center space-x-2">
-                <span>Passkey Created & Verified</span>
-                <Sparkles className="w-4 h-4 text-onion-400" />
-              </h3>
-              <p className="text-xs text-slate-300 mt-1 max-w-sm mx-auto">
-                Your non-custodial merchant wallets have been initialized on Base and Solana.
-              </p>
-            </div>
-
-            {createdWallets && (
-              <div className="bg-slate-800/80 rounded-xl p-3 text-left font-mono text-[11px] space-y-1.5 border border-slate-700">
-                <div>
-                  <span className="text-slate-400">Base Wallet: </span>
-                  <span className="text-emerald-300">{createdWallets.base}</span>
-                </div>
-                <div>
-                  <span className="text-slate-400">Solana Wallet: </span>
-                  <span className="text-purple-300">{createdWallets.solana}</span>
-                </div>
-              </div>
-            )}
-
-            <p className="text-xs text-slate-400 animate-pulse font-medium">
-              Closing secure window and returning to dashboard...
-            </p>
-          </div>
-        )}
+        </div>
       </div>
-
-      <p className="mt-6 text-[11px] text-slate-500 text-center">
-        Orki Protocol · Web3Auth · FIDO2 Passkey Specification
-      </p>
+      <p className="text-[11px] leading-5 text-slate-500">This onboarding session expires automatically. Keep the wallet account you use for your merchant operations secure.</p>
     </div>
   )
+}
+
+function AddressRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <p className="text-xs text-slate-500">{label}</p>
+      <p className="mt-1 break-all font-mono text-xs text-slate-200">{value}</p>
+    </div>
+  )
+}
+
+function MessagePanel({ title, message }: { title: string; message: string }) {
+  return <div className="rounded-xl border border-amber-900/60 bg-amber-950/30 p-4"><h1 className="font-semibold text-amber-100">{title}</h1><p className="mt-2 text-sm leading-6 text-amber-100/75">{message}</p></div>
 }

@@ -1,7 +1,8 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import type { Organization } from '../../types'
+import { getApiConfig, requestApi } from '../../services/apiConfig'
 import {
   ShieldCheck,
   Building2,
@@ -40,6 +41,26 @@ export const OrkiAdminPortal: React.FC<OrkiAdminPortalProps> = ({
   const [approvalOfficer, setApprovalOfficer] = useState('david.risk@orki.com')
   const [approvalError, setApprovalError] = useState<string | null>(null)
   const [categoryFilter, setCategoryFilter] = useState<string>('all')
+  const [visibleOrganizations, setVisibleOrganizations] = useState(organizations)
+  const [backendPspIds, setBackendPspIds] = useState<Set<string>>(new Set())
+  const [claimLinks, setClaimLinks] = useState<Record<string, string>>({})
+  const [apiBusy, setApiBusy] = useState(false)
+  const [apiError, setApiError] = useState<string | null>(null)
+
+  useEffect(() => {
+    const config = getApiConfig()
+    if (!config.adminKey) return
+    let active = true
+    requestApi<{ data: { pspId: string; pspName: string; category: Organization['category']; categoryType: Organization['categoryType']; status: Organization['status']; webhookUrl?: string | null; createdAt: string }[] }>(config, 'GET', '/api/v1/admin/psps', undefined, 'admin')
+      .then(({ data }) => {
+        if (!active) return
+        const rows = data.map(psp => ({ id: psp.pspId, name: psp.pspName, category: psp.category, categoryType: psp.categoryType, status: psp.status, webhookUrl: psp.webhookUrl || undefined, createdAt: psp.createdAt, isRegulatedEntity: false, feeWallet: '', contacts: [] }))
+        setVisibleOrganizations(rows)
+        setBackendPspIds(new Set(rows.map(row => row.id)))
+      })
+      .catch(reason => { if (active) setApiError(reason instanceof Error ? reason.message : 'Unable to load PSPs from backend.') })
+    return () => { active = false }
+  }, [])
 
   // Registration Form State
   const [newPspForm, setNewPspForm] = useState({
@@ -57,10 +78,10 @@ export const OrkiAdminPortal: React.FC<OrkiAdminPortalProps> = ({
   })
 
   // Filter organizations
-  const filteredOrgs = organizations.filter((org) => {
+  const filteredOrgs = visibleOrganizations.filter((org) => {
     if (statusFilter !== 'all' && org.status !== statusFilter) return false
-    if (licenseFilter === 'licensed' && !org.isRegulatedEntity) return false
-    if (licenseFilter === 'unlicensed' && org.isRegulatedEntity) return false
+    if (licenseFilter === 'licensed' && org.isRegulatedEntity !== true) return false
+    if (licenseFilter === 'unlicensed' && org.isRegulatedEntity !== false) return false
     if (categoryFilter !== 'all' && (org.category || 'FINANCE') !== categoryFilter) return false
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase()
@@ -76,6 +97,11 @@ export const OrkiAdminPortal: React.FC<OrkiAdminPortalProps> = ({
   // Two-Person Production Approval Handler (Darshan Part 1 Stage 7)
   const handleExecuteApproval = () => {
     if (!selectedOrg) return
+
+    if (backendPspIds.has(selectedOrg.id)) {
+      setApprovalError('This PSP is a backend record. The approval API requires completed agreement, KYB, fee schedule, and signed go-live checklist data. Those attestations are not collected by this demo form; use the Backend API workbench with reviewed values.')
+      return
+    }
 
     // Strict Two-Person Rule Validation
     const preparer = selectedOrg.preparedBy || 'sarah.ops@orki.com'
@@ -113,107 +139,36 @@ export const OrkiAdminPortal: React.FC<OrkiAdminPortalProps> = ({
   }
 
   // Handle New PSP Registration
-  const handleRegisterSubmit = (e: React.FormEvent) => {
+  const handleRegisterSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!newPspForm.name.trim()) return
-
-    const pspId = 'psp_' + newPspForm.name.toLowerCase().replace(/[^a-z0-9]/g, '') + Math.floor(10 + Math.random() * 90)
-    const markup = Math.min(parseInt(newPspForm.initialMarkupBps, 10) || 35, 100) // Strictly capped at 1.00% (100 bps)
-
-    const newOrg: Organization = {
-      id: pspId,
-      name: newPspForm.name,
-      category: newPspForm.category,
-      categoryType: newPspForm.categoryType,
-      status: 'sandbox',
-      isRegulatedEntity: newPspForm.isRegulated,
-      feeWallet: '0x' + pspId + 'Vault000000000001',
-      contacts: [
-        { name: newPspForm.techName || 'Tech Lead', email: newPspForm.techEmail || 'tech@' + pspId + '.example', role: 'technical' },
-        { name: newPspForm.commercialName || 'Director', email: newPspForm.commercialEmail || 'dir@' + pspId + '.example', role: 'commercial' },
-      ],
-      ndaSignedAt: new Date().toISOString(),
-      dueDiligence: {
-        isRegulatedEntity: newPspForm.isRegulated,
-        regulatorName: newPspForm.isRegulated ? newPspForm.regulatorName : undefined,
-        licenseNumber: newPspForm.isRegulated ? newPspForm.licenseNumber : undefined,
-        amlPolicyVerified: true,
-        caseReference: 'ORKI-PSP-KYB-' + Math.floor(1000 + Math.random() * 9000),
-        riskRating: newPspForm.isRegulated ? 'low' : 'medium',
-        reviewDate: new Date().toISOString().split('T')[0],
-        nextReviewDate: new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString().split('T')[0],
-        ubos: newPspForm.isRegulated
-          ? undefined
-          : [
-              {
-                name: newPspForm.commercialName || 'Founding Shareholder',
-                ownershipPercentage: 100,
-                nationality: 'AE',
-                idDocumentType: 'passport',
-                idDocumentVerified: true,
-                proofOfAddressVerified: true,
-                pepOrSanctionsClear: true,
-              },
-            ],
-      },
-      feeSchedule: {
-        orkiFeeBps: 100,
-        orkiFeeCapPercent: 1.00,
-        orkiFeeCapAmount: 25.00,
-        pspMarkupBps: markup,
-        combinedCapBps: 200,
-        lockedUntil: new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString(),
-        orkiFeeWallet: '0xOrkiProtocolFeeVault0000000000000000001',
-        pspFeeWallet: '0x' + pspId + 'Vault000000000001',
-        offrampSpreadBps: 25,
-      },
-      goLiveChecklist: {
-        webhookSignatureVerified: true,
-        idempotencyHandled: true,
-        duplicateEventsHandled: false,
-        onboardingComponentMounted: false,
-        merchantStatusesHandled: false,
-        passkeyHooksVerified: false,
-        termsDisclosuresIncluded: true,
-        cspAllowed: false,
-        supportContactNamed: true,
-      },
-      apiCredentials: {
-        sandbox: {
-          environment: 'sandbox',
-          publicKey: 'pk_test_' + Math.random().toString(36).substring(2, 14),
-          secretKeyMasked: 'sk_test_••••••••••••••••' + Math.random().toString(36).substring(2, 6),
-          webhookSecretMasked: 'whsec_test_••••••••••••••••' + Math.random().toString(36).substring(2, 6),
-          shareUrl: 'https://share.1password.com/s#claim_test_' + pspId,
-          status: 'link_sent',
-          sentTo: newPspForm.techEmail || 'tech@' + pspId + '.example',
-          expiresAt: new Date(Date.now() + 24 * 3600 * 1000).toISOString(),
-        },
-      },
-      preparedBy: 'sarah.ops@orki.com',
-      createdAt: new Date().toISOString(),
-      volumeUsdc: 0.0,
-    }
-
-    onAddOrganization(newOrg)
-    setIsRegisterModalOpen(false)
-    setNewPspForm({
-      name: '',
-      category: 'FINANCE',
-      categoryType: 'psp',
-      isRegulated: false,
-      regulatorName: 'VARA (Dubai)',
-      licenseNumber: '',
-      techName: '',
-      techEmail: '',
-      commercialName: '',
-      commercialEmail: '',
-      initialMarkupBps: '35',
-    })
+    setApiBusy(true)
+    setApiError(null)
+    try {
+      const config = getApiConfig()
+      if (!config.adminKey) throw new Error('Set the Orki admin API key in the Backend API workbench before creating a PSP.')
+      const created = await requestApi<{ pspId: string; name: string; category: Organization['category']; categoryType: Organization['categoryType']; status: Organization['status']; keyDelivery: { status: string; sentTo: string; expiresInHours: number; temporaryShareUrl: string } }>(config, 'POST', '/api/v1/admin/psps', {
+        pspName: newPspForm.name.trim(), category: newPspForm.category, categoryType: newPspForm.categoryType,
+        contacts: [{ name: newPspForm.techName, email: newPspForm.techEmail, role: 'technical' }],
+      }, 'admin')
+      const newOrg: Organization = {
+        id: created.pspId, name: created.name, category: created.category, categoryType: created.categoryType, status: created.status,
+        isRegulatedEntity: undefined, feeWallet: '', contacts: [{ name: newPspForm.techName, email: newPspForm.techEmail, role: 'technical' }], createdAt: new Date().toISOString(),
+      }
+      setClaimLinks(current => ({ ...current, [created.pspId]: created.keyDelivery.temporaryShareUrl }))
+      onAddOrganization(newOrg)
+      setVisibleOrganizations(current => [newOrg, ...current.filter(org => org.id !== newOrg.id)])
+      setBackendPspIds(current => new Set([...current, newOrg.id]))
+      setSelectedOrg(newOrg)
+      setIsRegisterModalOpen(false)
+      setNewPspForm({ name: '', category: 'FINANCE', categoryType: 'psp', isRegulated: false, regulatorName: 'VARA (Dubai)', licenseNumber: '', techName: '', techEmail: '', commercialName: '', commercialEmail: '', initialMarkupBps: '35' })
+    } catch (reason) { setApiError(reason instanceof Error ? reason.message : 'PSP could not be created.') }
+    finally { setApiBusy(false) }
   }
 
   return (
     <div className="space-y-8">
+      {apiError && <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-800">{apiError}</div>}
       {/* Top Banner / Mission Statement */}
       <div className="bg-gradient-to-r from-slate-900 via-onion-950 to-slate-900 rounded-3xl p-6 sm:p-8 text-white border border-onion-900/40 shadow-xl relative overflow-hidden">
         <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
@@ -251,7 +206,7 @@ export const OrkiAdminPortal: React.FC<OrkiAdminPortalProps> = ({
             <span>Total PSPs</span>
             <Building2 className="w-4 h-4 text-onion" />
           </div>
-          <p className="text-2xl font-black text-slate-900">{organizations.length}</p>
+          <p className="text-2xl font-black text-slate-900">{visibleOrganizations.length}</p>
           <p className="text-[11px] text-slate-400">Approved, in review, and sandbox</p>
         </div>
 
@@ -261,7 +216,7 @@ export const OrkiAdminPortal: React.FC<OrkiAdminPortalProps> = ({
             <ShieldCheck className="w-4 h-4 text-emerald-600" />
           </div>
           <p className="text-2xl font-black text-emerald-700">
-            {organizations.filter((o) => o.isRegulatedEntity).length}
+            {visibleOrganizations.filter((o) => o.isRegulatedEntity).length}
           </p>
           <p className="text-[11px] text-emerald-600">VARA, CBUAE, FSRA, FCA verified</p>
         </div>
@@ -272,7 +227,7 @@ export const OrkiAdminPortal: React.FC<OrkiAdminPortalProps> = ({
             <UserCheck className="w-4 h-4 text-amber-500" />
           </div>
           <p className="text-2xl font-black text-amber-600">
-            {organizations.filter((o) => !o.isRegulatedEntity).length}
+            {visibleOrganizations.filter((o) => o.isRegulatedEntity === false).length}
           </p>
           <p className="text-[11px] text-amber-600">Heightened shareholder screening</p>
         </div>
@@ -283,7 +238,7 @@ export const OrkiAdminPortal: React.FC<OrkiAdminPortalProps> = ({
             <Key className="w-4 h-4 text-onion-600" />
           </div>
           <p className="text-2xl font-black text-onion">
-            {organizations.filter((o) => o.status === 'in_review').length}
+            {visibleOrganizations.filter((o) => o.status === 'in_review').length}
           </p>
           <p className="text-[11px] text-onion-700">Ready for 2nd person approval</p>
         </div>
@@ -404,7 +359,9 @@ export const OrkiAdminPortal: React.FC<OrkiAdminPortalProps> = ({
                     </td>
 
                     <td className="py-4 px-5">
-                      {org.isRegulatedEntity ? (
+                      {org.isRegulatedEntity === undefined ? (
+                        <span className="inline-flex items-center rounded-md border border-slate-200 bg-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-600">Regulatory data pending</span>
+                      ) : org.isRegulatedEntity ? (
                         <div className="space-y-0.5">
                           <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
                             <ShieldCheck className="w-3 h-3 mr-1" />
@@ -544,6 +501,15 @@ export const OrkiAdminPortal: React.FC<OrkiAdminPortalProps> = ({
               </button>
             </div>
 
+            {backendPspIds.has(selectedOrg.id) ? (
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5 space-y-4">
+                <div><h3 className="font-bold text-slate-900">Backend PSP record</h3><p className="mt-1 text-xs text-slate-600">This record came from the API. Agreement, KYB, fee schedule and go-live checklist data are not present yet.</p></div>
+                <dl className="grid grid-cols-2 gap-3 text-xs"><div><dt className="text-slate-500">Status</dt><dd className="mt-1 font-semibold">{selectedOrg.status}</dd></div><div><dt className="text-slate-500">Category</dt><dd className="mt-1 font-semibold">{selectedOrg.category || 'Not provided'}</dd></div><div><dt className="text-slate-500">Entity type</dt><dd className="mt-1 font-semibold">{selectedOrg.categoryType}</dd></div><div><dt className="text-slate-500">Technical contact</dt><dd className="mt-1 font-semibold">{selectedOrg.contacts[0]?.email || 'Not provided'}</dd></div></dl>
+                {claimLinks[selectedOrg.id] && <a href={claimLinks[selectedOrg.id]} target="_blank" rel="noreferrer" onClick={event=>{if(!window.confirm('This is a single-use credential claim link. Opening it immediately reveals and consumes the credentials. Continue?')) event.preventDefault(); else setClaimLinks(current=>{const next={...current}; delete next[selectedOrg.id]; return next})}} className="inline-flex rounded-lg bg-slate-900 px-4 py-2 text-xs font-semibold text-white">Claim sandbox credentials (one time)</a>}
+                <p className="text-[11px] text-slate-500">The backend approval endpoint requires complete, reviewed agreement, KYB, fee and signed checklist values. No approval is performed from this summary.</p>
+                <button onClick={()=>setSelectedOrg(null)} className="rounded-lg border bg-white px-4 py-2 text-xs font-semibold">Close</button>
+              </div>
+            ) : <>
             {/* Stage Progress Bar (1 to 8) */}
             <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200">
               <p className="text-xs font-bold text-slate-700 mb-3 flex items-center justify-between">
@@ -750,6 +716,7 @@ export const OrkiAdminPortal: React.FC<OrkiAdminPortalProps> = ({
                 Close Dossier
               </button>
             </div>
+            </>}
           </div>
         </div>
       )}
@@ -886,50 +853,7 @@ export const OrkiAdminPortal: React.FC<OrkiAdminPortalProps> = ({
                 </div>
               </div>
 
-              {/* Regulatory Selection (Licensed vs Unlicensed) */}
-              <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200 space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="font-bold text-slate-800">Is this a Licensed / Regulated Entity?</span>
-                  <input
-                    type="checkbox"
-                    checked={newPspForm.isRegulated}
-                    onChange={(e) => setNewPspForm({ ...newPspForm, isRegulated: e.target.checked })}
-                    className="w-4 h-4 text-onion rounded border-slate-300 focus:ring-onion"
-                  />
-                </div>
-
-                {newPspForm.isRegulated ? (
-                  <div className="grid grid-cols-2 gap-2 pt-1">
-                    <div>
-                      <label className="block text-slate-500 text-[10px] uppercase font-bold mb-1">Regulator</label>
-                      <select
-                        value={newPspForm.regulatorName}
-                        onChange={(e) => setNewPspForm({ ...newPspForm, regulatorName: e.target.value })}
-                        className="w-full p-2 border border-slate-200 rounded-lg text-xs"
-                      >
-                        <option value="VARA (Dubai)">VARA (Dubai)</option>
-                        <option value="CBUAE (Central Bank UAE)">CBUAE (Central Bank UAE)</option>
-                        <option value="FSRA (ADGM)">FSRA (ADGM)</option>
-                        <option value="FCA (United Kingdom)">FCA (United Kingdom)</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-slate-500 text-[10px] uppercase font-bold mb-1">License No.</label>
-                      <input
-                        type="text"
-                        placeholder="VARA-VASP-2026-..."
-                        value={newPspForm.licenseNumber}
-                        onChange={(e) => setNewPspForm({ ...newPspForm, licenseNumber: e.target.value })}
-                        className="w-full p-2 border border-slate-200 rounded-lg text-xs"
-                      />
-                    </div>
-                  </div>
-                ) : (
-                  <p className="text-[11px] text-amber-700">
-                    ⚠️ Unlicensed entities trigger Heightened Due Diligence: UBO identification for holders ≥25%, passport scans, and Sanction/PEP screening.
-                  </p>
-                )}
-              </div>
+              <p className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-[11px] text-slate-600">This create request records the PSP identity, category, entity type, and technical contact. Regulatory evidence, agreements, fee schedule, and approval checklist are separate onboarding data.</p>
 
               {/* Contacts */}
               <div className="grid grid-cols-2 gap-3">
@@ -957,18 +881,7 @@ export const OrkiAdminPortal: React.FC<OrkiAdminPortalProps> = ({
                 </div>
               </div>
 
-              <div>
-                <label className="block font-bold text-slate-700 mb-1">Initial Agreed PSP Markup (Basis Points)</label>
-                <input
-                  type="number"
-                  required
-                  placeholder="35 (0.35%)"
-                  value={newPspForm.initialMarkupBps}
-                  onChange={(e) => setNewPspForm({ ...newPspForm, initialMarkupBps: e.target.value })}
-                  className="w-full p-2 border border-slate-200 rounded-lg text-xs"
-                />
-                <p className="text-[10px] text-slate-400 mt-1">Orki base: 100 bps (1.00%) · Combined cap: 300 bps (3.00%)</p>
-              </div>
+              <p className="text-[10px] text-slate-500">Sandbox credentials are generated by the backend and shown through a single-use claim link.</p>
 
               <div className="flex space-x-3 pt-3">
                 <button
@@ -982,7 +895,7 @@ export const OrkiAdminPortal: React.FC<OrkiAdminPortalProps> = ({
                   type="submit"
                   className="w-1/2 py-2.5 bg-onion text-white rounded-xl font-bold hover:bg-onion-700 shadow-md"
                 >
-                  Issue Sandbox Keys
+                  {apiBusy ? 'Creating PSP…' : 'Create PSP'}
                 </button>
               </div>
             </form>

@@ -4,6 +4,7 @@ import { StatusBadge } from '../../components/StatusBadge'
 import { CreatePaylinkModal } from './CreatePaylinkModal'
 import { OffRampModal } from './OffRampModal'
 import { TransferModal } from './TransferModal'
+import { getApiConfig, requestApi, saveApiConfig } from '../../services/apiConfig'
 import {
   ArrowRightLeft,
   Send,
@@ -52,11 +53,23 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
   // Guided Onboarding Dialog States
   const [showNoticeModal, setShowNoticeModal] = useState(false)
   const [showTermsModal, setShowTermsModal] = useState(false)
+  const [showKybModal, setShowKybModal] = useState(false)
+  const [apiBusy, setApiBusy] = useState(false)
+  const [apiError, setApiError] = useState<string | null>(null)
+  const [notice, setNotice] = useState<{ title?: string; sections?: { heading: string; content: string }[] } | null>(null)
+  const [termsData, setTermsData] = useState<{ tos?: { token?: string; entityName?: string; documentLinks?: { tos?: string; privacyPolicy?: string } }; title?: string; clauses?: string[] } | null>(null)
+  const [setupUrl, setSetupUrl] = useState(() => sessionStorage.getItem(`orki_setup_url:${merchant.externalId}`) || '')
+  const [signatory, setSignatory] = useState({ name: merchant.representativeName || '', email: merchant.representativeEmail || '', title: '' })
+  const [kybData, setKybData] = useState({ companyName: merchant.legalBusinessName, registrationNumber: merchant.tradeLicenseNumber, country: '', incorporatedOn: '', type: '', legalAddress: '', registrationLocation: '', email: merchant.representativeEmail || '', phone: '', taxId: '', website: '', postalAddress: '', controlScheme: '', applicantPosition: '' })
+  const merchantApiConfig = () => {
+    const config = getApiConfig()
+    const merchantSession = sessionStorage.getItem(`orki_merchant_session:${merchant.externalId}`)
+    return merchantSession ? { ...config, merchantSession } : config
+  }
 
   const isSetupComplete = merchant.status === 'active' && !merchant.nextStep
   const [clientIp, setClientIp] = useState('203.0.113.42')
   const [hasAgreedTos, setHasAgreedTos] = useState(false)
-  const tosToken = `token_tos_${merchant.id.substring(0, 8)}`
 
   useEffect(() => {
     fetch('https://api.ipify.org?format=json')
@@ -82,16 +95,6 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
           sumsubCompletedAt: new Date().toISOString(),
           nextStep: 'PASSKEY',
         })
-      } else if (event.data?.type === 'ORKI_PASSKEY_COMPLETED' && event.data?.merchantId === merchant.id) {
-        onUpdateMerchant({
-          merchantWallet: event.data.baseAddr,
-          baseWalletAddress: event.data.baseAddr,
-          solanaWalletAddress: event.data.solAddr,
-          passkeyRegisteredAt: new Date().toISOString(),
-          status: 'active',
-          nextStep: null,
-          activatedAt: new Date().toISOString(),
-        })
       }
     }
     window.addEventListener('message', handleWindowMessage)
@@ -99,37 +102,154 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
   }, [merchant.id, onUpdateMerchant])
 
   // Stepper handlers
-  const handleStartOptIn = () => {
-    onUpdateMerchant({ nextStep: 'NOTICE' })
-    setShowNoticeModal(true)
+  const handleStartOptIn = async () => {
+    setApiBusy(true)
+    setApiError(null)
+    try {
+      const config = getApiConfig()
+      if (!config.pspKey) throw new Error('Set the PSP API key in the Backend API workbench before starting this demo merchant onboarding.')
+      const session = await requestApi<{ clientSecret: string; setupUrl?: string | null }>(config, 'POST', '/api/v1/psp/merchant-onboarding-sessions', {
+        merchantExternalId: merchant.externalId,
+        legalBusinessName: merchant.legalBusinessName,
+        tradeLicenseNumber: merchant.tradeLicenseNumber,
+        jurisdiction: merchant.jurisdiction,
+        representativeName: merchant.representativeName,
+        representativeEmail: merchant.representativeEmail,
+        returnUrl: `${window.location.origin}/merchant`,
+        ttlMinutes: 60,
+      }, 'psp')
+      const sessionConfig = { ...config, merchantSession: session.clientSecret }
+      saveApiConfig(sessionConfig)
+      sessionStorage.setItem(`orki_merchant_session:${merchant.externalId}`, session.clientSecret)
+      if (session.setupUrl) {
+        setSetupUrl(session.setupUrl)
+        sessionStorage.setItem(`orki_setup_url:${merchant.externalId}`, session.setupUrl)
+      }
+      await requestApi(sessionConfig, 'POST', '/api/v1/merchant/accept-usdc', {}, 'merchant')
+      const fetchedNotice = await requestApi<typeof notice>(sessionConfig, 'GET', '/api/v1/merchant/notice', undefined, 'merchant')
+      setNotice(fetchedNotice)
+      onUpdateMerchant({ nextStep: 'NOTICE' })
+      setShowNoticeModal(true)
+    } catch (reason) {
+      setApiError(reason instanceof Error ? reason.message : 'Could not start merchant onboarding.')
+    } finally {
+      setApiBusy(false)
+    }
   }
 
-  const handleAcknowledgeNotice = () => {
-    onUpdateMerchant({
-      noticeAcknowledgedAt: new Date().toISOString(),
-      nextStep: 'TERMS',
-    })
-    setShowNoticeModal(false)
-    setShowTermsModal(true)
+  const handleOpenNotice = async () => {
+    setApiBusy(true); setApiError(null)
+    try {
+      const value = await requestApi<typeof notice>(merchantApiConfig(), 'GET', '/api/v1/merchant/notice', undefined, 'merchant')
+      setNotice(value)
+      setShowNoticeModal(true)
+    } catch (reason) { setApiError(reason instanceof Error ? reason.message : 'Could not load regulatory notice.') }
+    finally { setApiBusy(false) }
   }
 
-  const handleAcceptTerms = () => {
-    onUpdateMerchant({
-      termsAcceptedAt: new Date().toISOString(),
-      nextStep: 'SUMSUB',
-    })
-    setShowTermsModal(false)
+  const handleOpenTerms = async () => {
+    setApiBusy(true); setApiError(null)
+    try {
+      const value = await requestApi<typeof termsData>(merchantApiConfig(), 'GET', '/api/v1/merchant/terms', undefined, 'merchant')
+      setTermsData(value)
+      setShowTermsModal(true)
+    } catch (reason) { setApiError(reason instanceof Error ? reason.message : 'Could not load terms.') }
+    finally { setApiBusy(false) }
   }
 
-  const handleOpenSumsubTab = () => {
-    const url = `/verify/sumsub?merchantId=${merchant.id}`
-    window.open(url, '_blank', 'width=600,height=720')
+  const handleAcknowledgeNotice = async () => {
+    setApiBusy(true)
+    setApiError(null)
+    try {
+      await requestApi(merchantApiConfig(), 'POST', '/api/v1/merchant/notice/acknowledge', {
+        isAuthorisedSignatory: true,
+        signatoryName: signatory.name,
+        signatoryEmail: signatory.email,
+        signatoryTitle: signatory.title,
+      }, 'merchant')
+      onUpdateMerchant({ noticeAcknowledgedAt: new Date().toISOString(), nextStep: 'KYB_INFORMATION' })
+      setShowNoticeModal(false)
+      setShowKybModal(true)
+    } catch (reason) {
+      setApiError(reason instanceof Error ? reason.message : 'Could not record notice acknowledgement.')
+    } finally {
+      setApiBusy(false)
+    }
   }
 
-  const handleOpenPasskeyTab = () => {
-    const url = `/onboarding/passkey?merchantId=${merchant.id}`
-    window.open(url, '_blank', 'width=600,height=720')
+  const handleSubmitKyb = async (event: React.FormEvent) => {
+    event.preventDefault()
+    setApiBusy(true)
+    setApiError(null)
+    try {
+      const config = merchantApiConfig()
+      await requestApi(config, 'POST', '/api/v1/merchant/kyb-information', { companyInfo: kybData }, 'merchant')
+      const fetchedTerms = await requestApi<typeof termsData>(config, 'GET', '/api/v1/merchant/terms', undefined, 'merchant')
+      setTermsData(fetchedTerms)
+      onUpdateMerchant({ nextStep: 'TERMS' })
+      setShowKybModal(false)
+      setShowTermsModal(true)
+    } catch (reason) {
+      setApiError(reason instanceof Error ? reason.message : 'Could not submit KYB information.')
+    } finally {
+      setApiBusy(false)
+    }
   }
+
+  const handleAcceptTerms = async () => {
+    const token = termsData?.tos?.token
+    if (!token) { setApiError('The backend did not return an active terms acceptance token.'); return }
+    setApiBusy(true)
+    setApiError(null)
+    try {
+      await requestApi(merchantApiConfig(), 'POST', `/api/v1/tos/${encodeURIComponent(token)}`, {
+        signerName: signatory.name,
+        signerEmail: signatory.email,
+        signerTitle: signatory.title,
+        isAuthorisedSignatory: true,
+      }, 'none')
+      onUpdateMerchant({ termsAcceptedAt: new Date().toISOString(), status: 'terms_accepted', nextStep: 'SUMSUB' })
+      setShowTermsModal(false)
+    } catch (reason) {
+      setApiError(reason instanceof Error ? reason.message : 'Could not record terms acceptance.')
+    } finally {
+      setApiBusy(false)
+    }
+  }
+
+  const handleOpenSumsubTab = async () => {
+    const tab = window.open('about:blank', '_blank')
+    setApiBusy(true)
+    setApiError(null)
+    try {
+      const result = await requestApi<{ url: string }>(merchantApiConfig(), 'GET', '/api/v1/merchant/kyc/start', undefined, 'merchant')
+      if (!result.url) throw new Error('The backend did not return the Sumsub hosted URL.')
+      if (tab) tab.location.href = result.url
+      else window.open(result.url, '_blank', 'noopener,noreferrer')
+    } catch (reason) {
+      tab?.close()
+      setApiError(reason instanceof Error ? reason.message : 'Could not start Sumsub verification.')
+    } finally {
+      setApiBusy(false)
+    }
+  }
+
+  useEffect(() => {
+    const config = merchantApiConfig()
+    if (!config.merchantSession) return
+    let active = true
+    const refresh = async () => {
+      try {
+        const state = await requestApi<{ status: string; nextStep?: string | null; noticeAcknowledgedAt?: string | null; kybInformationSubmittedAt?: string | null; termsAcceptedAt?: string | null; sumsubCompletedAt?: string | null; passkeyRegisteredAt?: string | null }>(config, 'GET', '/api/v1/merchant/onboarding', undefined, 'merchant')
+        if (!active) return
+        onUpdateMerchant({ status: state.status as Merchant['status'], nextStep: state.nextStep as Merchant['nextStep'], noticeAcknowledgedAt: state.noticeAcknowledgedAt || undefined, kybInformationSubmittedAt: state.kybInformationSubmittedAt || undefined, termsAcceptedAt: state.termsAcceptedAt || undefined, sumsubCompletedAt: state.sumsubCompletedAt || undefined, passkeyRegisteredAt: state.passkeyRegisteredAt || undefined })
+      } catch { /* surface errors on user-triggered actions; status refresh is best effort */ }
+    }
+    void refresh()
+    const timer = window.setInterval(refresh, 15000)
+    window.addEventListener('focus', refresh)
+    return () => { active = false; window.clearInterval(timer); window.removeEventListener('focus', refresh) }
+  }, [merchant.id])
 
   const handleToggleSettlementMode = (newMode: SettlementMode) => {
     onUpdateMerchant({ settlementMode: newMode })
@@ -149,6 +269,7 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
 
   return (
     <div className="space-y-6 font-sans">
+      {apiError && <div role="alert" className="mat-card border border-red-200 bg-red-50 p-4 text-xs text-red-800 flex items-start justify-between gap-3"><span>{apiError}</span><button type="button" onClick={() => setApiError(null)} aria-label="Dismiss error"><X className="h-4 w-4" /></button></div>}
       {/* Merchant Title & Profile Bar */}
       <div className="mat-card p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <div className="flex items-center space-x-4">
@@ -179,9 +300,10 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
               {isSetupComplete ? 'USDC Live (Multi-Chain)' : 'Onboarding Pending'}
             </p>
           </div>
-          {!isSetupComplete && (
+          {merchant.status === 'invited' && (!merchant.nextStep || merchant.nextStep === 'OPT_IN') && (
             <button
-              onClick={handleStartOptIn}
+              onClick={() => void handleStartOptIn()}
+              disabled={apiBusy}
               className="mat-btn-primary px-3 py-1.5 text-xs font-medium ml-2 shadow-xs"
             >
               Accept USDC
@@ -209,27 +331,31 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
 
             {/* Contextual Action Button based on current nextStep */}
             <div>
-              {(!merchant.nextStep || merchant.nextStep === 'OPT_IN') && (
+              {merchant.status === 'invited' && (!merchant.nextStep || merchant.nextStep === 'OPT_IN') && (
                 <button
-                  onClick={handleStartOptIn}
+              onClick={() => void handleStartOptIn()}
+              disabled={apiBusy}
                   className="mat-btn-primary px-5 py-2.5 text-xs font-semibold flex items-center space-x-2 shadow-sm"
                 >
-                  <span>Accept USDC Payments</span>
+                  <span>{apiBusy ? 'Starting secure onboarding…' : 'Accept USDC Payments'}</span>
                   <ChevronRight className="w-4 h-4" />
                 </button>
               )}
               {merchant.nextStep === 'NOTICE' && (
                 <button
-                  onClick={() => setShowNoticeModal(true)}
+                  onClick={() => void handleOpenNotice()}
                   className="mat-btn-primary px-5 py-2.5 text-xs font-semibold flex items-center space-x-2 shadow-sm"
                 >
                   <span>Read Regulatory Notice</span>
                   <ChevronRight className="w-4 h-4" />
                 </button>
               )}
+              {merchant.nextStep === 'KYB_INFORMATION' && (
+                <button onClick={() => setShowKybModal(true)} className="mat-btn-primary px-5 py-2.5 text-xs font-semibold flex items-center space-x-2 shadow-sm"><span>Submit KYB Information</span><ChevronRight className="w-4 h-4" /></button>
+              )}
               {merchant.nextStep === 'TERMS' && (
                 <button
-                  onClick={() => setShowTermsModal(true)}
+                  onClick={() => void handleOpenTerms()}
                   className="mat-btn-primary px-5 py-2.5 text-xs font-semibold flex items-center space-x-2 shadow-sm"
                 >
                   <span>Accept Terms & Fee Split</span>
@@ -246,19 +372,14 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
                 </button>
               )}
               {merchant.nextStep === 'PASSKEY' && (
-                <button
-                  onClick={handleOpenPasskeyTab}
-                  className="mat-btn-primary px-5 py-2.5 text-xs font-semibold flex items-center space-x-2 shadow-sm"
-                >
-                  <ExternalLink className="w-4 h-4" />
-                  <span>Create Wallet & Passkey (New Tab)</span>
-                </button>
+                <div className="max-w-sm space-y-2"><p className="text-xs leading-5 text-slate-500">KYB is verified. Continue to wallet setup using the secure onboarding link.</p>{setupUrl&&<a href={setupUrl} target="_blank" rel="noreferrer" className="mat-btn-primary inline-flex px-4 py-2 text-xs font-semibold items-center gap-2">Create wallets and set up passkey <ExternalLink size={14}/></a>}</div>
               )}
+              {merchant.status === 'rejected' && <p className="max-w-sm text-xs leading-5 text-rose-700">The backend reports that KYB verification was rejected. Contact Orki compliance for next steps.</p>}
             </div>
           </div>
 
           {/* Stepper Progress Bar */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 border-t border-slate-100">
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 pt-2 border-t border-slate-100">
             <div className={`p-2.5 rounded-lg text-xs border ${
               merchant.nextStep === 'NOTICE'
                 ? 'bg-white border-onion-300 shadow-xs ring-1 ring-onion-200'
@@ -271,14 +392,18 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
             </div>
 
             <div className={`p-2.5 rounded-lg text-xs border ${
-              merchant.nextStep === 'TERMS'
+              merchant.nextStep === 'KYB_INFORMATION'
                 ? 'bg-white border-onion-300 shadow-xs ring-1 ring-onion-200'
-                : merchant.termsAcceptedAt
+                : merchant.kybInformationSubmittedAt
                 ? 'bg-emerald-50/60 border-emerald-200 text-emerald-800'
                 : 'bg-slate-50 border-slate-200 text-slate-400'
             }`}>
               <p className="text-[10px] font-semibold uppercase tracking-wider">Step 2</p>
-              <p className="font-bold text-xs mt-0.5">Terms & Fee Split</p>
+              <p className="font-bold text-xs mt-0.5">Company KYB Information</p>
+            </div>
+
+            <div className={`p-2.5 rounded-lg text-xs border ${merchant.nextStep === 'TERMS' ? 'bg-white border-onion-300 shadow-xs ring-1 ring-onion-200' : merchant.termsAcceptedAt ? 'bg-emerald-50/60 border-emerald-200 text-emerald-800' : 'bg-slate-50 border-slate-200 text-slate-400'}`}>
+              <p className="text-[10px] font-semibold uppercase tracking-wider">Step 3</p><p className="font-bold text-xs mt-0.5">Terms & Fee Split</p>
             </div>
 
             <div className={`p-2.5 rounded-lg text-xs border ${
@@ -288,7 +413,7 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
                 ? 'bg-emerald-50/60 border-emerald-200 text-emerald-800'
                 : 'bg-slate-50 border-slate-200 text-slate-400'
             }`}>
-              <p className="text-[10px] font-semibold uppercase tracking-wider">Step 3</p>
+              <p className="text-[10px] font-semibold uppercase tracking-wider">Step 4</p>
               <p className="font-bold text-xs mt-0.5">SumSub KYB Check</p>
             </div>
 
@@ -299,7 +424,7 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
                 ? 'bg-emerald-50/60 border-emerald-200 text-emerald-800'
                 : 'bg-slate-50 border-slate-200 text-slate-400'
             }`}>
-              <p className="text-[10px] font-semibold uppercase tracking-wider">Step 4</p>
+              <p className="text-[10px] font-semibold uppercase tracking-wider">Step 5</p>
               <p className="font-bold text-xs mt-0.5">Passkey Biometric</p>
             </div>
           </div>
@@ -749,6 +874,23 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
       </div>
 
       {/* ------------------------------------------------------------- */}
+      {/* STEP 2: MERCHANT KYB INFORMATION */}
+      {/* ------------------------------------------------------------- */}
+      {showKybModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 overflow-y-auto">
+          <div className="relative w-full max-w-2xl bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden">
+            <div className="bg-slate-900 text-white p-5 flex items-center justify-between"><div><h3 className="font-bold text-sm">Submit company information for KYB</h3><p className="text-[11px] text-slate-400 mt-1">This submission is separate from Sumsub verification.</p></div><button onClick={() => setShowKybModal(false)} className="text-slate-400 hover:text-white"><X className="w-5 h-5" /></button></div>
+            <form onSubmit={handleSubmitKyb} className="p-6 grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+              {([['companyName','Legal company name'],['registrationNumber','Company registration number'],['country','Country code (ISO 3166-1 alpha-3)'],['incorporatedOn','Incorporation date'],['type','Legal entity type'],['legalAddress','Registered legal address']] as const).map(([key,label])=><label key={key} className="font-semibold text-slate-700">{label}<input required type={key==='incorporatedOn'?'date':'text'} maxLength={key==='country'?3:undefined} value={kybData[key]} onChange={e=>setKybData({...kybData,[key]:key==='country'?e.target.value.toUpperCase():e.target.value})} className="mt-1 w-full rounded-lg border border-slate-300 p-2 text-xs font-normal" /></label>)}
+              {([['registrationLocation','Registration location'],['email','Company email'],['phone','Company phone'],['taxId','Tax ID'],['website','Company website'],['postalAddress','Postal address'],['controlScheme','Ownership and control structure'],['applicantPosition','Applicant position']] as const).map(([key,label])=><label key={key} className="font-semibold text-slate-700">{label}<input value={kybData[key]} onChange={e=>setKybData({...kybData,[key]:e.target.value})} className="mt-1 w-full rounded-lg border border-slate-300 p-2 text-xs font-normal" /></label>)}
+              {apiError&&<p role="alert" className="sm:col-span-2 rounded-lg bg-red-50 p-3 text-red-800">{apiError}</p>}
+              <div className="sm:col-span-2 flex justify-end gap-2 pt-2"><button type="button" onClick={()=>setShowKybModal(false)} className="px-4 py-2 rounded-lg border text-slate-700">Cancel</button><button disabled={apiBusy} type="submit" className="mat-btn-primary px-4 py-2 disabled:opacity-50">{apiBusy?'Submitting…':'Submit KYB information'}</button></div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ------------------------------------------------------------- */}
       {/* STEP 1: REGULATORY NOTICE MODAL */}
       {/* ------------------------------------------------------------- */}
       {showNoticeModal && (
@@ -766,43 +908,26 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
 
             <div className="p-6 space-y-4 text-xs text-slate-600 leading-relaxed">
               <div className="p-3.5 bg-onion-50 border border-onion-200 rounded-xl text-slate-800 space-y-2">
-                <p className="font-semibold text-onion-900 text-sm">Notice of Data Sharing with Orki Protocol</p>
-                <p className="text-[11px] text-slate-600 leading-relaxed">
-                  Enabling <strong>Accept USDC</strong> will securely transmit your merchant onboarding information to Orki Protocol to initialize your non-custodial smart wallet settlement rails under UAE VARA / CBUAE regulations.
-                </p>
-
-                {/* Data to be shared preview */}
-                <div className="mt-2 p-2.5 bg-white/80 rounded-lg border border-onion-100 font-mono text-[10px] space-y-1 text-slate-700">
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">Legal Entity:</span>
-                    <span className="font-semibold text-slate-900">{merchant.legalBusinessName}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">Trade License:</span>
-                    <span className="font-semibold text-slate-900">{merchant.tradeLicenseNumber}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">Jurisdiction:</span>
-                    <span className="font-semibold text-slate-900">{merchant.jurisdiction}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">Representative:</span>
-                    <span className="font-semibold text-slate-900">{merchant.representativeName} ({merchant.representativeEmail})</span>
-                  </div>
-                </div>
+                <p className="font-semibold text-onion-900 text-sm">{notice?.title || 'Regulatory & Stablecoin Operations Disclosure'}</p>
+                {notice?.sections?.map(section => <div key={section.heading} className="mt-2"><p className="font-semibold text-slate-800">{section.heading}</p><p className="text-[11px] text-slate-600 leading-relaxed">{section.content}</p></div>)}
               </div>
 
               <div className="space-y-1.5 border-t border-slate-100 pt-3 text-[11px] text-slate-500">
-                <p>• Neither Orki nor your PSP holds your merchant funds at any time.</p>
-                <p>• Payments are deposited directly to your non-custodial smart wallet.</p>
-                <p>• Your business details are verified through institutional SumSub KYB.</p>
+                <p>Review the disclosure above. Your company information is submitted for KYB after you acknowledge this notice.</p>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <label className="text-[11px] font-semibold text-slate-700">Authorised signatory name<input value={signatory.name} onChange={e=>setSignatory({...signatory,name:e.target.value})} className="mt-1 w-full rounded-lg border border-slate-300 p-2 text-xs font-normal" required /></label>
+                <label className="text-[11px] font-semibold text-slate-700">Signatory email<input type="email" value={signatory.email} onChange={e=>setSignatory({...signatory,email:e.target.value})} className="mt-1 w-full rounded-lg border border-slate-300 p-2 text-xs font-normal" required /></label>
+                <label className="text-[11px] font-semibold text-slate-700 sm:col-span-2">Signatory title<input value={signatory.title} onChange={e=>setSignatory({...signatory,title:e.target.value})} className="mt-1 w-full rounded-lg border border-slate-300 p-2 text-xs font-normal" placeholder="e.g. Director" required /></label>
               </div>
 
               <button
-                onClick={handleAcknowledgeNotice}
+                onClick={() => void handleAcknowledgeNotice()}
+                disabled={apiBusy || !signatory.name || !signatory.email || !signatory.title}
                 className="w-full mat-btn-primary py-3 text-xs font-semibold flex items-center justify-center space-x-2 shadow-sm mt-4"
               >
-                <span>Enable Accept USDC & Share Data with Orki</span>
+                <span>{apiBusy ? 'Recording acknowledgement…' : 'Acknowledge notice and continue'}</span>
                 <ChevronRight className="w-4 h-4" />
               </button>
             </div>
@@ -821,7 +946,7 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
                 <Lock className="w-5 h-5 text-onion-300" />
                 <div>
                   <h3 className="font-bold text-sm tracking-tight">Step 2 of 4: Terms of Service Acceptance</h3>
-                  <p className="text-[10px] text-slate-400 font-mono">Entity: ORKI PROTOCOL LTD</p>
+                  <p className="text-[10px] text-slate-400 font-mono">Entity: {termsData?.tos?.entityName || 'Loading legal entity'}</p>
                 </div>
               </div>
               <button onClick={() => setShowTermsModal(false)} className="text-slate-400 hover:text-white">
@@ -836,12 +961,12 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
                   <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
                     Required Legal Documents
                   </span>
-                  <span className="text-[10px] text-slate-400 font-mono">POST /v1/tos/{tosToken}</span>
+                  <span className="text-[10px] text-slate-400 font-mono">GET /merchant/terms · POST /tos/{termsData?.tos?.token ? 'token' : '…'}</span>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                   <a
-                    href="https://legal.orki.network/documents/merchant-terms-of-service.pdf"
+                    href={termsData?.tos?.documentLinks?.tos || '#'}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="p-3 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl transition flex items-center justify-between group"
@@ -857,7 +982,7 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
                   </a>
 
                   <a
-                    href="https://legal.orki.network/documents/privacy-policy.pdf"
+                    href={termsData?.tos?.documentLinks?.privacyPolicy || '#'}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="p-3 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl transition flex items-center justify-between group"
@@ -921,19 +1046,21 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
               {/* Two Options: Option B (Manual in Dashboard) & Option A (Hosted Page) */}
               <div className="space-y-2 pt-1">
                 <button
-                  onClick={handleAcceptTerms}
-                  disabled={!hasAgreedTos}
+                  onClick={() => void handleAcceptTerms()}
+                  disabled={!hasAgreedTos || apiBusy}
                   className="w-full mat-btn-primary py-3 text-xs font-semibold flex items-center justify-center space-x-1.5 shadow-sm disabled:opacity-50"
                 >
-                  <span>Submit TOS Acceptance (Option B: Manual)</span>
+                  <span>{apiBusy ? 'Recording acceptance…' : 'Accept terms and continue'}</span>
                   <ChevronRight className="w-4 h-4" />
                 </button>
 
                 <button
                   type="button"
                   onClick={() => {
-                    window.open(`/tos/${tosToken}`, '_blank', 'width=620,height=720')
+                    const token = termsData?.tos?.token
+                    if (token) window.open(`/tos/${encodeURIComponent(token)}`, '_blank', 'width=620,height=720')
                   }}
+                  disabled={!termsData?.tos?.token}
                   className="w-full py-2.5 px-3 border border-slate-200 hover:border-slate-300 bg-white hover:bg-slate-50 rounded-xl text-xs font-medium text-slate-700 transition flex items-center justify-center space-x-1.5"
                 >
                   <ExternalLink className="w-3.5 h-3.5 text-slate-500" />

@@ -84,6 +84,10 @@ export const Header: React.FC = () => {
 
           {/* Quick Actions & Logout */}
           <div className="flex items-center space-x-2.5">
+            <Link to="/api-workbench" className="hidden sm:inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-slate-600 hover:text-slate-900 bg-slate-50 hover:bg-slate-100 border border-slate-200 transition">
+              <ExternalLink className="w-3.5 h-3.5" />
+              <span>Backend API</span>
+            </Link>
             {user.role === 'merchant' && (
               <Link
                 to="/checkout/falcon-vip-concierge"

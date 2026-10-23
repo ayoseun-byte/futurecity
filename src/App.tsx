@@ -9,9 +9,9 @@ import { MerchantDetailPage } from './views/Organization/MerchantDetailPage'
 import { MerchantDashboard } from './views/Merchant/MerchantDashboard'
 import { CustomerCheckoutView } from './views/Checkout/CustomerCheckoutView'
 import { OrkiAdminPortal } from './views/Admin/OrkiAdminPortal'
-import { SumsubVerifyPage } from './views/Onboarding/SumsubVerifyPage'
 import { PasskeyCeremonyPage } from './views/Onboarding/PasskeyCeremonyPage'
 import { HostedTosPage } from './views/Onboarding/HostedTosPage'
+import { ApiWorkbench } from './views/ApiWorkbench'
 import type { Merchant, Paylink, Transaction, Organization } from './types'
 import {
   getStoredOrganizations,
@@ -228,11 +228,11 @@ function MainRoutes() {
   return (
     <Routes>
       <Route path="/login" element={<LoginView />} />
+      <Route path="/api-workbench" element={<ApiWorkbench />} />
 
       {/* External Ceremony Routes (Open in New Tab / Hosted Gateway) */}
       <Route path="/tos/:token" element={<HostedTosPage />} />
-      <Route path="/verify/sumsub" element={<SumsubVerifyPage />} />
-      <Route path="/onboarding/passkey" element={<PasskeyCeremonyPage />} />
+      <Route path="/setup" element={<PasskeyCeremonyPage />} />
 
       {/* Organization Portal */}
       <Route
