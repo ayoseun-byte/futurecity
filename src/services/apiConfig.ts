@@ -8,7 +8,7 @@ export interface ApiConfig {
 const STORAGE_KEY = 'orki_api_workbench_config'
 
 const defaults: ApiConfig = {
-  baseUrl: (import.meta.env.VITE_PSP_API_URL || 'http://localhost:8000').replace(/\/$/, ''),
+  baseUrl: (import.meta.env.VITE_PSP_API_URL || '').replace(/\/$/, ''),
   adminKey: '',
   pspKey: '',
   merchantSession: '',

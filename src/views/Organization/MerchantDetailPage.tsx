@@ -58,6 +58,9 @@ export const MerchantDetailPage: React.FC<MerchantDetailPageProps> = ({
   const merchantPaylinks = paylinks.filter(
     (p) => p.status === 'active' || p.status === 'disabled'
   )
+  const canToggleStatus = merchant.status === 'active' || (
+    merchant.status === 'disabled' && !!merchant.verifiedAt && !!merchant.activatedAt
+  )
 
   return (
     <div className="space-y-6">
@@ -94,7 +97,7 @@ export const MerchantDetailPage: React.FC<MerchantDetailPageProps> = ({
                 <span className="w-1.5 h-1.5 rounded-full bg-[#7D00FF] mr-1"></span>
                 MoonPay
               </span>
-              {merchant.status === 'active' || !!merchant.activatedAt ? (
+              {merchant.status === 'active' && !!merchant.verifiedAt && !!merchant.activatedAt ? (
                 <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-300 shadow-xs">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1 animate-pulse"></span>
                   Orki (Active)
@@ -117,7 +120,9 @@ export const MerchantDetailPage: React.FC<MerchantDetailPageProps> = ({
                 merchant.status === 'active' ? 'disabled' : 'active'
               )
             }
-            className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center space-x-2 border shadow-sm ${
+            disabled={!canToggleStatus}
+            title={canToggleStatus ? undefined : 'Merchant must complete Orki onboarding before activation.'}
+            className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center space-x-2 border shadow-sm disabled:cursor-not-allowed disabled:opacity-50 ${
               merchant.status === 'active'
                 ? 'bg-rose-50 border-rose-200 text-rose-700 hover:bg-rose-100'
                 : 'bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100'

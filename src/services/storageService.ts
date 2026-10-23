@@ -99,23 +99,49 @@ export function saveStoredMerchants(merchants: Merchant[]): void {
 
 export function ensureDemoDataForOrganization(organizationId: string): void {
   const storedMerchants = getStoredMerchants()
-  if (storedMerchants.some((merchant) =>
-    merchant.organizationId === organizationId && merchant.id.startsWith('mrch_demo_')
-  )) return
-
   const organizationSlug = organizationId.toLowerCase().replace(/[^a-z0-9]+/g, '').slice(-12) || 'org'
   const demoTemplates = INITIAL_MERCHANTS.filter((merchant) => merchant.organizationId === 'psp_xsquare01')
+  const existingDemoMerchants = storedMerchants.filter((merchant) =>
+    merchant.organizationId === organizationId && merchant.id.startsWith('mrch_demo_')
+  )
+
+  const existingByExternalId = new Map(existingDemoMerchants.map((merchant) => [merchant.externalId, merchant]))
   const merchantIds = new Map(
     demoTemplates.map((merchant, index) => [merchant.id, `mrch_demo_${organizationSlug}_${index + 1}`])
   )
-  const demoMerchants = demoTemplates.map((merchant, index) => ({
-    ...merchant,
-    id: merchantIds.get(merchant.id) ?? merchant.id,
-    organizationId,
-    externalId: `${organizationSlug.toUpperCase()}-${index + 1}`,
-  }))
+  const demoMerchants = demoTemplates.map((merchant, index) => {
+    const externalId = `${organizationSlug.toUpperCase()}-${index + 1}`
+    const existing = existingByExternalId.get(externalId)
+    return {
+      ...merchant,
+      ...existing,
+      id: existing?.id ?? merchantIds.get(merchant.id) ?? merchant.id,
+      organizationId,
+      externalId,
+      status: 'invited' as const,
+      nextStep: 'OPT_IN' as const,
+      merchantWallet: undefined,
+      baseWalletAddress: undefined,
+      solanaWalletAddress: undefined,
+      passkeyId: undefined,
+      noticeAcknowledgedAt: undefined,
+      kybInformationSubmittedAt: undefined,
+      termsAcceptedAt: undefined,
+      sumsubCompletedAt: undefined,
+      passkeyRegisteredAt: undefined,
+      verifiedAt: undefined,
+      activatedAt: undefined,
+      volumeUsdc: 0,
+      balanceUsdc: 0,
+    }
+  })
 
-  saveStoredMerchants([...demoMerchants, ...storedMerchants])
+  saveStoredMerchants([
+    ...demoMerchants,
+    ...storedMerchants.filter((merchant) =>
+      merchant.organizationId !== organizationId || !merchant.id.startsWith('mrch_demo_')
+    ),
+  ])
 
   const demoPaylinks = INITIAL_PAYLINKS
     .filter((paylink) => paylink.organizationId === 'psp_xsquare01')
@@ -128,7 +154,13 @@ export function ensureDemoDataForOrganization(organizationId: string): void {
       checkoutUrl: `/checkout/${paylink.slug}-${organizationSlug}`,
     }))
   const storedPaylinks = getStoredPaylinks()
-  saveStoredPaylinks([...demoPaylinks, ...storedPaylinks.filter((paylink) => !DEMO_PAYLINK_IDS.has(paylink.id))])
+  const demoPaylinkPrefix = `plk_demo_${organizationSlug}_`
+  saveStoredPaylinks([
+    ...demoPaylinks,
+    ...storedPaylinks.filter((paylink) =>
+      !DEMO_PAYLINK_IDS.has(paylink.id) && !paylink.id.startsWith(demoPaylinkPrefix)
+    ),
+  ])
 
   const demoTransactions = INITIAL_TRANSACTIONS
     .filter((transaction) => transaction.organizationId === 'psp_xsquare01')
@@ -139,9 +171,12 @@ export function ensureDemoDataForOrganization(organizationId: string): void {
       organizationId,
     }))
   const storedTransactions = getStoredTransactions()
+  const demoTransactionPrefix = `tx_demo_${organizationSlug}_`
   saveStoredTransactions([
     ...demoTransactions,
-    ...storedTransactions.filter((transaction) => !DEMO_TRANSACTION_IDS.has(transaction.id)),
+    ...storedTransactions.filter((transaction) =>
+      !DEMO_TRANSACTION_IDS.has(transaction.id) && !transaction.id.startsWith(demoTransactionPrefix)
+    ),
   ])
 }
 

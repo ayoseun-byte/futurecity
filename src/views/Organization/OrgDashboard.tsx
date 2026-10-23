@@ -370,7 +370,7 @@ export const OrgDashboard: React.FC<OrgDashboardProps> = ({
                         </span>
 
                         {/* Orki Badge (Active vs Disabled) */}
-                        {merchant.status === 'active' || !!merchant.activatedAt ? (
+                        {merchant.status === 'active' && !!merchant.verifiedAt && !!merchant.activatedAt ? (
                           <span
                             title="Orki multi-chain USDC settlement active"
                             className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-300 shadow-xs"

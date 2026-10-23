@@ -25,6 +25,7 @@ import {
   ensureDemoDataForOrganization,
   clearAllStoredData,
 } from './services/storageService'
+import { fetchPspMerchants } from './services/pspMerchantService'
 import { AlertCircle, ArrowRight } from 'lucide-react'
 
 // Protected Route Guard
@@ -121,6 +122,54 @@ function MainRoutes() {
     setMerchants(getStoredMerchants())
     setPaylinks(getStoredPaylinks())
     setTransactions(getStoredTransactions())
+    const demoMerchantIdsByExternalId = new Map(
+      getStoredMerchants()
+        .filter((merchant) =>
+          merchant.organizationId === activeOrganization.id && merchant.id.startsWith('mrch_demo_')
+        )
+        .map((merchant) => [merchant.externalId, merchant.id])
+    )
+
+    let active = true
+    void fetchPspMerchants(activeOrganization.id)
+      .then((backendMerchants) => {
+        if (!active || backendMerchants === null) return
+        const merchantIdReplacements = new Map(
+          backendMerchants.flatMap((merchant) => {
+            const demoId = demoMerchantIdsByExternalId.get(merchant.externalId)
+            return demoId && demoId !== merchant.id ? [[demoId, merchant.id] as const] : []
+          })
+        )
+        const savedExternalIds = new Set(
+          backendMerchants.map((merchant) => merchant.externalId).filter(Boolean)
+        )
+        setMerchants((current) => [
+          ...current.filter((merchant) =>
+            merchant.organizationId !== activeOrganization.id ||
+            !savedExternalIds.has(merchant.externalId)
+          ),
+          ...backendMerchants,
+        ])
+        if (merchantIdReplacements.size > 0) {
+          setPaylinks((current) => current.map((paylink) => ({
+            ...paylink,
+            merchantId: paylink.merchantId
+              ? merchantIdReplacements.get(paylink.merchantId) ?? paylink.merchantId
+              : undefined,
+          })))
+          setTransactions((current) => current.map((transaction) => ({
+            ...transaction,
+            merchantId: merchantIdReplacements.get(transaction.merchantId) ?? transaction.merchantId,
+          })))
+        }
+      })
+      .catch((error: unknown) => {
+        console.error('Failed to load PSP merchants from the backend.', error)
+      })
+
+    return () => {
+      active = false
+    }
   }, [user?.role, user?.organizationId])
 
   // Derive active organization for org view based on auth user
@@ -198,6 +247,14 @@ function MainRoutes() {
     merchantId: string,
     newStatus: 'active' | 'disabled'
   ) => {
+    const merchant = merchants.find((item) => item.id === merchantId)
+    if (!merchant) return
+    if (
+      newStatus === 'active' &&
+      (merchant.status !== 'disabled' || !merchant.verifiedAt || !merchant.activatedAt)
+    ) return
+    if (newStatus === 'disabled' && merchant.status !== 'active') return
+
     setMerchants(
       merchants.map((m) => (m.id === merchantId ? { ...m, status: newStatus } : m))
     )
