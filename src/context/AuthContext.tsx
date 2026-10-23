@@ -61,7 +61,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     if (role === 'org') {
       const orgs = getStoredOrganizations()
-      const targetOrg = orgs.find((o) => o.id === entityId) || orgs[0]
+      const targetOrg = orgs.find((o) => o.id === entityId)
       if (targetOrg) {
         const primaryContact = targetOrg.contacts[0]
         setUser({
@@ -76,7 +76,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     } else if (role === 'merchant') {
       const merchants = getStoredMerchants()
-      const targetMerch = merchants.find((m) => m.id === entityId) || merchants[0]
+      const targetMerch = merchants.find((m) => m.id === entityId)
       if (targetMerch) {
         setUser({
           id: 'usr_merch_' + targetMerch.id,

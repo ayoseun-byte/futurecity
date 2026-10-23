@@ -1,10 +1,14 @@
 import type { Organization, Merchant, Paylink, Transaction } from '../types'
 import {
-  INITIAL_ORGANIZATIONS,
   INITIAL_MERCHANTS,
   INITIAL_PAYLINKS,
   INITIAL_TRANSACTIONS,
 } from './mockData'
+
+const DEMO_ORGANIZATION_IDS = new Set(['psp_xsquare01', 'psp_sandbox02', 'psp_gulfpay03'])
+const DEMO_MERCHANT_IDS = new Set(INITIAL_MERCHANTS.map((merchant) => merchant.id))
+const DEMO_PAYLINK_IDS = new Set(INITIAL_PAYLINKS.map((paylink) => paylink.id))
+const DEMO_TRANSACTION_IDS = new Set(INITIAL_TRANSACTIONS.map((transaction) => transaction.id))
 
 const STORAGE_KEYS = {
   ORGANIZATIONS: 'orki_organizations_v2',
@@ -21,17 +25,24 @@ export function getStoredOrganizations(): Organization[] {
     const raw = localStorage.getItem(STORAGE_KEYS.ORGANIZATIONS)
     if (raw) {
       const parsed = JSON.parse(raw)
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed
+      if (Array.isArray(parsed)) {
+        const organizations = parsed.filter((organization): organization is Organization =>
+          organization && typeof organization.id === 'string' && !DEMO_ORGANIZATION_IDS.has(organization.id)
+        )
+        if (organizations.length !== parsed.length) saveStoredOrganizations(organizations)
+        return organizations
+      }
     }
-    saveStoredOrganizations(INITIAL_ORGANIZATIONS)
-    return INITIAL_ORGANIZATIONS
+    return []
   } catch {
-    return INITIAL_ORGANIZATIONS
+    return []
   }
 }
 
 export function saveStoredOrganizations(orgs: Organization[]): void {
-  localStorage.setItem(STORAGE_KEYS.ORGANIZATIONS, JSON.stringify(orgs))
+  localStorage.setItem(STORAGE_KEYS.ORGANIZATIONS, JSON.stringify(
+    orgs.filter((organization) => !DEMO_ORGANIZATION_IDS.has(organization.id))
+  ))
 }
 
 export function addStoredOrganization(org: Organization): void {
@@ -68,17 +79,70 @@ export function getStoredMerchants(): Merchant[] {
     const raw = localStorage.getItem(STORAGE_KEYS.MERCHANTS)
     if (raw) {
       const parsed = JSON.parse(raw)
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed
+      if (Array.isArray(parsed)) {
+        return parsed.filter((merchant): merchant is Merchant =>
+          merchant && typeof merchant.id === 'string' && !DEMO_MERCHANT_IDS.has(merchant.id)
+        )
+      }
     }
-    saveStoredMerchants(INITIAL_MERCHANTS)
-    return INITIAL_MERCHANTS
+    return []
   } catch {
-    return INITIAL_MERCHANTS
+    return []
   }
 }
 
 export function saveStoredMerchants(merchants: Merchant[]): void {
-  localStorage.setItem(STORAGE_KEYS.MERCHANTS, JSON.stringify(merchants))
+  localStorage.setItem(STORAGE_KEYS.MERCHANTS, JSON.stringify(
+    merchants.filter((merchant) => !DEMO_MERCHANT_IDS.has(merchant.id))
+  ))
+}
+
+export function ensureDemoDataForOrganization(organizationId: string): void {
+  const storedMerchants = getStoredMerchants()
+  if (storedMerchants.some((merchant) =>
+    merchant.organizationId === organizationId && merchant.id.startsWith('mrch_demo_')
+  )) return
+
+  const organizationSlug = organizationId.toLowerCase().replace(/[^a-z0-9]+/g, '').slice(-12) || 'org'
+  const demoTemplates = INITIAL_MERCHANTS.filter((merchant) => merchant.organizationId === 'psp_xsquare01')
+  const merchantIds = new Map(
+    demoTemplates.map((merchant, index) => [merchant.id, `mrch_demo_${organizationSlug}_${index + 1}`])
+  )
+  const demoMerchants = demoTemplates.map((merchant, index) => ({
+    ...merchant,
+    id: merchantIds.get(merchant.id) ?? merchant.id,
+    organizationId,
+    externalId: `${organizationSlug.toUpperCase()}-${index + 1}`,
+  }))
+
+  saveStoredMerchants([...demoMerchants, ...storedMerchants])
+
+  const demoPaylinks = INITIAL_PAYLINKS
+    .filter((paylink) => paylink.organizationId === 'psp_xsquare01')
+    .map((paylink, index) => ({
+      ...paylink,
+      id: `plk_demo_${organizationSlug}_${index + 1}`,
+      merchantId: merchantIds.get(paylink.merchantId ?? ''),
+      organizationId,
+      slug: `${paylink.slug}-${organizationSlug}`,
+      checkoutUrl: `/checkout/${paylink.slug}-${organizationSlug}`,
+    }))
+  const storedPaylinks = getStoredPaylinks()
+  saveStoredPaylinks([...demoPaylinks, ...storedPaylinks.filter((paylink) => !DEMO_PAYLINK_IDS.has(paylink.id))])
+
+  const demoTransactions = INITIAL_TRANSACTIONS
+    .filter((transaction) => transaction.organizationId === 'psp_xsquare01')
+    .map((transaction, index) => ({
+      ...transaction,
+      id: `tx_demo_${organizationSlug}_${index + 1}`,
+      merchantId: merchantIds.get(transaction.merchantId) ?? transaction.merchantId,
+      organizationId,
+    }))
+  const storedTransactions = getStoredTransactions()
+  saveStoredTransactions([
+    ...demoTransactions,
+    ...storedTransactions.filter((transaction) => !DEMO_TRANSACTION_IDS.has(transaction.id)),
+  ])
 }
 
 export function addStoredMerchant(merchant: Merchant): void {
@@ -115,17 +179,22 @@ export function getStoredPaylinks(): Paylink[] {
     const raw = localStorage.getItem(STORAGE_KEYS.PAYLINKS)
     if (raw) {
       const parsed = JSON.parse(raw)
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed
+      if (Array.isArray(parsed)) {
+        return parsed.filter((paylink): paylink is Paylink =>
+          paylink && typeof paylink.id === 'string' && !DEMO_PAYLINK_IDS.has(paylink.id)
+        )
+      }
     }
-    saveStoredPaylinks(INITIAL_PAYLINKS)
-    return INITIAL_PAYLINKS
+    return []
   } catch {
-    return INITIAL_PAYLINKS
+    return []
   }
 }
 
 export function saveStoredPaylinks(paylinks: Paylink[]): void {
-  localStorage.setItem(STORAGE_KEYS.PAYLINKS, JSON.stringify(paylinks))
+  localStorage.setItem(STORAGE_KEYS.PAYLINKS, JSON.stringify(
+    paylinks.filter((paylink) => !DEMO_PAYLINK_IDS.has(paylink.id))
+  ))
 }
 
 export function addStoredPaylink(paylink: Paylink): void {
@@ -141,17 +210,22 @@ export function getStoredTransactions(): Transaction[] {
     const raw = localStorage.getItem(STORAGE_KEYS.TRANSACTIONS)
     if (raw) {
       const parsed = JSON.parse(raw)
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed
+      if (Array.isArray(parsed)) {
+        return parsed.filter((transaction): transaction is Transaction =>
+          transaction && typeof transaction.id === 'string' && !DEMO_TRANSACTION_IDS.has(transaction.id)
+        )
+      }
     }
-    saveStoredTransactions(INITIAL_TRANSACTIONS)
-    return INITIAL_TRANSACTIONS
+    return []
   } catch {
-    return INITIAL_TRANSACTIONS
+    return []
   }
 }
 
 export function saveStoredTransactions(txs: Transaction[]): void {
-  localStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(txs))
+  localStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(
+    txs.filter((transaction) => !DEMO_TRANSACTION_IDS.has(transaction.id))
+  ))
 }
 
 export function addStoredTransaction(tx: Transaction): void {

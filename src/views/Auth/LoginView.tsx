@@ -1,8 +1,13 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import type { UserRole } from '../../context/AuthContext'
-import { getStoredOrganizations, getStoredMerchants } from '../../services/storageService'
+import type { Organization } from '../../types'
+import {
+  getStoredMerchants,
+  saveStoredOrganizations,
+} from '../../services/storageService'
+import { getApiConfig, requestApi } from '../../services/apiConfig'
 import {
   Building2,
   Store,
@@ -19,15 +24,18 @@ export const LoginView: React.FC = () => {
   const { login } = useAuth()
   const navigate = useNavigate()
 
-  const organizations = getStoredOrganizations()
+  const [organizations, setOrganizations] = useState<Organization[]>([])
   const merchants = getStoredMerchants()
 
   const [activeTab, setActiveTab] = useState<UserRole>('org')
+  const [organizationsLoading, setOrganizationsLoading] = useState(false)
+  const [organizationsError, setOrganizationsError] = useState('')
+  const [loginError, setLoginError] = useState('')
 
   // PSP form state
-  const [pspEmail, setPspEmail] = useState(organizations[0]?.contacts[0]?.email || '')
+  const [pspEmail, setPspEmail] = useState('')
   const [pspPassword, setPspPassword] = useState('password123')
-  const [selectedOrgId, setSelectedOrgId] = useState<string>(organizations[0]?.id || '')
+  const [selectedOrgId, setSelectedOrgId] = useState('')
 
   // Merchant form state
   const [merchantEmail, setMerchantEmail] = useState(merchants[0]?.representativeEmail || '')
@@ -38,32 +46,87 @@ export const LoginView: React.FC = () => {
   const [adminEmail, setAdminEmail] = useState('admin@orki.com')
   const [adminPassword, setAdminPassword] = useState('admin123')
 
+  useEffect(() => {
+    const config = getApiConfig()
+    if (!config.adminKey) {
+      setOrganizations([])
+      saveStoredOrganizations([])
+      setOrganizationsError('Set the Orki admin API key in the Backend API workbench to load PSPs from the backend.')
+      return
+    }
+
+    let active = true
+    setOrganizationsLoading(true)
+    setOrganizationsError('')
+    requestApi<{
+      data: {
+        pspId: string
+        pspName: string
+        category: Organization['category']
+        categoryType: Organization['categoryType']
+        status: Organization['status']
+        webhookUrl?: string | null
+        createdAt: string
+      }[]
+    }>(config, 'GET', '/api/v1/admin/psps', undefined, 'admin')
+      .then(({ data }) => {
+        if (!active) return
+        const rows: Organization[] = data.map((psp) => ({
+          id: psp.pspId,
+          name: psp.pspName,
+          category: psp.category,
+          categoryType: psp.categoryType,
+          status: psp.status,
+          webhookUrl: psp.webhookUrl || undefined,
+          createdAt: psp.createdAt,
+          isRegulatedEntity: false,
+          feeWallet: '',
+          contacts: [],
+        }))
+        setOrganizations(rows)
+        saveStoredOrganizations(rows)
+        setSelectedOrgId((current) => rows.some((row) => row.id === current) ? current : rows[0]?.id || '')
+      })
+      .catch((reason: unknown) => {
+        if (active) {
+          setOrganizations([])
+          saveStoredOrganizations([])
+          setOrganizationsError(reason instanceof Error ? reason.message : 'PSPs could not be loaded from the backend.')
+        }
+      })
+      .finally(() => {
+        if (active) setOrganizationsLoading(false)
+      })
+
+    return () => {
+      active = false
+    }
+  }, [])
+
   const handleOrgLogin = (e: React.FormEvent) => {
     e.preventDefault()
-    // Match by selected ID or by email
-    const org = organizations.find((o) => o.id === selectedOrgId || o.contacts.some((c) => c.email.toLowerCase() === pspEmail.toLowerCase())) || organizations[0]
-    if (org) {
-      login('org', org.id)
-    } else {
-      login('org', undefined, {
-        name: pspEmail.split('@')[0] || 'FinTech Partner',
-        email: pspEmail || 'partner@example.com',
-      })
+    const org = organizations.find((organization) => organization.id === selectedOrgId)
+    if (!org) {
+      setLoginError('Select a PSP loaded from the backend before continuing.')
+      return
     }
+    setLoginError('')
+    login('org', org.id)
     navigate('/org')
   }
 
   const handleMerchantLogin = (e: React.FormEvent) => {
     e.preventDefault()
-    const merch = merchants.find((m) => m.id === selectedMerchantId || m.representativeEmail.toLowerCase() === merchantEmail.toLowerCase()) || merchants[0]
-    if (merch) {
-      login('merchant', merch.id)
-    } else {
-      login('merchant', undefined, {
-        name: merchantEmail.split('@')[0] || 'Merchant User',
-        email: merchantEmail || 'merchant@example.com',
-      })
+    const merch = merchants.find((merchant) =>
+      merchant.id === selectedMerchantId &&
+      merchant.representativeEmail.toLowerCase() === merchantEmail.toLowerCase()
+    )
+    if (!merch) {
+      setLoginError('Select a merchant and enter its registered email.')
+      return
     }
+    setLoginError('')
+    login('merchant', merch.id)
     navigate('/merchant')
   }
 
@@ -188,14 +251,18 @@ export const LoginView: React.FC = () => {
           {/* TAB 2: PSP / ORGANIZATION PORTAL */}
           {activeTab === 'org' && (
             <form onSubmit={handleOrgLogin} className="space-y-4">
-              {organizations.length === 0 ? (
+              {organizationsLoading ? (
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-xs text-slate-600">
+                  Loading PSPs from the backend…
+                </div>
+              ) : organizations.length === 0 ? (
                 <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-xs text-amber-800 space-y-2">
                   <div className="flex items-center space-x-2 font-semibold">
                     <AlertCircle className="w-4 h-4 text-amber-600" />
                     <span>No Organizations Registered Yet</span>
                   </div>
                   <p className="text-[11px] text-amber-700 leading-relaxed">
-                    To start the full workflow from scratch, log in as <strong>Orki Admin</strong> to register your first PSP, FinTech, or Bank partner.
+                    {organizationsError || 'Create a PSP in the Orki Admin Portal, then reload this page.'}
                   </p>
                   <button
                     type="button"
@@ -216,8 +283,6 @@ export const LoginView: React.FC = () => {
                       value={selectedOrgId}
                       onChange={(e) => {
                         setSelectedOrgId(e.target.value)
-                        const found = organizations.find((o) => o.id === e.target.value)
-                        if (found) setPspEmail(found.contacts[0]?.email || '')
                       }}
                       className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-onion focus:border-onion bg-white"
                     >
@@ -263,6 +328,7 @@ export const LoginView: React.FC = () => {
 
                   <button
                     type="submit"
+                    disabled={!selectedOrgId}
                     className="w-full mat-btn-primary py-2.5 px-4 text-xs font-semibold flex items-center justify-center space-x-2 shadow-xs mt-2"
                   >
                     <span>Log In to PSP Dashboard</span>
@@ -270,6 +336,7 @@ export const LoginView: React.FC = () => {
                   </button>
                 </>
               )}
+              {loginError && activeTab === 'org' && <p role="alert" className="text-xs text-red-600">{loginError}</p>}
             </form>
           )}
 
@@ -358,6 +425,7 @@ export const LoginView: React.FC = () => {
                   </button>
                 </>
               )}
+              {loginError && activeTab === 'merchant' && <p role="alert" className="text-xs text-red-600">{loginError}</p>}
             </form>
           )}
 

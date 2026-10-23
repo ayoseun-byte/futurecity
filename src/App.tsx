@@ -22,6 +22,7 @@ import {
   saveStoredPaylinks,
   getStoredTransactions,
   saveStoredTransactions,
+  ensureDemoDataForOrganization,
   clearAllStoredData,
 } from './services/storageService'
 import { AlertCircle, ArrowRight } from 'lucide-react'
@@ -108,15 +109,25 @@ function MainRoutes() {
     saveStoredTransactions(transactions)
   }, [transactions])
 
+  useEffect(() => {
+    if (user?.role !== 'org') return
+
+    const storedOrganizations = getStoredOrganizations()
+    const activeOrganization = storedOrganizations.find((organization) => organization.id === user.organizationId)
+    if (!activeOrganization) return
+
+    ensureDemoDataForOrganization(activeOrganization.id)
+    setOrganizations(storedOrganizations)
+    setMerchants(getStoredMerchants())
+    setPaylinks(getStoredPaylinks())
+    setTransactions(getStoredTransactions())
+  }, [user?.role, user?.organizationId])
+
   // Derive active organization for org view based on auth user
-  const activeOrg =
-    organizations.find((o) => o.id === user?.organizationId) ||
-    organizations[0]
+  const activeOrg = organizations.find((o) => o.id === user?.organizationId)
 
   // Derive active merchant for merchant view based on auth user
-  const activeMerchant =
-    merchants.find((m) => m.id === user?.merchantId) ||
-    merchants[0]
+  const activeMerchant = merchants.find((m) => m.id === user?.merchantId)
 
   // Organization Handlers
   const handleUpdateOrganization = (updated: Organization) => {
