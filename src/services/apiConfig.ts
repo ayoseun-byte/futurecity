@@ -1,6 +1,7 @@
 export interface ApiConfig {
   baseUrl: string
   adminKey: string
+  feeApproverKey: string
   pspKey: string
   merchantSession: string
 }
@@ -10,6 +11,7 @@ const STORAGE_KEY = 'orki_api_workbench_config'
 const defaults: ApiConfig = {
   baseUrl: (import.meta.env.VITE_PSP_API_URL || '').replace(/\/$/, ''),
   adminKey: '',
+  feeApproverKey: '',
   pspKey: '',
   merchantSession: '',
 }
@@ -31,9 +33,14 @@ export function saveApiConfig(config: ApiConfig): void {
 }
 
 export async function apiRequest(config: ApiConfig, method: string, path: string, body?: string, auth: 'none' | 'admin' | 'psp' | 'merchant' = 'none') {
+  if (!config.baseUrl.trim()) {
+    throw new Error('Set the PSP API base URL in the Backend API workbench before making requests.')
+  }
+
   const headers: Record<string, string> = { Accept: 'application/json' }
   if (body && method !== 'GET') headers['Content-Type'] = 'application/json'
   if (auth === 'admin' && config.adminKey) headers['X-Admin-Key'] = config.adminKey
+  if (path.includes('/fee-change-requests/') && config.feeApproverKey) headers['X-Fee-Approver-Key'] = config.feeApproverKey
   if (auth === 'psp' && config.pspKey) headers.Authorization = `Bearer ${config.pspKey}`
   if (auth === 'merchant' && config.merchantSession) headers.Authorization = `Bearer ${config.merchantSession}`
   if (method !== 'GET' && method !== 'HEAD') headers['Idempotency-Key'] = `fc-${crypto.randomUUID()}`

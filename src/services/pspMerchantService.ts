@@ -1,4 +1,4 @@
-import type { Merchant, MerchantStatus, OnboardingStep, SettlementMode } from '../types'
+import type { Merchant, MerchantStatus, OnboardingStep, Organization, SettlementMode, Transaction } from '../types'
 import { getApiConfig, requestApi } from './apiConfig'
 
 interface PspMerchantRecord {
@@ -64,6 +64,47 @@ interface PspMerchantRecord {
 interface PspMerchantPage {
   data: PspMerchantRecord[]
   last_page?: number
+}
+
+interface PspTransactionRecord {
+  id: string
+  organizationId?: string
+  merchantId: string
+  type: Transaction['type']
+  grossAmount: number | string
+  currency: string
+  orkiFeeBps: number | string
+  orkiFeeAmount: number | string
+  pspMarkupBps: number | string
+  pspMarkupAmount: number | string
+  netAmount: number | string
+  chain: string
+  txHash?: string | null
+  payerAddress?: string | null
+  status: Transaction['status']
+  createdAt: string
+}
+
+interface PspPage<T> {
+  data: T[]
+  last_page?: number
+}
+
+export interface PspDashboardMetrics {
+  totalVolumeUsdc: number
+  accruedMarkupUsdc: number
+  totalOfframpedAed: number
+  totalMerchants: number
+  activeMerchants: number
+  verifyingMerchants: number
+  actionRequiredMerchants: number
+}
+
+export interface PspDashboardData {
+  merchants: Merchant[]
+  transactions: Transaction[]
+  metrics: PspDashboardMetrics
+  feeSchedule?: Organization['feeSchedule']
 }
 
 const merchantStatuses: MerchantStatus[] = [
@@ -161,4 +202,94 @@ export async function fetchPspMerchants(organizationId: string): Promise<Merchan
   }
 
   return merchants.map((merchant) => mapMerchant(merchant, organizationId))
+}
+
+export async function fetchPspDashboard(organizationId: string): Promise<PspDashboardData | null> {
+  const config = getApiConfig()
+  if (!config.pspKey) return null
+
+  const [merchants, metricsResponse, profile, transactionsPage] = await Promise.all([
+    fetchPspMerchants(organizationId),
+    requestApi<{ metrics: Record<keyof PspDashboardMetrics, number | string> }>(
+      config, 'GET', '/api/v1/psp/metrics', undefined, 'psp'
+    ),
+    requestApi<{
+      feeSchedule?: {
+        paymentRateBps?: number
+        pspMarkupBps?: number
+        combinedCapBps?: number
+        lockedUntil?: string | null
+        offrampSpreadBps?: number
+        pendingChangeRequest?: {
+          id: string
+          requestedMarkupBps: number
+          requestedAt: string
+          effectiveAt: string
+          status: 'pending_approval'
+        } | null
+      }
+    }>(config, 'GET', '/api/v1/psp/profile', undefined, 'psp'),
+    fetchAllPspPages<PspTransactionRecord>('/api/v1/psp/transactions'),
+  ])
+
+  if (merchants === null) return null
+
+  return {
+    merchants,
+    transactions: transactionsPage.map((record) => ({
+      id: record.id,
+      organizationId: record.organizationId ?? organizationId,
+      merchantId: record.merchantId,
+      type: record.type,
+      grossAmount: number(record.grossAmount),
+      currency: record.currency,
+      orkiFeeBps: number(record.orkiFeeBps),
+      orkiFeeAmount: number(record.orkiFeeAmount),
+      pspMarkupBps: number(record.pspMarkupBps),
+      pspMarkupAmount: number(record.pspMarkupAmount),
+      netAmount: number(record.netAmount),
+      chain: record.chain,
+      txHash: text(record.txHash),
+      payerAddress: text(record.payerAddress),
+      status: record.status,
+      createdAt: record.createdAt,
+    })),
+    metrics: {
+      totalVolumeUsdc: number(metricsResponse.metrics.totalVolumeUsdc),
+      accruedMarkupUsdc: number(metricsResponse.metrics.accruedMarkupUsdc),
+      totalOfframpedAed: number(metricsResponse.metrics.totalOfframpedAed),
+      totalMerchants: number(metricsResponse.metrics.totalMerchants),
+      activeMerchants: number(metricsResponse.metrics.activeMerchants),
+      verifyingMerchants: number(metricsResponse.metrics.verifyingMerchants),
+      actionRequiredMerchants: number(metricsResponse.metrics.actionRequiredMerchants),
+    },
+    feeSchedule: profile.feeSchedule ? {
+      orkiFeeBps: profile.feeSchedule.paymentRateBps,
+      pspMarkupBps: profile.feeSchedule.pspMarkupBps ?? 0,
+      combinedCapBps: profile.feeSchedule.combinedCapBps,
+      lockedUntil: profile.feeSchedule.lockedUntil ?? undefined,
+      offrampSpreadBps: profile.feeSchedule.offrampSpreadBps ?? 0,
+      pendingChangeRequest: profile.feeSchedule.pendingChangeRequest ?? undefined,
+    } : undefined,
+  }
+}
+
+async function fetchAllPspPages<T>(path: string): Promise<T[]> {
+  const config = getApiConfig()
+  const records: T[] = []
+  let lastPage = 1
+
+  for (let pageNumber = 1; pageNumber <= lastPage; pageNumber += 1) {
+    const page = await requestApi<PspPage<T>>(
+      config,
+      'GET',
+      `${path}?page=${pageNumber}`,
+      undefined,
+      'psp'
+    )
+    records.push(...page.data)
+    lastPage = Math.max(1, page.last_page ?? 1)
+  }
+
+  return records
 }

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import type { Organization } from '../../types'
@@ -24,6 +24,17 @@ interface OrkiAdminPortalProps {
   onAddOrganization: (newOrg: Organization) => void
 }
 
+interface FeeChangeRequest {
+  id: string
+  organization_name: string
+  requested_markup_bps: number
+  requested_by: string
+  reason: string
+  submitted_at: string
+  effective_at: string
+  status: string
+}
+
 export const OrkiAdminPortal: React.FC<OrkiAdminPortalProps> = ({
   organizations,
   onUpdateOrganization,
@@ -46,6 +57,9 @@ export const OrkiAdminPortal: React.FC<OrkiAdminPortalProps> = ({
   const [claimLinks, setClaimLinks] = useState<Record<string, string>>({})
   const [apiBusy, setApiBusy] = useState(false)
   const [apiError, setApiError] = useState<string | null>(null)
+  const [feeRequests, setFeeRequests] = useState<FeeChangeRequest[]>([])
+  const [feeApproverEmail, setFeeApproverEmail] = useState('')
+  const [feeRejectionReason, setFeeRejectionReason] = useState('')
 
   useEffect(() => {
     const config = getApiConfig()
@@ -61,6 +75,41 @@ export const OrkiAdminPortal: React.FC<OrkiAdminPortalProps> = ({
       .catch(reason => { if (active) setApiError(reason instanceof Error ? reason.message : 'Unable to load PSPs from backend.') })
     return () => { active = false }
   }, [])
+
+  const refreshFeeRequests = useCallback(async () => {
+    const config = getApiConfig()
+    if (!config.adminKey) return
+    const response = await requestApi<{ data: FeeChangeRequest[] }>(config, 'GET', '/api/v1/admin/fee-change-requests', undefined, 'admin')
+    setFeeRequests(response.data || [])
+  }, [])
+
+  useEffect(() => {
+    let active = true
+    void refreshFeeRequests().catch((reason) => {
+      if (active) setApiError(reason instanceof Error ? reason.message : 'Unable to load pending fee-change requests.')
+    })
+    return () => { active = false }
+  }, [refreshFeeRequests])
+
+  const reviewFeeRequest = async (request: FeeChangeRequest, action: 'approve' | 'reject') => {
+    const config = getApiConfig()
+    if (!config.adminKey) { setApiError('Set the Orki admin API key in the Backend API workbench.'); return }
+    if (!config.feeApproverKey) { setApiError('Set the separate fee approver key in the Backend API workbench.'); return }
+    if (!feeApproverEmail.trim()) { setApiError('Enter the second approver email before reviewing fee requests.'); return }
+    if (action === 'reject' && feeRejectionReason.trim().length < 10) { setApiError('Enter a rejection reason of at least 10 characters.'); return }
+    setApiBusy(true)
+    setApiError(null)
+    try {
+      await requestApi(config, 'POST', `/api/v1/admin/fee-change-requests/${encodeURIComponent(request.id)}/${action}`, action === 'approve'
+        ? { approvedBy: feeApproverEmail.trim() }
+        : { rejectedBy: feeApproverEmail.trim(), reason: feeRejectionReason.trim() }, 'admin')
+      await refreshFeeRequests()
+    } catch (reason) {
+      setApiError(reason instanceof Error ? reason.message : `Fee request could not be ${action === 'approve' ? 'approved' : 'rejected'}.`)
+    } finally {
+      setApiBusy(false)
+    }
+  }
 
   // Registration Form State
   const [newPspForm, setNewPspForm] = useState({
@@ -206,6 +255,49 @@ export const OrkiAdminPortal: React.FC<OrkiAdminPortalProps> = ({
             <span>Total PSPs</span>
             <Building2 className="w-4 h-4 text-onion" />
           </div>
+
+          <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h2 className="text-sm font-bold text-slate-900">PSP fee-change review</h2>
+                <p className="mt-1 text-xs text-slate-500">Approval requires the separate fee approver credential and must occur after the notice period.</p>
+              </div>
+              <input
+                type="email"
+                value={feeApproverEmail}
+                onChange={(event) => setFeeApproverEmail(event.target.value)}
+                placeholder="Second approver email"
+                aria-label="Second approver email"
+                className="rounded-lg border border-slate-300 px-3 py-2 text-xs"
+              />
+            </div>
+            <input
+              type="text"
+              value={feeRejectionReason}
+              onChange={(event) => setFeeRejectionReason(event.target.value)}
+              placeholder="Rejection reason (required when rejecting)"
+              aria-label="Fee request rejection reason"
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs"
+            />
+            {feeRequests.length === 0 ? (
+              <p className="rounded-lg bg-slate-50 p-4 text-xs text-slate-500">No pending fee-change requests.</p>
+            ) : feeRequests.map((request) => (
+              <article key={request.id} className="rounded-xl border border-slate-200 p-4 space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <h3 className="text-xs font-bold text-slate-900">{request.organization_name} · {(request.requested_markup_bps / 100).toFixed(2)}%</h3>
+                    <p className="mt-1 text-[11px] text-slate-500">Requested by {request.requested_by} · submitted {new Date(request.submitted_at).toLocaleString()}</p>
+                  </div>
+                  <p className="text-[11px] font-semibold text-slate-600">Effective after {new Date(request.effective_at).toLocaleString()}</p>
+                </div>
+                <p className="whitespace-pre-wrap text-xs text-slate-700">{request.reason}</p>
+                <div className="flex gap-2">
+                  <button type="button" onClick={() => void reviewFeeRequest(request, 'approve')} disabled={apiBusy} className="rounded-lg bg-emerald-700 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50">Approve when eligible</button>
+                  <button type="button" onClick={() => void reviewFeeRequest(request, 'reject')} disabled={apiBusy} className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 disabled:opacity-50">Reject</button>
+                </div>
+              </article>
+            ))}
+          </section>
           <p className="text-2xl font-black text-slate-900">{visibleOrganizations.length}</p>
           <p className="text-[11px] text-slate-400">Approved, in review, and sandbox</p>
         </div>
@@ -411,10 +503,10 @@ export const OrkiAdminPortal: React.FC<OrkiAdminPortalProps> = ({
                       {org.feeSchedule ? (
                         <div className="space-y-0.5">
                           <p className="font-mono font-bold text-slate-800">
-                            Orki 1.00% + PSP {(org.feeSchedule.pspMarkupBps / 100).toFixed(2)}%
+                            Orki {org.feeSchedule.orkiFeeBps === undefined ? 'Not set' : `${(org.feeSchedule.orkiFeeBps / 100).toFixed(2)}%`} + PSP {(org.feeSchedule.pspMarkupBps / 100).toFixed(2)}%
                           </p>
                           <p className="text-[10px] text-slate-400">
-                            Total: {((org.feeSchedule.orkiFeeBps + org.feeSchedule.pspMarkupBps) / 100).toFixed(2)}% (Cap 3.00%)
+                            Total: {org.feeSchedule.orkiFeeBps === undefined ? 'Not set' : `${((org.feeSchedule.orkiFeeBps + org.feeSchedule.pspMarkupBps) / 100).toFixed(2)}%`} {org.feeSchedule.combinedCapBps === undefined ? '' : `(Cap ${(org.feeSchedule.combinedCapBps / 100).toFixed(2)}%)`}
                           </p>
                         </div>
                       ) : (

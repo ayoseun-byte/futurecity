@@ -144,18 +144,20 @@ export interface PspContact {
 }
 
 export interface PspFeeSchedule {
-  orkiFeeBps: number // Default 100 bps (1.00%)
-  orkiFeeCapPercent: number // e.g. 1.00%
-  orkiFeeCapAmount: number // Max fee amount in USDC e.g. 25.00
+  orkiFeeBps?: number
+  orkiFeeCapPercent?: number
+  orkiFeeCapAmount?: number
   pspMarkupBps: number // Set by PSP, hard-capped at 100 bps (1.00% max)
-  combinedCapBps: number // Combined cap e.g. 200 bps (2.00%)
-  lockedUntil: string // 30-day lock timestamp
-  orkiFeeWallet: string
-  pspFeeWallet: string
-  offrampSpreadBps: number // Orki-only offramp markup (PSP cannot charge offramp)
+  combinedCapBps?: number
+  lockedUntil?: string
+  orkiFeeWallet?: string
+  pspFeeWallet?: string
+  offrampSpreadBps?: number
   pendingChangeRequest?: {
+    id?: string
     requestedMarkupBps: number
     requestedAt: string
+    effectiveAt?: string
     status: 'pending_approval' | 'approved' | 'rejected'
   }
 }

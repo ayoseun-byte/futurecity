@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import type { UserRole } from './context/AuthContext'
@@ -25,7 +25,8 @@ import {
   ensureDemoDataForOrganization,
   clearAllStoredData,
 } from './services/storageService'
-import { fetchPspMerchants } from './services/pspMerchantService'
+import { fetchPspDashboard, type PspDashboardMetrics } from './services/pspMerchantService'
+import { getApiConfig, requestApi } from './services/apiConfig'
 import { AlertCircle, ArrowRight } from 'lucide-react'
 
 // Protected Route Guard
@@ -92,6 +93,9 @@ function MainRoutes() {
   const [merchants, setMerchants] = useState<Merchant[]>(getStoredMerchants)
   const [paylinks, setPaylinks] = useState<Paylink[]>(getStoredPaylinks)
   const [transactions, setTransactions] = useState<Transaction[]>(getStoredTransactions)
+  const [pspMetrics, setPspMetrics] = useState<PspDashboardMetrics | null>(null)
+  const [pspDashboardLoading, setPspDashboardLoading] = useState(false)
+  const [pspDashboardError, setPspDashboardError] = useState<string | null>(null)
 
   // Persist state changes to storageService
   useEffect(() => {
@@ -121,7 +125,7 @@ function MainRoutes() {
     setOrganizations(storedOrganizations)
     setMerchants(getStoredMerchants())
     setPaylinks(getStoredPaylinks())
-    setTransactions(getStoredTransactions())
+    setTransactions(getStoredTransactions().filter((transaction) => !transaction.id.startsWith('tx_demo_')))
     const demoMerchantIdsByExternalId = new Map(
       getStoredMerchants()
         .filter((merchant) =>
@@ -131,24 +135,39 @@ function MainRoutes() {
     )
 
     let active = true
-    void fetchPspMerchants(activeOrganization.id)
-      .then((backendMerchants) => {
-        if (!active || backendMerchants === null) return
+    setPspDashboardLoading(true)
+    setPspDashboardError(null)
+    void fetchPspDashboard(activeOrganization.id)
+      .then((dashboard) => {
+        if (!active) return
+        if (dashboard === null) {
+          setPspMetrics(null)
+          setTransactions([])
+          setPspDashboardError('Set the PSP API key in the Backend API workbench to load live dashboard data.')
+          return
+        }
+        setPspMetrics(dashboard.metrics)
+        setTransactions(dashboard.transactions)
+        setOrganizations((current) => current.map((organization) =>
+          organization.id === activeOrganization.id && dashboard.feeSchedule
+            ? { ...organization, feeSchedule: dashboard.feeSchedule }
+            : organization
+        ))
         const merchantIdReplacements = new Map(
-          backendMerchants.flatMap((merchant) => {
+          dashboard.merchants.flatMap((merchant) => {
             const demoId = demoMerchantIdsByExternalId.get(merchant.externalId)
             return demoId && demoId !== merchant.id ? [[demoId, merchant.id] as const] : []
           })
         )
         const savedExternalIds = new Set(
-          backendMerchants.map((merchant) => merchant.externalId).filter(Boolean)
+          dashboard.merchants.map((merchant) => merchant.externalId).filter(Boolean)
         )
         setMerchants((current) => [
           ...current.filter((merchant) =>
             merchant.organizationId !== activeOrganization.id ||
             !savedExternalIds.has(merchant.externalId)
           ),
-          ...backendMerchants,
+          ...dashboard.merchants,
         ])
         if (merchantIdReplacements.size > 0) {
           setPaylinks((current) => current.map((paylink) => ({
@@ -164,7 +183,13 @@ function MainRoutes() {
         }
       })
       .catch((error: unknown) => {
-        console.error('Failed to load PSP merchants from the backend.', error)
+        if (!active) return
+        setPspDashboardError(error instanceof Error ? error.message : 'Failed to load PSP dashboard data.')
+        setTransactions([])
+        setPspMetrics(null)
+      })
+      .finally(() => {
+        if (active) setPspDashboardLoading(false)
       })
 
     return () => {
@@ -189,22 +214,40 @@ function MainRoutes() {
     setOrganizations([newOrg, ...organizations])
   }
 
-  const handleUpdateFeeSchedule = (orgId: string, newMarkupBps: number) => {
-    setOrganizations(
-      organizations.map((org) => {
-        if (org.id === orgId && org.feeSchedule) {
-          return {
-            ...org,
+  const handleRequestFeeChange = async (
+    orgId: string,
+    requestedMarkupBps: number,
+    requestedBy: string,
+    reason: string
+  ) => {
+    const result = await requestApi<{
+      id: string
+      status: 'pending_approval'
+      requestedMarkupBps: number
+      submittedAt: string
+      effectiveAt: string
+    }>(getApiConfig(), 'POST', '/api/v1/psp/fee-change-requests', {
+      requestedMarkupBps,
+      requestedBy,
+      reason,
+    }, 'psp')
+    setOrganizations((current) => current.map((organization) =>
+      organization.id === orgId && organization.feeSchedule
+        ? {
+            ...organization,
             feeSchedule: {
-              ...org.feeSchedule,
-              pspMarkupBps: newMarkupBps,
-              lockedUntil: new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString(),
+              ...organization.feeSchedule,
+              pendingChangeRequest: {
+                id: result.id,
+                requestedMarkupBps: result.requestedMarkupBps,
+                requestedAt: result.submittedAt,
+                effectiveAt: result.effectiveAt,
+                status: result.status,
+              },
             },
           }
-        }
-        return org
-      })
-    )
+        : organization
+    ))
   }
 
   // Merchant Handlers
@@ -224,12 +267,12 @@ function MainRoutes() {
       status: 'invited',
       nextStep: 'OPT_IN',
       settlementMode: newMerchantData.settlementMode || 'hold_as_received',
-      orkiFeeWallet: '0xOrkiProtocolFeeVault0000000000000000001',
-      pspFeeWallet: activeOrg?.feeWallet || '0xPspXsquareVault000000000000000000001',
-      orkiFeeBps: activeOrg?.feeSchedule?.orkiFeeBps || 100,
-      orkiFeeCapPercent: activeOrg?.feeSchedule?.orkiFeeCapPercent || 1.00,
-      orkiFeeCapAmount: activeOrg?.feeSchedule?.orkiFeeCapAmount || 25.00,
-      pspFeeBps: activeOrg?.feeSchedule?.pspMarkupBps || 35,
+      orkiFeeWallet: undefined,
+      pspFeeWallet: activeOrg?.feeWallet || undefined,
+      orkiFeeBps: activeOrg?.feeSchedule?.orkiFeeBps ?? 100,
+      orkiFeeCapPercent: activeOrg?.feeSchedule?.orkiFeeCapPercent ?? 1.00,
+      orkiFeeCapAmount: activeOrg?.feeSchedule?.orkiFeeCapAmount ?? 25.00,
+      pspFeeBps: activeOrg?.feeSchedule?.pspMarkupBps ?? 0,
       createdAt: new Date().toISOString(),
       volumeUsdc: 0.0,
       balanceUsdc: 0.0,
@@ -243,10 +286,10 @@ function MainRoutes() {
     setMerchants([...tagged, ...merchants])
   }
 
-  const handleToggleMerchantStatus = (
+  const handleToggleMerchantStatus = async (
     merchantId: string,
     newStatus: 'active' | 'disabled'
-  ) => {
+  ): Promise<void> => {
     const merchant = merchants.find((item) => item.id === merchantId)
     if (!merchant) return
     if (
@@ -255,42 +298,24 @@ function MainRoutes() {
     ) return
     if (newStatus === 'disabled' && merchant.status !== 'active') return
 
+    await requestApi(getApiConfig(), 'PATCH', `/api/v1/psp/merchants/${encodeURIComponent(merchantId)}/status`, {
+      status: newStatus,
+    }, 'psp')
     setMerchants(
       merchants.map((m) => (m.id === merchantId ? { ...m, status: newStatus } : m))
     )
   }
 
-  const handleUpdateActiveMerchant = (updated: Partial<Merchant>) => {
-    if (!activeMerchant) return
-    setMerchants(
-      merchants.map((m) =>
-        m.id === activeMerchant.id ? { ...m, ...updated } : m
-      )
+  const handleUpdateActiveMerchant = useCallback((updated: Partial<Merchant>) => {
+    const merchantId = activeMerchant?.id
+    if (!merchantId) return
+    setMerchants((current) =>
+      current.map((merchant) => merchant.id === merchantId ? { ...merchant, ...updated } : merchant)
     )
-  }
+  }, [activeMerchant?.id])
 
   const handlePaylinkCreated = (newPaylink: Paylink) => {
     setPaylinks([newPaylink, ...paylinks])
-  }
-
-  const handlePaymentSettled = (transaction: Transaction) => {
-    setTransactions([transaction, ...transactions])
-    if (activeMerchant) {
-      setMerchants(
-        merchants.map((m) => {
-          if (m.id === activeMerchant.id) {
-            const currentVol = m.volumeUsdc || 0
-            const currentBal = m.balanceUsdc || 0
-            return {
-              ...m,
-              volumeUsdc: currentVol + transaction.grossAmount,
-              balanceUsdc: currentBal + transaction.netAmount,
-            }
-          }
-          return m
-        })
-      )
-    }
   }
 
   return (
@@ -314,14 +339,16 @@ function MainRoutes() {
                   merchants={merchants}
                   paylinks={paylinks}
                   transactions={transactions}
+                  dashboardMetrics={pspMetrics}
+                  dashboardLoading={pspDashboardLoading}
+                  dashboardError={pspDashboardError}
                   onAddMerchant={handleAddMerchant}
                   onBatchCreated={handleBatchCreated}
-                  onToggleMerchantStatus={handleToggleMerchantStatus}
                   onSelectMerchantForDashboard={(id) => {
                     login('merchant', id)
                     navigate('/merchant')
                   }}
-                  onUpdateFeeSchedule={handleUpdateFeeSchedule}
+                  onRequestFeeChange={handleRequestFeeChange}
                 />
               ) : (
                 <div className="mat-card p-8 text-center max-w-md mx-auto space-y-4">
@@ -374,10 +401,6 @@ function MainRoutes() {
               {activeMerchant ? (
                 <MerchantDashboard
                   merchant={activeMerchant}
-                  paylinks={paylinks.filter(
-                    (p) => p.status === 'active' || p.status === 'disabled'
-                  )}
-                  transactions={transactions}
                   onUpdateMerchant={handleUpdateActiveMerchant}
                   onPaylinkCreated={handlePaylinkCreated}
                   onLaunchCheckout={(plk) => {
@@ -429,10 +452,7 @@ function MainRoutes() {
       <Route
         path="/checkout/:slug"
         element={
-          <CustomerCheckoutView
-            allPaylinks={paylinks}
-            onPaymentSettled={handlePaymentSettled}
-          />
+          <CustomerCheckoutView />
         }
       />
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import type { Merchant, Paylink, SettlementMode, Transaction } from '../../types'
 import { StatusBadge } from '../../components/StatusBadge'
 import { CreatePaylinkModal } from './CreatePaylinkModal'
@@ -23,13 +23,38 @@ import {
   X,
   CreditCard,
   FileText,
-  Globe,
 } from 'lucide-react'
+
+interface MerchantMetrics {
+  last30dSettlementsUsdc?: string
+  settlementBreakdown30d?: { liquidatedToBankAed?: string; liquidatedUsdcEquivalent?: string; heldInCryptoUsdc?: string }
+  settlementsByChain?: Record<string, { percentage?: number; volumeUsdc?: string; currency?: string }>
+  settlementsByAsset?: Record<string, string>
+  checkoutPerformance?: { conversionRate?: string; avgCheckoutTimeSeconds?: number; avgSettlementUsdc?: string }
+  transfersSummary?: { totalTransfersExecuted?: number; totalVolumeTransferredUsdc?: string; failedTransfers?: number }
+}
+
+interface MerchantTransactionRecord {
+  id: string
+  merchant_id: string
+  organization_id?: string
+  type: Transaction['type']
+  gross_amount: string | number
+  currency: string
+  orki_fee_bps?: number
+  orki_fee_amount?: string | number
+  psp_markup_bps?: number
+  psp_markup_amount?: string | number
+  net_amount: string | number
+  chain?: string | null
+  tx_hash?: string | null
+  payer_address?: string | null
+  status: string
+  created_at: string
+}
 
 interface MerchantDashboardProps {
   merchant: Merchant
-  paylinks: Paylink[]
-  transactions: Transaction[]
   onUpdateMerchant: (updated: Partial<Merchant>) => void
   onPaylinkCreated: (paylink: Paylink) => void
   onLaunchCheckout: (paylink: Paylink) => void
@@ -37,8 +62,6 @@ interface MerchantDashboardProps {
 
 export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
   merchant,
-  paylinks,
-  transactions,
   onUpdateMerchant,
   onPaylinkCreated,
   onLaunchCheckout,
@@ -56,33 +79,35 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
   const [showKybModal, setShowKybModal] = useState(false)
   const [apiBusy, setApiBusy] = useState(false)
   const [apiError, setApiError] = useState<string | null>(null)
+  const [dashboardMetrics, setDashboardMetrics] = useState<MerchantMetrics | null>(null)
+  const [dashboardBalances, setDashboardBalances] = useState<Record<string, unknown> | null>(null)
+  const [dashboardPaylinks, setDashboardPaylinks] = useState<Paylink[]>([])
+  const [dashboardTransactions, setDashboardTransactions] = useState<Transaction[]>([])
+  const [dashboardDataLoaded, setDashboardDataLoaded] = useState(false)
   const [notice, setNotice] = useState<{ title?: string; sections?: { heading: string; content: string }[] } | null>(null)
   const [termsData, setTermsData] = useState<{ tos?: { token?: string; entityName?: string; documentLinks?: { tos?: string; privacyPolicy?: string } }; title?: string; clauses?: string[] } | null>(null)
-  const [setupUrl, setSetupUrl] = useState(() => sessionStorage.getItem(`orki_setup_url:${merchant.externalId}`) || '')
   const [signatory, setSignatory] = useState({ name: merchant.representativeName || '', email: merchant.representativeEmail || '', title: '' })
   const [kybData, setKybData] = useState({ companyName: merchant.legalBusinessName, registrationNumber: merchant.tradeLicenseNumber, country: '', incorporatedOn: '', type: '', legalAddress: '', registrationLocation: '', email: merchant.representativeEmail || '', phone: '', taxId: '', website: '', postalAddress: '', controlScheme: '', applicantPosition: '' })
-  const merchantApiConfig = () => {
+  const merchantApiConfig = useCallback(() => {
     const config = getApiConfig()
     const merchantSession = sessionStorage.getItem(`orki_merchant_session:${merchant.externalId}`)
     return merchantSession ? { ...config, merchantSession } : config
-  }
-
-  const isSetupComplete = merchant.status === 'active' && !merchant.nextStep
-  const [clientIp, setClientIp] = useState('203.0.113.42')
-  const [hasAgreedTos, setHasAgreedTos] = useState(false)
-
-  useEffect(() => {
-    fetch('https://api.ipify.org?format=json')
-      .then((r) => r.json())
-      .then((data) => {
-        if (data?.ip) setClientIp(data.ip)
-      })
-      .catch(() => {})
+  }, [merchant.externalId])
+  const hasMerchantSession = Boolean(merchantApiConfig().merchantSession)
+  const visiblePaylinks = hasMerchantSession ? dashboardPaylinks : []
+  const visibleTransactions = hasMerchantSession ? dashboardTransactions : []
+  const asAmount = useCallback((value: string | number | undefined): number => {
+    const amount = Number(value ?? 0)
+    return Number.isFinite(amount) ? amount : 0
   }, [])
 
-  // Listen for cross-window messages from Hosted TOS, SumSub, or Passkey tabs
+  const isSetupComplete = merchant.status === 'active' && !merchant.nextStep
+  const [hasAgreedTos, setHasAgreedTos] = useState(false)
+
+  // Browser messages are navigation hints only; backend state is authoritative.
   useEffect(() => {
     const handleWindowMessage = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) return
       if (event.data?.type === 'ORKI_TOS_ACCEPTED' && event.data?.merchantId === merchant.id) {
         onUpdateMerchant({
           termsAcceptedAt: new Date().toISOString(),
@@ -90,11 +115,6 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
           nextStep: 'SUMSUB',
         })
         setShowTermsModal(false)
-      } else if (event.data?.type === 'ORKI_SUMSUB_COMPLETED' && event.data?.merchantId === merchant.id) {
-        onUpdateMerchant({
-          sumsubCompletedAt: new Date().toISOString(),
-          nextStep: 'PASSKEY',
-        })
       }
     }
     window.addEventListener('message', handleWindowMessage)
@@ -108,7 +128,7 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
     try {
       const config = getApiConfig()
       if (!config.pspKey) throw new Error('Set the PSP API key in the Backend API workbench before starting this demo merchant onboarding.')
-      const session = await requestApi<{ clientSecret: string; setupUrl?: string | null }>(config, 'POST', '/api/v1/psp/merchant-onboarding-sessions', {
+      const session = await requestApi<{ clientSecret: string }>(config, 'POST', '/api/v1/psp/merchant-onboarding-sessions', {
         merchantExternalId: merchant.externalId,
         legalBusinessName: merchant.legalBusinessName,
         tradeLicenseNumber: merchant.tradeLicenseNumber,
@@ -121,10 +141,6 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
       const sessionConfig = { ...config, merchantSession: session.clientSecret }
       saveApiConfig(sessionConfig)
       sessionStorage.setItem(`orki_merchant_session:${merchant.externalId}`, session.clientSecret)
-      if (session.setupUrl) {
-        setSetupUrl(session.setupUrl)
-        sessionStorage.setItem(`orki_setup_url:${merchant.externalId}`, session.setupUrl)
-      }
       await requestApi(sessionConfig, 'POST', '/api/v1/merchant/accept-usdc', {}, 'merchant')
       const fetchedNotice = await requestApi<typeof notice>(sessionConfig, 'GET', '/api/v1/merchant/notice', undefined, 'merchant')
       setNotice(fetchedNotice)
@@ -234,25 +250,110 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
     }
   }
 
+  const refreshDashboardData = useCallback(async () => {
+    const config = merchantApiConfig()
+    if (!config.merchantSession) return
+    try {
+      const [metricsResponse, balancesResponse, paylinksResponse, transactionsResponse] = await Promise.all([
+        requestApi<{ metrics?: MerchantMetrics }>(config, 'GET', '/api/v1/merchant/metrics', undefined, 'merchant'),
+        requestApi<{ balances?: Record<string, unknown> }>(config, 'GET', '/api/v1/merchant/balances', undefined, 'merchant'),
+        requestApi<{ paylinks?: Array<Omit<Paylink, 'amount' | 'createdAt'> & { amount?: string | number; createdAt?: string }> }>(config, 'GET', '/api/v1/merchant/paylinks', undefined, 'merchant'),
+        requestApi<{ data?: MerchantTransactionRecord[] }>(config, 'GET', '/api/v1/merchant/transactions', undefined, 'merchant'),
+      ])
+      setDashboardMetrics(metricsResponse.metrics || null)
+      setDashboardBalances(balancesResponse.balances || null)
+      setDashboardPaylinks((paylinksResponse.paylinks || []).map((link) => ({
+        ...link,
+        amount: link.amount === undefined || link.amount === null ? undefined : asAmount(link.amount),
+        createdAt: link.createdAt || '',
+      })))
+      setDashboardTransactions((transactionsResponse.data || []).map((transaction) => ({
+        id: transaction.id,
+        merchantId: transaction.merchant_id,
+        organizationId: transaction.organization_id,
+        type: transaction.type,
+        grossAmount: asAmount(transaction.gross_amount),
+        currency: transaction.currency,
+        orkiFeeBps: transaction.orki_fee_bps || 0,
+        orkiFeeAmount: asAmount(transaction.orki_fee_amount),
+        pspMarkupBps: transaction.psp_markup_bps || 0,
+        pspMarkupAmount: asAmount(transaction.psp_markup_amount),
+        netAmount: asAmount(transaction.net_amount),
+        chain: transaction.chain || 'unknown',
+        txHash: transaction.tx_hash || '',
+        payerAddress: transaction.payer_address || '',
+        status: transaction.status === 'completed' ? 'completed' : 'pending',
+        createdAt: transaction.created_at,
+      })))
+      setDashboardDataLoaded(true)
+    } catch (reason) {
+      setApiError(reason instanceof Error ? reason.message : 'Could not load merchant dashboard data.')
+    }
+  }, [asAmount, merchantApiConfig])
+
   useEffect(() => {
     const config = merchantApiConfig()
     if (!config.merchantSession) return
     let active = true
     const refresh = async () => {
       try {
-        const state = await requestApi<{ status: string; nextStep?: string | null; noticeAcknowledgedAt?: string | null; kybInformationSubmittedAt?: string | null; termsAcceptedAt?: string | null; sumsubCompletedAt?: string | null; passkeyRegisteredAt?: string | null }>(config, 'GET', '/api/v1/merchant/onboarding', undefined, 'merchant')
+        const state = await requestApi<{ status: string; statusReason?: string | null; nextStep?: string | null; noticeAcknowledgedAt?: string | null; kybInformationSubmittedAt?: string | null; termsAcceptedAt?: string | null; sumsubCompletedAt?: string | null; verifiedAt?: string | null; passkeyRegisteredAt?: string | null; settlementMode?: SettlementMode; orkiFeeBps?: number; pspFeeBps?: number; orkiFeeWallet?: string | null; pspFeeWallet?: string | null; merchantWallet?: string | null }>(config, 'GET', '/api/v1/merchant/onboarding', undefined, 'merchant')
         if (!active) return
-        onUpdateMerchant({ status: state.status as Merchant['status'], nextStep: state.nextStep as Merchant['nextStep'], noticeAcknowledgedAt: state.noticeAcknowledgedAt || undefined, kybInformationSubmittedAt: state.kybInformationSubmittedAt || undefined, termsAcceptedAt: state.termsAcceptedAt || undefined, sumsubCompletedAt: state.sumsubCompletedAt || undefined, passkeyRegisteredAt: state.passkeyRegisteredAt || undefined })
-      } catch { /* surface errors on user-triggered actions; status refresh is best effort */ }
+        onUpdateMerchant({ status: state.status as Merchant['status'], statusReason: state.statusReason || undefined, nextStep: state.nextStep as Merchant['nextStep'], noticeAcknowledgedAt: state.noticeAcknowledgedAt || undefined, kybInformationSubmittedAt: state.kybInformationSubmittedAt || undefined, termsAcceptedAt: state.termsAcceptedAt || undefined, sumsubCompletedAt: state.sumsubCompletedAt || undefined, verifiedAt: state.verifiedAt || undefined, passkeyRegisteredAt: state.passkeyRegisteredAt || undefined, settlementMode: state.settlementMode, orkiFeeBps: state.orkiFeeBps, pspFeeBps: state.pspFeeBps, orkiFeeWallet: state.orkiFeeWallet || undefined, pspFeeWallet: state.pspFeeWallet || undefined, merchantWallet: state.merchantWallet || undefined })
+      } catch (reason) {
+        if (active) setApiError(reason instanceof Error ? reason.message : 'Could not refresh onboarding status.')
+      }
     }
     void refresh()
+    void refreshDashboardData()
     const timer = window.setInterval(refresh, 15000)
+    const dataTimer = window.setInterval(() => { void refreshDashboardData() }, 60000)
     window.addEventListener('focus', refresh)
-    return () => { active = false; window.clearInterval(timer); window.removeEventListener('focus', refresh) }
-  }, [merchant.id])
+    return () => { active = false; window.clearInterval(timer); window.clearInterval(dataTimer); window.removeEventListener('focus', refresh) }
+  }, [merchant.id, merchantApiConfig, onUpdateMerchant, refreshDashboardData])
 
-  const handleToggleSettlementMode = (newMode: SettlementMode) => {
-    onUpdateMerchant({ settlementMode: newMode })
+  const handleToggleSettlementMode = async (newMode: SettlementMode) => {
+    setApiBusy(true)
+    setApiError(null)
+    try {
+      await requestApi(merchantApiConfig(), 'PATCH', '/api/v1/merchant/settlement-mode', { mode: newMode }, 'merchant')
+      onUpdateMerchant({ settlementMode: newMode })
+    } catch (reason) {
+      setApiError(reason instanceof Error ? reason.message : 'Settlement mode could not be changed.')
+    } finally {
+      setApiBusy(false)
+    }
+  }
+
+  const handlePaylinkCreated = async (paylink: Paylink) => {
+    try {
+      const created = await requestApi<{
+        id: string
+        slug: string
+        title: string
+        checkoutUrl: string
+        status: Paylink['status']
+      }>(merchantApiConfig(), 'POST', '/api/v1/merchant/paylinks', {
+        title: paylink.title,
+        description: paylink.description,
+        amountType: paylink.amountType,
+        amount: paylink.amount,
+        currency: paylink.currency,
+        settlementMode: paylink.settlementMode,
+        allowedChains: paylink.allowedChains,
+      }, 'merchant')
+      onPaylinkCreated({
+        ...paylink,
+        id: created.id,
+        slug: created.slug,
+        title: created.title,
+        checkoutUrl: created.checkoutUrl,
+        status: created.status,
+      })
+      await refreshDashboardData()
+    } catch (reason) {
+      setApiError(reason instanceof Error ? reason.message : 'Paylink could not be created.')
+    }
   }
 
   const copyToClipboard = (text: string, id: string) => {
@@ -262,10 +363,25 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
   }
 
   // Calculated Metrics
-  const baseUsdcBalance = merchant.balanceUsdc || 12450.0
-  const solanaUsdtBalance = 4200.0
-  const totalCryptoBalance = baseUsdcBalance + solanaUsdtBalance
-  const total30dSettlements = transactions.reduce((acc, t) => acc + (t.grossAmount || 0), 18400.0)
+  const balances = dashboardBalances as {
+    totalCryptoBalanceUsdcEquivalent?: string
+    usdcBase?: { balance?: string }
+    usdtSolana?: { balance?: string }
+    eurcBase?: { balance?: string }
+  } | null
+  const baseUsdcBalance = asAmount(balances?.usdcBase?.balance)
+  const solanaUsdtBalance = asAmount(balances?.usdtSolana?.balance)
+  const totalCryptoBalance = asAmount(balances?.totalCryptoBalanceUsdcEquivalent)
+  const total30dSettlements = asAmount(dashboardMetrics?.last30dSettlementsUsdc)
+  const chainMetrics = dashboardMetrics?.settlementsByChain || {}
+  const assetMetrics = dashboardMetrics?.settlementsByAsset || {}
+  const settlementBreakdown = dashboardMetrics?.settlementBreakdown30d
+  const checkoutMetrics = dashboardMetrics?.checkoutPerformance
+  const transferMetrics = dashboardMetrics?.transfersSummary
+  const walletAddress = (balances as { usdcBase?: { walletAddress?: string } } | null)?.usdcBase?.walletAddress
+  const activePaylinkCount = visiblePaylinks.filter((link) => link.status === 'active').length
+  const metricValue = (value: string | number | undefined, suffix = '') =>
+    dashboardDataLoaded && value !== undefined ? `${value}${suffix}` : '—'
 
   return (
     <div className="space-y-6 font-sans">
@@ -325,7 +441,7 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
                 Complete Your USDC Merchant Activation
               </h2>
               <p className="text-xs text-slate-600 max-w-xl leading-relaxed">
-                Walk through the steps to accept USDC: Review regulatory data sharing notice, agree to Orki terms & transparent fee splits, verify company with SumSub, and generate your biometric wallet.
+                Walk through the steps to accept USDC: review the regulatory notice, accept the current terms, and complete Sumsub verification. Wallet activation remains gated on production WebAuthn support.
               </p>
             </div>
 
@@ -372,9 +488,18 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
                 </button>
               )}
               {merchant.nextStep === 'PASSKEY' && (
-                <div className="max-w-sm space-y-2"><p className="text-xs leading-5 text-slate-500">KYB is verified. Continue to wallet setup using the secure onboarding link.</p>{setupUrl&&<a href={setupUrl} target="_blank" rel="noreferrer" className="mat-btn-primary inline-flex px-4 py-2 text-xs font-semibold items-center gap-2">Create wallets and set up passkey <ExternalLink size={14}/></a>}</div>
+                <div className="max-w-sm space-y-2"><p className="text-xs leading-5 text-amber-800">KYB is verified. Passkey registration is currently unavailable until the server-side WebAuthn ceremony is enabled; activation remains gated.</p></div>
               )}
-              {merchant.status === 'rejected' && <p className="max-w-sm text-xs leading-5 text-rose-700">The backend reports that KYB verification was rejected. Contact Orki compliance for next steps.</p>}
+              {merchant.status === 'verification_action_required' && merchant.statusReason && (
+                <p className="max-w-sm text-xs leading-5 text-amber-800 mt-2">
+                  Compliance note: {merchant.statusReason}
+                </p>
+              )}
+              {merchant.status === 'rejected' && (
+                <p className="max-w-sm text-xs leading-5 text-rose-700">
+                  {merchant.statusReason || 'The backend reports that KYB verification was rejected. Contact Orki compliance for next steps.'}
+                </p>
+              )}
             </div>
           </div>
 
@@ -488,11 +613,13 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
                     <span className="w-2 h-2 rounded-full bg-slate-400" />
                     <span className="font-medium text-slate-500">EURC on Base (EVM)</span>
                   </div>
-                  <span className="font-mono text-slate-400 tabular-nums">$0.00</span>
+                  <span className="font-mono text-slate-400 tabular-nums">
+                    ${asAmount(balances?.eurcBase?.balance).toFixed(2)}
+                  </span>
                 </div>
 
                 <div className="pt-2 text-[10px] font-mono text-slate-400 truncate border-t border-slate-200">
-                  Base: {merchant.merchantWallet || merchant.baseWalletAddress || '0x71C25e36F7682245353526E3d2a7620E15dB949A'}
+                  Base wallet: {walletAddress || 'Not registered'}
                 </div>
               </div>
             )}
@@ -534,7 +661,7 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
               ${total30dSettlements.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </p>
             <p className="text-[11px] text-slate-500 mt-1">
-              $14,200.00 AED Liquidated · $4,200.00 Held in Stablecoin
+              AED liquidated: {metricValue(settlementBreakdown?.liquidatedToBankAed)} · Held: {metricValue(settlementBreakdown?.heldInCryptoUsdc, ' USDC')}
             </p>
           </div>
 
@@ -542,7 +669,7 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
             <div>
               <span className="font-semibold text-slate-800 block text-xs">Settlement Preference</span>
               <span className="text-[10px] text-slate-400">
-                {merchant.settlementMode === 'auto_offramp' ? 'Instant AED Liquidation' : 'Hold as Received'}
+                {merchant.settlementMode === 'auto_offramp' ? 'Automatic off-ramp selected' : 'Hold as received'}
               </span>
             </div>
             <button
@@ -551,6 +678,7 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
                   merchant.settlementMode === 'auto_offramp' ? 'hold_as_received' : 'auto_offramp'
                 )
               }
+              disabled={!hasMerchantSession || apiBusy}
               className={`w-11 h-6 flex items-center rounded-full p-1 cursor-pointer transition-colors ${
                 merchant.settlementMode === 'auto_offramp' ? 'bg-onion' : 'bg-slate-300'
               }`}
@@ -579,21 +707,21 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
 
             <div className="mt-2 space-y-1">
               <p className="text-2xl font-bold text-slate-900 font-mono tracking-tight tabular-nums">
-                {paylinks.length} <span className="text-xs font-normal text-slate-400">active links</span>
+                {activePaylinkCount} <span className="text-xs font-normal text-slate-400">active links</span>
               </p>
               <p className="text-xs text-slate-500 font-medium">
-                Base (EVM) · Solana (SVM)
+                API-reported links
               </p>
             </div>
 
             <div className="mt-3 space-y-1 text-xs text-slate-600">
               <div className="flex justify-between py-1 border-b border-slate-100">
                 <span className="text-slate-400">Checkout Speed:</span>
-                <span className="font-semibold text-emerald-700 font-mono">&lt; 3.2s</span>
+                <span className="font-semibold text-slate-700 font-mono">{metricValue(checkoutMetrics?.avgCheckoutTimeSeconds, ' s')}</span>
               </div>
               <div className="flex justify-between py-1">
                 <span className="text-slate-400">Success Rate:</span>
-                <span className="font-semibold text-slate-900 font-mono">99.4%</span>
+                <span className="font-semibold text-slate-900 font-mono">{metricValue(checkoutMetrics?.conversionRate)}</span>
               </div>
             </div>
           </div>
@@ -618,7 +746,7 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
             <BarChart3 className="w-4 h-4 text-onion-700" />
             <h3 className="text-base font-bold text-slate-900 tracking-tight">Settlement Analytics & Metrics</h3>
           </div>
-          <span className="text-xs text-slate-500 font-medium">Real-Time Inflow Distribution</span>
+          <span className="text-xs text-slate-500 font-medium">Backend-reported metrics</span>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-xs">
@@ -629,20 +757,20 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
                 <Layers className="w-3.5 h-3.5 text-blue-600" />
                 <span>Volume by Chain</span>
               </span>
-              <span className="font-mono text-[11px] text-slate-500">100%</span>
+              <span className="font-mono text-[11px] text-slate-500">{metricValue(100, '%')}</span>
             </div>
             <div className="space-y-1.5">
               <div className="flex justify-between text-[11px]">
                 <span className="text-slate-500">Base (EVM):</span>
-                <span className="font-semibold text-slate-900 font-mono">75% ($12.4k)</span>
+                <span className="font-semibold text-slate-900 font-mono">{metricValue(chainMetrics.base?.percentage, '%')} (${asAmount(chainMetrics.base?.volumeUsdc).toLocaleString()})</span>
               </div>
               <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden flex">
-                <div className="bg-blue-600 h-full" style={{ width: '75%' }} />
-                <div className="bg-purple-600 h-full" style={{ width: '25%' }} />
+                <div className="bg-blue-600 h-full" style={{ width: `${chainMetrics.base?.percentage || 0}%` }} />
+                <div className="bg-purple-600 h-full" style={{ width: `${chainMetrics.solana?.percentage || 0}%` }} />
               </div>
               <div className="flex justify-between text-[11px]">
                 <span className="text-slate-500">Solana (SVM):</span>
-                <span className="font-semibold text-slate-900 font-mono">25% ($4.2k)</span>
+                <span className="font-semibold text-slate-900 font-mono">{metricValue(chainMetrics.solana?.percentage, '%')} (${asAmount(chainMetrics.solana?.volumeUsdc).toLocaleString()})</span>
               </div>
             </div>
           </div>
@@ -654,20 +782,20 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
                 <PieChart className="w-3.5 h-3.5 text-onion-700" />
                 <span>Volume by Asset</span>
               </span>
-              <span className="font-mono text-[11px] text-slate-500">2 Assets</span>
+              <span className="font-mono text-[11px] text-slate-500">{Object.keys(assetMetrics).length} assets</span>
             </div>
             <div className="space-y-1">
               <div className="flex justify-between py-0.5 border-b border-slate-200/60">
                 <span className="text-slate-500">USDC:</span>
-                <span className="font-semibold text-slate-800 font-mono">$12,450.00</span>
+                <span className="font-semibold text-slate-800 font-mono">${asAmount(assetMetrics.USDC).toFixed(2)}</span>
               </div>
               <div className="flex justify-between py-0.5 border-b border-slate-200/60">
                 <span className="text-slate-500">USDT:</span>
-                <span className="font-semibold text-slate-800 font-mono">$4,200.00</span>
+                <span className="font-semibold text-slate-800 font-mono">${asAmount(assetMetrics.USDT).toFixed(2)}</span>
               </div>
               <div className="flex justify-between py-0.5">
                 <span className="text-slate-400">EURC:</span>
-                <span className="text-slate-400 font-mono">$0.00</span>
+                <span className="text-slate-400 font-mono">${asAmount(assetMetrics.EURC).toFixed(2)}</span>
               </div>
             </div>
           </div>
@@ -679,20 +807,20 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
                 <CreditCard className="w-3.5 h-3.5 text-emerald-600" />
                 <span>Checkout Conversions</span>
               </span>
-              <span className="font-mono text-[11px] text-emerald-700 font-bold">99.4%</span>
+              <span className="font-mono text-[11px] text-emerald-700 font-bold">{metricValue(checkoutMetrics?.conversionRate)}</span>
             </div>
             <div className="space-y-1">
               <div className="flex justify-between py-0.5 border-b border-slate-200/60">
                 <span className="text-slate-500">Active Paylinks:</span>
-                <span className="font-semibold text-slate-800 font-mono">{paylinks.length}</span>
+                <span className="font-semibold text-slate-800 font-mono">{activePaylinkCount}</span>
               </div>
               <div className="flex justify-between py-0.5 border-b border-slate-200/60">
                 <span className="text-slate-500">Avg Settlement:</span>
-                <span className="font-semibold text-slate-800 font-mono">$485 USDC</span>
+                <span className="font-semibold text-slate-800 font-mono">${asAmount(checkoutMetrics?.avgSettlementUsdc).toFixed(2)} USDC</span>
               </div>
               <div className="flex justify-between py-0.5">
                 <span className="text-slate-500">Checkout Speed:</span>
-                <span className="font-semibold text-emerald-700 font-mono">&lt; 3.2 sec</span>
+                <span className="font-semibold text-emerald-700 font-mono">{metricValue(checkoutMetrics?.avgCheckoutTimeSeconds, ' sec')}</span>
               </div>
             </div>
           </div>
@@ -702,22 +830,22 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
             <div className="flex items-center justify-between text-slate-600 font-semibold">
               <span className="flex items-center space-x-1">
                 <ArrowRightLeft className="w-3.5 h-3.5 text-purple-600" />
-                <span>Transfers & Payouts</span>
+                <span>Transfers & Liquidations</span>
               </span>
-              <span className="font-mono text-[11px] text-purple-700 font-bold">0 Failed</span>
+              <span className="font-mono text-[11px] text-purple-700 font-bold">{metricValue(transferMetrics?.failedTransfers, ' failed')}</span>
             </div>
             <div className="space-y-1">
               <div className="flex justify-between py-0.5 border-b border-slate-200/60">
-                <span className="text-slate-500">Total Transfers:</span>
-                <span className="font-semibold text-slate-800 font-mono">$3,500 USDC</span>
+                <span className="text-slate-500">Transfer count:</span>
+                <span className="font-semibold text-slate-800 font-mono">{metricValue(transferMetrics?.totalTransfersExecuted)}</span>
               </div>
               <div className="flex justify-between py-0.5 border-b border-slate-200/60">
-                <span className="text-slate-500">AED Payouts:</span>
-                <span className="font-semibold text-slate-800 font-mono">AED 51,400</span>
+                <span className="text-slate-500">Transferred volume:</span>
+                <span className="font-semibold text-slate-800 font-mono">${asAmount(transferMetrics?.totalVolumeTransferredUsdc).toFixed(2)} USDC</span>
               </div>
               <div className="flex justify-between py-0.5">
-                <span className="text-slate-500">Settlement Bank:</span>
-                <span className="font-semibold text-slate-800">Emirates NBD</span>
+                <span className="text-slate-500">AED liquidated:</span>
+                <span className="font-semibold text-slate-800 font-mono">AED {asAmount(settlementBreakdown?.liquidatedToBankAed).toFixed(2)}</span>
               </div>
             </div>
           </div>
@@ -755,14 +883,14 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 bg-white">
-              {paylinks.length === 0 ? (
+              {visiblePaylinks.length === 0 ? (
                 <tr>
                   <td colSpan={5} className="px-6 py-8 text-center text-slate-400">
                     No active paylinks created yet.
                   </td>
                 </tr>
               ) : (
-                paylinks.map((link) => (
+                visiblePaylinks.map((link) => (
                   <tr key={link.id} className="hover:bg-slate-50/60 transition">
                     <td className="px-6 py-3.5 font-medium text-slate-900">
                       <div>{link.title}</div>
@@ -831,14 +959,14 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 bg-white">
-              {transactions.length === 0 ? (
+              {visibleTransactions.length === 0 ? (
                 <tr>
                   <td colSpan={5} className="px-6 py-8 text-center text-slate-400">
                     No transactions settled yet.
                   </td>
                 </tr>
               ) : (
-                transactions.map((tx) => (
+                visibleTransactions.map((tx) => (
                   <tr key={tx.id} className="hover:bg-slate-50/60 transition cursor-pointer" onClick={() => setSelectedTxForSplit(tx)}>
                     <td className="px-6 py-3.5 font-mono text-slate-900">
                       <div>{tx.id}</div>
@@ -999,31 +1127,15 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
                 </div>
               </div>
 
-              {/* Client IP Capture (Step 3 - Collect Client IP) */}
-              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
-                <div className="flex justify-between items-center">
-                  <span className="font-semibold text-slate-700 flex items-center space-x-1">
-                    <Globe className="w-3.5 h-3.5 text-onion-700" />
-                    <span>Real Client IP Address</span>
-                  </span>
-                  <span className="font-mono text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded text-[10px] font-semibold">
-                    {clientIp}
-                  </span>
-                </div>
-                <p className="text-[10px] text-slate-400">
-                  Required: The actual client IP address (extracted from X-Forwarded-For) is logged for financial audit compliance.
-                </p>
-              </div>
-
               {/* 30-Day Locked Rate Disclosure */}
               <div className="p-3.5 bg-onion-50/50 border border-onion-200/80 rounded-xl space-y-1.5">
                 <div className="flex justify-between items-center text-slate-800">
                   <span className="font-semibold">Orki Protocol Fee:</span>
-                  <span className="font-mono font-bold text-slate-900">1.00% (Cap $25.00 USDC)</span>
+                  <span className="font-mono font-bold text-slate-900">{merchant.orkiFeeBps === undefined ? 'Not configured' : `${(merchant.orkiFeeBps / 100).toFixed(2)}%`}</span>
                 </div>
                 <div className="flex justify-between items-center text-slate-800">
                   <span className="font-semibold">PSP Markup:</span>
-                  <span className="font-mono font-bold text-slate-900">{((merchant.pspFeeBps || 35) / 100).toFixed(2)}% (Max 1.00%)</span>
+                  <span className="font-mono font-bold text-slate-900">{merchant.pspFeeBps === undefined ? 'Not configured' : `${(merchant.pspFeeBps / 100).toFixed(2)}%`}</span>
                 </div>
                 <p className="text-[10px] text-slate-500 pt-0.5">
                   Neither Orki nor your PSP holds your funds at any time. Settlements partition atomically on-chain.
@@ -1039,7 +1151,7 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
                   className="mt-0.5 rounded text-onion focus:ring-onion"
                 />
                 <span className="text-[11px] text-slate-600 leading-snug">
-                  I confirm that I have reviewed the Terms of Service and Privacy Policy issued by <strong>ORKI PROTOCOL LTD</strong> and accept the non-custodial settlement terms.
+                  I confirm that I have reviewed the Terms of Service and Privacy Policy issued by <strong>{termsData?.tos?.entityName || 'the entity named in the Terms'}</strong> and accept the settlement terms.
                 </span>
               </label>
 
@@ -1082,7 +1194,7 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
               <div className="flex items-center space-x-2.5">
                 <Layers className="w-5 h-5 text-onion-400" />
                 <div>
-                  <h3 className="font-bold text-sm tracking-tight">On-Chain Tri-Wallet Split</h3>
+                  <h3 className="font-bold text-sm tracking-tight">Recorded transaction fee breakdown</h3>
                   <p className="text-[10px] text-slate-400 font-mono">TX: {selectedTxForSplit.id}</p>
                 </div>
               </div>
@@ -1108,7 +1220,7 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
               {/* 3-Way Atomic Breakdown */}
               <div className="space-y-2 pt-1">
                 <h4 className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-                  Atomic Contract Partition
+                Transaction record
                 </h4>
 
                 {/* Split 1: Merchant Net Proceeds */}
@@ -1120,7 +1232,7 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
                     </span>
                   </div>
                   <p className="font-mono text-[10px] text-emerald-700 break-all">
-                    Destination: {merchant.merchantWallet || merchant.baseWalletAddress || '0x71C25e36F7682245353526E3d2a7620E15dB949A'}
+                    Destination: {merchant.merchantWallet || merchant.baseWalletAddress || 'Not registered'}
                   </p>
                 </div>
 
@@ -1133,26 +1245,26 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
                     </span>
                   </div>
                   <p className="font-mono text-[10px] text-onion-700 break-all">
-                    Destination: {merchant.pspFeeWallet || '0xPspXsquareVault000000000000000000001'}
+                    Destination: {merchant.pspFeeWallet || 'Not registered'}
                   </p>
                 </div>
 
                 {/* Split 3: Orki Protocol Vault */}
                 <div className="p-3 bg-slate-100 border border-slate-200 rounded-xl space-y-1">
                   <div className="flex justify-between items-center">
-                    <span className="font-semibold text-slate-800">3. Orki Protocol Fee Wallet (1.00% cap)</span>
+                    <span className="font-semibold text-slate-800">3. Orki Protocol Fee Wallet ({(selectedTxForSplit.orkiFeeBps / 100).toFixed(2)}%)</span>
                     <span className="font-mono font-bold text-slate-800 text-sm">
                       ${selectedTxForSplit.orkiFeeAmount.toFixed(2)} USDC
                     </span>
                   </div>
                   <p className="font-mono text-[10px] text-slate-600 break-all">
-                    Destination: {merchant.orkiFeeWallet || '0xOrkiProtocolFeeVault0000000000000000001'}
+                    Destination: {merchant.orkiFeeWallet || 'Not registered'}
                   </p>
                 </div>
               </div>
 
               <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-[11px] font-mono text-slate-500 break-all">
-                TxHash: {selectedTxForSplit.txHash}
+                TxHash: {selectedTxForSplit.txHash || 'Not available'}
               </div>
 
               <button
@@ -1170,30 +1282,18 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
       <CreatePaylinkModal
         isOpen={isPaylinkModalOpen}
         onClose={() => setIsPaylinkModalOpen(false)}
-        onPaylinkCreated={onPaylinkCreated}
+        onPaylinkCreated={(link) => { void handlePaylinkCreated(link) }}
         merchantDefaultSettlement={merchant.settlementMode}
       />
 
       <OffRampModal
         isOpen={isOffRampModalOpen}
         onClose={() => setIsOffRampModalOpen(false)}
-        onCompleteConversion={(sourceAmount) => {
-          onUpdateMerchant({
-            balanceUsdc: Math.max(0, (merchant.balanceUsdc || baseUsdcBalance) - sourceAmount),
-          })
-          setIsOffRampModalOpen(false)
-        }}
       />
 
       <TransferModal
         isOpen={isTransferModalOpen}
         onClose={() => setIsTransferModalOpen(false)}
-        onCompleteTransfer={(amount) => {
-          onUpdateMerchant({
-            balanceUsdc: Math.max(0, (merchant.balanceUsdc || baseUsdcBalance) - amount),
-          })
-          setIsTransferModalOpen(false)
-        }}
       />
     </div>
   )

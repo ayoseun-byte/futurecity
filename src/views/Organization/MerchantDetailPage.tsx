@@ -20,7 +20,7 @@ interface MerchantDetailPageProps {
   merchants: Merchant[]
   paylinks: Paylink[]
   transactions: Transaction[]
-  onToggleStatus: (merchantId: string, newStatus: 'active' | 'disabled') => void
+  onToggleStatus: (merchantId: string, newStatus: 'active' | 'disabled') => void | Promise<void>
 }
 
 export const MerchantDetailPage: React.FC<MerchantDetailPageProps> = ({
@@ -32,8 +32,10 @@ export const MerchantDetailPage: React.FC<MerchantDetailPageProps> = ({
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const [copiedField, setCopiedField] = useState<string | null>(null)
+  const [statusBusy, setStatusBusy] = useState(false)
+  const [statusError, setStatusError] = useState<string | null>(null)
 
-  const merchant = merchants.find((m) => m.id === id) || merchants[0]
+  const merchant = merchants.find((m) => m.id === id)
 
   if (!merchant) {
     return (
@@ -56,14 +58,16 @@ export const MerchantDetailPage: React.FC<MerchantDetailPageProps> = ({
   }
 
   const merchantPaylinks = paylinks.filter(
-    (p) => p.status === 'active' || p.status === 'disabled'
+    (p) => p.merchantId === merchant.id && (p.status === 'active' || p.status === 'disabled')
   )
+  const merchantTransactions = transactions.filter((transaction) => transaction.merchantId === merchant.id)
   const canToggleStatus = merchant.status === 'active' || (
     merchant.status === 'disabled' && !!merchant.verifiedAt && !!merchant.activatedAt
   )
 
   return (
     <div className="space-y-6">
+      {statusError && <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">{statusError}</div>}
       {/* Back Button & Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-slate-200 pb-5">
         <div className="flex items-center space-x-4">
@@ -89,14 +93,6 @@ export const MerchantDetailPage: React.FC<MerchantDetailPageProps> = ({
               <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mr-1">
                 Rails:
               </span>
-              <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-[#635BFF]/10 text-[#635BFF] border border-[#635BFF]/30">
-                <span className="w-1.5 h-1.5 rounded-full bg-[#635BFF] mr-1"></span>
-                Stripe
-              </span>
-              <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-[#7D00FF]/10 text-[#7D00FF] border border-[#7D00FF]/30">
-                <span className="w-1.5 h-1.5 rounded-full bg-[#7D00FF] mr-1"></span>
-                MoonPay
-              </span>
               {merchant.status === 'active' && !!merchant.verifiedAt && !!merchant.activatedAt ? (
                 <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-300 shadow-xs">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1 animate-pulse"></span>
@@ -114,13 +110,18 @@ export const MerchantDetailPage: React.FC<MerchantDetailPageProps> = ({
 
         <div className="flex items-center space-x-3">
           <button
-            onClick={() =>
-              onToggleStatus(
-                merchant.id,
-                merchant.status === 'active' ? 'disabled' : 'active'
-              )
-            }
-            disabled={!canToggleStatus}
+            onClick={async () => {
+              setStatusBusy(true)
+              setStatusError(null)
+              try {
+                await onToggleStatus(merchant.id, merchant.status === 'active' ? 'disabled' : 'active')
+              } catch (reason) {
+                setStatusError(reason instanceof Error ? reason.message : 'Merchant status could not be updated.')
+              } finally {
+                setStatusBusy(false)
+              }
+            }}
+            disabled={!canToggleStatus || statusBusy}
             title={canToggleStatus ? undefined : 'Merchant must complete Orki onboarding before activation.'}
             className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center space-x-2 border shadow-sm disabled:cursor-not-allowed disabled:opacity-50 ${
               merchant.status === 'active'
@@ -130,7 +131,7 @@ export const MerchantDetailPage: React.FC<MerchantDetailPageProps> = ({
           >
             <ShieldAlert className="w-4 h-4" />
             <span>
-              {merchant.status === 'active' ? 'Disable Merchant' : 'Re-activate Merchant'}
+              {statusBusy ? 'Updating…' : merchant.status === 'active' ? 'Disable Merchant' : 'Re-activate Merchant'}
             </span>
           </button>
         </div>
@@ -146,10 +147,13 @@ export const MerchantDetailPage: React.FC<MerchantDetailPageProps> = ({
           </div>
           <div>
             <span className="text-3xl font-black text-slate-900">
-              ${(merchant.volumeUsdc || 25480.0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+              ${(merchant.balanceUsdc ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
             </span>
             <span className="text-xs font-semibold text-slate-400 ml-1.5">USDC</span>
           </div>
+          <p className="text-xs text-slate-500">
+            Total Volume: <strong>${(merchant.volumeUsdc || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })} USDC</strong>
+          </p>
           <p className="text-xs text-slate-500 flex items-center space-x-1">
             <Lock className="w-3.5 h-3.5 text-slate-400" />
             <span>Settlement: <strong>{merchant.settlementMode.replace('_', ' ')}</strong></span>
@@ -173,7 +177,9 @@ export const MerchantDetailPage: React.FC<MerchantDetailPageProps> = ({
             </div>
             <div className="flex justify-between">
               <span className="text-slate-500">Sumsub KYB:</span>
-              <span className="font-bold text-emerald-600">Passed (Verified)</span>
+              <span className={`font-bold ${merchant.verifiedAt ? 'text-emerald-600' : 'text-slate-500'}`}>
+                {merchant.verifiedAt ? `Verified ${new Date(merchant.verifiedAt).toLocaleDateString()}` : merchant.status === 'verifying' ? 'In review' : 'Not verified'}
+              </span>
             </div>
           </div>
         </div>
@@ -188,19 +194,19 @@ export const MerchantDetailPage: React.FC<MerchantDetailPageProps> = ({
             <div>
               <span className="text-slate-400 text-[10px] uppercase font-bold block">Base EVM Smart Account</span>
               <div className="flex items-center justify-between bg-slate-50 p-1.5 rounded-lg border border-slate-200 font-mono text-[11px] mt-0.5">
-                <span className="truncate">{merchant.baseWalletAddress || '0x71C...4982'}</span>
-                <button onClick={() => handleCopy(merchant.baseWalletAddress || '0x71C...4982', 'base')} className="p-1 text-slate-400 hover:text-slate-600">
+                <span className="truncate">{merchant.baseWalletAddress || 'Not registered'}</span>
+                {merchant.baseWalletAddress && <button onClick={() => { const address = merchant.baseWalletAddress; if (address) handleCopy(address, 'base') }} className="p-1 text-slate-400 hover:text-slate-600">
                   {copiedField === 'base' ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
-                </button>
+                </button>}
               </div>
             </div>
             <div>
               <span className="text-slate-400 text-[10px] uppercase font-bold block">Solana SVM Account</span>
               <div className="flex items-center justify-between bg-slate-50 p-1.5 rounded-lg border border-slate-200 font-mono text-[11px] mt-0.5">
-                <span className="truncate">{merchant.solanaWalletAddress || '7xKX...9qY1'}</span>
-                <button onClick={() => handleCopy(merchant.solanaWalletAddress || '7xKX...9qY1', 'sol')} className="p-1 text-slate-400 hover:text-slate-600">
+                <span className="truncate">{merchant.solanaWalletAddress || 'Not registered'}</span>
+                {merchant.solanaWalletAddress && <button onClick={() => { const address = merchant.solanaWalletAddress; if (address) handleCopy(address, 'sol') }} className="p-1 text-slate-400 hover:text-slate-600">
                   {copiedField === 'sol' ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
-                </button>
+                </button>}
               </div>
             </div>
           </div>
@@ -247,11 +253,11 @@ export const MerchantDetailPage: React.FC<MerchantDetailPageProps> = ({
               <ArrowRightLeft className="w-4 h-4 text-onion" />
               <span>Recent Financial Operations</span>
             </h3>
-            <span className="text-xs text-slate-400">On-Chain Real-Time</span>
+            <span className="text-xs text-slate-400">Backend records</span>
           </div>
 
           <div className="space-y-3">
-            {transactions.slice(0, 4).map((tx) => (
+            {merchantTransactions.slice(0, 4).map((tx) => (
               <div key={tx.id} className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/50 flex items-center justify-between">
                 <div>
                   <p className="font-bold text-slate-900 text-xs capitalize">{tx.type} via {tx.chain}</p>

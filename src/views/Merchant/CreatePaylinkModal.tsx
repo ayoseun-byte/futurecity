@@ -39,7 +39,7 @@ export const CreatePaylinkModal: React.FC<CreatePaylinkModalProps> = ({
       settlementMode: settlementMode,
       allowedChains: ['base', 'solana'],
       status: 'active',
-      checkoutUrl: `https://pay.orki.io/p/${slug}`,
+      checkoutUrl: `${window.location.origin}/checkout/${slug}`,
       createdAt: new Date().toISOString(),
     }
 
