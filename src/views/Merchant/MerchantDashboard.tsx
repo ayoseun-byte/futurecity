@@ -441,7 +441,7 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
                 Complete Your USDC Merchant Activation
               </h2>
               <p className="text-xs text-slate-600 max-w-xl leading-relaxed">
-                Walk through the steps to accept USDC: review the regulatory notice, accept the current terms, and complete Sumsub verification. Wallet activation remains gated on production WebAuthn support.
+                Walk through the steps to accept USDC: review the regulatory notice, accept the current terms, complete Sumsub KYB verification, and provision your non-custodial ZeroDev & Web3Auth wallets with Passkey MFA.
               </p>
             </div>
 
@@ -488,7 +488,13 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
                 </button>
               )}
               {merchant.nextStep === 'PASSKEY' && (
-                <div className="max-w-sm space-y-2"><p className="text-xs leading-5 text-amber-800">KYB is verified. Passkey registration is currently unavailable until the server-side WebAuthn ceremony is enabled; activation remains gated.</p></div>
+                <a
+                  href={`/setup${merchantApiConfig().merchantSession ? `#session=${encodeURIComponent(merchantApiConfig().merchantSession)}` : ''}`}
+                  className="mat-btn-primary px-5 py-2.5 text-xs font-semibold inline-flex items-center space-x-2 shadow-sm"
+                >
+                  <span>Set Up Wallets & Passkey</span>
+                  <ChevronRight className="w-4 h-4" />
+                </a>
               )}
               {merchant.status === 'verification_action_required' && merchant.statusReason && (
                 <p className="max-w-sm text-xs leading-5 text-amber-800 mt-2">
