@@ -24,7 +24,7 @@ export const MerchantInspectorModal: React.FC<MerchantInspectorModalProps> = ({
 
   if (!isOpen || !merchant) return null
 
-  const merchantPaylinks = paylinks.filter((p) => p.status === 'active')
+  const merchantPaylinks = paylinks.filter((p) => (p.status || '').toLowerCase() === 'active')
   const merchantTransactions = transactions.filter((t) => t.merchantId === merchant.id)
 
   const copyToClipboard = (text: string, field: string) => {
@@ -32,6 +32,8 @@ export const MerchantInspectorModal: React.FC<MerchantInspectorModalProps> = ({
     setCopiedField(field)
     setTimeout(() => setCopiedField(null), 2000)
   }
+
+  const isMerchantActive = (merchant.status || '').toLowerCase() === 'active'
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 overflow-y-auto">
@@ -88,15 +90,15 @@ export const MerchantInspectorModal: React.FC<MerchantInspectorModalProps> = ({
                 <p className="text-[11px] text-onion-700 mt-0.5">Control merchant payment acceptance</p>
               </div>
               <button
-                onClick={() => onToggleStatus(merchant.id, merchant.status === 'active' ? 'disabled' : 'active')}
+                onClick={() => onToggleStatus(merchant.id, isMerchantActive ? 'disabled' : 'active')}
                 className={`mt-2 py-1.5 px-3 rounded-lg text-xs font-bold transition flex items-center justify-center space-x-1.5 ${
-                  merchant.status === 'active'
+                  isMerchantActive
                     ? 'bg-rose-600 hover:bg-rose-700 text-white'
                     : 'bg-emerald-600 hover:bg-emerald-700 text-white'
                 }`}
               >
                 <ShieldAlert className="w-3.5 h-3.5" />
-                <span>{merchant.status === 'active' ? 'Disable Merchant' : 'Re-enable Merchant'}</span>
+                <span>{isMerchantActive ? 'Disable Merchant' : 'Re-enable Merchant'}</span>
               </button>
             </div>
           </div>

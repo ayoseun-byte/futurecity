@@ -9,8 +9,22 @@ export type MerchantStatus =
   | 'rejected'
   | 'disabled'
   | 'suspended'
+  | 'INVITED'
+  | 'TERMS_ACCEPTED'
+  | 'VERIFYING'
+  | 'VERIFICATION_ACTION_REQUIRED'
+  | 'VERIFIED'
+  | 'ACTIVE'
+  | 'ON_HOLD'
+  | 'REJECTED'
+  | 'DISABLED'
+  | 'SUSPENDED'
 
-export type SettlementMode = 'hold_as_received' | 'auto_offramp'
+export type SettlementMode =
+  | 'hold_as_received'
+  | 'auto_offramp'
+  | 'HOLD_AS_RECEIVED'
+  | 'AUTO_OFFRAMP'
 
 export type OnboardingStep =
   | 'OPT_IN'

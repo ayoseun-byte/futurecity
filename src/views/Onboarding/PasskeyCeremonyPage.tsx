@@ -233,7 +233,7 @@ export const PasskeyCeremonyPage: React.FC = () => {
       .then((state) => {
         if (!cancelled) {
           setOnboarding(state)
-          if (state.status === 'active' && state.baseWalletAddress && state.solanaWalletAddress) {
+          if ((state.status?.toLowerCase() === 'active') && state.baseWalletAddress && state.solanaWalletAddress) {
             setActivationResult({
               status: 'active',
               merchantStatus: 'active',
@@ -308,7 +308,8 @@ export const PasskeyCeremonyPage: React.FC = () => {
       </SetupShell>
     )
   }
-  if (onboarding.status !== 'verified' && onboarding.status !== 'active') {
+  const onboardingStatusLower = (onboarding.status || '').toLowerCase()
+  if (onboardingStatusLower !== 'verified' && onboardingStatusLower !== 'active') {
     return (
       <SetupShell>
         <MessagePanel

@@ -101,7 +101,7 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
     return Number.isFinite(amount) ? amount : 0
   }, [])
 
-  const isSetupComplete = merchant.status === 'active' && !merchant.nextStep
+  const isSetupComplete = (merchant.status?.toUpperCase() === 'ACTIVE') && !merchant.nextStep
   const [hasAgreedTos, setHasAgreedTos] = useState(false)
 
   // Browser messages are navigation hints only; backend state is authoritative.
@@ -282,7 +282,7 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
         chain: transaction.chain || 'unknown',
         txHash: transaction.tx_hash || '',
         payerAddress: transaction.payer_address || '',
-        status: transaction.status === 'completed' ? 'completed' : 'pending',
+        status: transaction.status?.toLowerCase() === 'completed' ? 'completed' : 'pending',
         createdAt: transaction.created_at,
       })))
       setDashboardDataLoaded(true)
@@ -379,7 +379,7 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
   const checkoutMetrics = dashboardMetrics?.checkoutPerformance
   const transferMetrics = dashboardMetrics?.transfersSummary
   const walletAddress = (balances as { usdcBase?: { walletAddress?: string } } | null)?.usdcBase?.walletAddress
-  const activePaylinkCount = visiblePaylinks.filter((link) => link.status === 'active').length
+  const activePaylinkCount = visiblePaylinks.filter((link) => (link.status || '').toLowerCase() === 'active').length
   const metricValue = (value: string | number | undefined, suffix = '') =>
     dashboardDataLoaded && value !== undefined ? `${value}${suffix}` : '—'
 
@@ -416,7 +416,7 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
               {isSetupComplete ? 'USDC Live (Multi-Chain)' : 'Onboarding Pending'}
             </p>
           </div>
-          {merchant.status === 'invited' && (!merchant.nextStep || merchant.nextStep === 'OPT_IN') && (
+          {(merchant.status?.toLowerCase() === 'invited') && (!merchant.nextStep || merchant.nextStep === 'OPT_IN') && (
             <button
               onClick={() => void handleStartOptIn()}
               disabled={apiBusy}
@@ -447,7 +447,7 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
 
             {/* Contextual Action Button based on current nextStep */}
             <div>
-              {merchant.status === 'invited' && (!merchant.nextStep || merchant.nextStep === 'OPT_IN') && (
+              {(merchant.status?.toLowerCase() === 'invited') && (!merchant.nextStep || merchant.nextStep === 'OPT_IN') && (
                 <button
               onClick={() => void handleStartOptIn()}
               disabled={apiBusy}
@@ -496,12 +496,12 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
                   <ChevronRight className="w-4 h-4" />
                 </a>
               )}
-              {merchant.status === 'verification_action_required' && merchant.statusReason && (
+              {merchant.status?.toLowerCase() === 'verification_action_required' && merchant.statusReason && (
                 <p className="max-w-sm text-xs leading-5 text-amber-800 mt-2">
                   Compliance note: {merchant.statusReason}
                 </p>
               )}
-              {merchant.status === 'rejected' && (
+              {merchant.status?.toLowerCase() === 'rejected' && (
                 <p className="max-w-sm text-xs leading-5 text-rose-700">
                   {merchant.statusReason || 'The backend reports that KYB verification was rejected. Contact Orki compliance for next steps.'}
                 </p>

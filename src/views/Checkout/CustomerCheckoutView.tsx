@@ -81,10 +81,11 @@ export const CustomerCheckoutView: React.FC = () => {
           `/api/v1/checkout/sessions/${encodeURIComponent(session.sessionId)}/status`
         )
         if (!active) return
-        if (status.status === 'settled') {
+        const normalizedStatus = (status.status || '').toLowerCase()
+        if (normalizedStatus === 'settled') {
           setSessionStatus('settled')
           setTxHash(status.tx_hash || '')
-        } else if (status.status === 'expired') {
+        } else if (normalizedStatus === 'expired') {
           setSessionStatus('expired')
         }
       } catch (reason) {

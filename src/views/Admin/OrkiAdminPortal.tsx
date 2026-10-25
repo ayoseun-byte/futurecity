@@ -418,9 +418,10 @@ export const OrkiAdminPortal: React.FC<OrkiAdminPortalProps> = ({
             </thead>
             <tbody className="divide-y divide-slate-100">
               {filteredOrgs.map((org) => {
-                const isApproved = org.status === 'approved'
-                const isInReview = org.status === 'in_review'
-                const isSandbox = org.status === 'sandbox'
+                const orgStatusLower = (org.status || '').toLowerCase()
+                const isApproved = orgStatusLower === 'approved'
+                const isInReview = orgStatusLower === 'in_review'
+                const isSandbox = orgStatusLower === 'sandbox'
 
                 return (
                   <tr key={org.id} className="hover:bg-slate-50/80 transition-colors">
@@ -607,7 +608,7 @@ export const OrkiAdminPortal: React.FC<OrkiAdminPortalProps> = ({
               <p className="text-xs font-bold text-slate-700 mb-3 flex items-center justify-between">
                 <span>Part 1: Eight-Stage Onboarding Progress</span>
                 <span className="text-onion font-mono">
-                  {selectedOrg.status === 'approved' ? 'Stage 8: Live Oversight' : selectedOrg.status === 'in_review' ? 'Stage 7: Approval Pending' : 'Stage 6: Testing'}
+                  {(selectedOrg.status || '').toLowerCase() === 'approved' ? 'Stage 8: Live Oversight' : (selectedOrg.status || '').toLowerCase() === 'in_review' ? 'Stage 7: Approval Pending' : 'Stage 6: Testing'}
                 </span>
               </p>
               <div className="grid grid-cols-4 sm:grid-cols-8 gap-1.5 text-center text-[10px] font-bold">
@@ -617,8 +618,8 @@ export const OrkiAdminPortal: React.FC<OrkiAdminPortalProps> = ({
                 <div className="p-2 rounded-lg bg-emerald-100 text-emerald-800 border border-emerald-300">4. Agreement</div>
                 <div className="p-2 rounded-lg bg-emerald-100 text-emerald-800 border border-emerald-300">5. KYB</div>
                 <div className={`p-2 rounded-lg border ${selectedOrg.goLiveChecklist?.webhookSignatureVerified ? 'bg-emerald-100 text-emerald-800 border-emerald-300' : 'bg-slate-200 text-slate-600'}`}>6. Test</div>
-                <div className={`p-2 rounded-lg border ${selectedOrg.status === 'approved' ? 'bg-emerald-100 text-emerald-800 border-emerald-300' : selectedOrg.status === 'in_review' ? 'bg-onion-100 text-onion-800 border-onion-300 animate-pulse' : 'bg-slate-200 text-slate-600'}`}>7. Approve</div>
-                <div className={`p-2 rounded-lg border ${selectedOrg.status === 'approved' ? 'bg-emerald-100 text-emerald-800 border-emerald-300' : 'bg-slate-200 text-slate-600'}`}>8. Live</div>
+                <div className={`p-2 rounded-lg border ${(selectedOrg.status || '').toLowerCase() === 'approved' ? 'bg-emerald-100 text-emerald-800 border-emerald-300' : (selectedOrg.status || '').toLowerCase() === 'in_review' ? 'bg-onion-100 text-onion-800 border-onion-300 animate-pulse' : 'bg-slate-200 text-slate-600'}`}>7. Approve</div>
+                <div className={`p-2 rounded-lg border ${(selectedOrg.status || '').toLowerCase() === 'approved' ? 'bg-emerald-100 text-emerald-800 border-emerald-300' : 'bg-slate-200 text-slate-600'}`}>8. Live</div>
               </div>
             </div>
 
@@ -737,7 +738,7 @@ export const OrkiAdminPortal: React.FC<OrkiAdminPortalProps> = ({
                   <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-1">
                     <div className="flex justify-between font-semibold">
                       <span>Stage 7: Production Keys</span>
-                      {selectedOrg.status === 'approved' ? (
+                      {(selectedOrg.status || '').toLowerCase() === 'approved' ? (
                         <span className="text-emerald-600 font-bold">Active in Prod</span>
                       ) : (
                         <span className="text-amber-600 font-bold">Awaiting Approval</span>
@@ -772,7 +773,7 @@ export const OrkiAdminPortal: React.FC<OrkiAdminPortalProps> = ({
                     Prepared by: <strong>{selectedOrg.preparedBy || 'sarah.ops@orki.com'}</strong>. A distinct Orki compliance/risk officer must sign off.
                   </p>
 
-                  {selectedOrg.status === 'approved' ? (
+                  {(selectedOrg.status || '').toLowerCase() === 'approved' ? (
                     <div className="p-3 bg-emerald-100 rounded-xl border border-emerald-300 text-xs text-emerald-900 font-bold flex items-center space-x-2">
                       <CheckCircle2 className="w-4 h-4 text-emerald-700" />
                       <span>Production Approved & Live by {selectedOrg.approvedBy}</span>

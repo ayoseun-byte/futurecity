@@ -7,7 +7,9 @@ interface StatusBadgeProps {
 }
 
 export const StatusBadge: React.FC<StatusBadgeProps> = ({ status }) => {
-  switch (status) {
+  const normalized = String(status || '').toLowerCase()
+
+  switch (normalized) {
     case 'active':
       return (
         <span className="inline-flex items-center px-2.5 py-0.5 rounded-md text-[11px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200/80">

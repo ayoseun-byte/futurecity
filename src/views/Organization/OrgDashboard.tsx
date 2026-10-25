@@ -87,7 +87,7 @@ export const OrgDashboard: React.FC<OrgDashboardProps> = ({
       m.externalId.toLowerCase().includes(searchTerm.toLowerCase()) ||
       m.tradeLicenseNumber.toLowerCase().includes(searchTerm.toLowerCase())
 
-    const matchesStatus = statusFilter === 'all' || m.status === statusFilter
+    const matchesStatus = statusFilter === 'all' || (m.status || '').toLowerCase() === statusFilter.toLowerCase()
     return matchesSearch && matchesStatus
   })
 
@@ -405,7 +405,7 @@ export const OrgDashboard: React.FC<OrgDashboardProps> = ({
                     </td>
                     <td className="px-6 py-3.5">
                       <div className="flex flex-wrap items-center gap-1.5">
-                        {merchant.status === 'active' && !!merchant.verifiedAt && !!merchant.activatedAt ? (
+                        {(merchant.status?.toLowerCase() === 'active') && !!merchant.verifiedAt && !!merchant.activatedAt ? (
                           <span
                             title="Orki multi-chain USDC settlement active"
                             className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-300 shadow-xs"

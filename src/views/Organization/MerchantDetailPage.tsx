@@ -57,12 +57,14 @@ export const MerchantDetailPage: React.FC<MerchantDetailPageProps> = ({
     setTimeout(() => setCopiedField(null), 2000)
   }
 
+  const isMerchantActive = (merchant.status || '').toLowerCase() === 'active'
+  const isMerchantDisabled = (merchant.status || '').toLowerCase() === 'disabled'
   const merchantPaylinks = paylinks.filter(
-    (p) => p.merchantId === merchant.id && (p.status === 'active' || p.status === 'disabled')
+    (p) => p.merchantId === merchant.id && ((p.status || '').toLowerCase() === 'active' || (p.status || '').toLowerCase() === 'disabled')
   )
   const merchantTransactions = transactions.filter((transaction) => transaction.merchantId === merchant.id)
-  const canToggleStatus = merchant.status === 'active' || (
-    merchant.status === 'disabled' && !!merchant.verifiedAt && !!merchant.activatedAt
+  const canToggleStatus = isMerchantActive || (
+    isMerchantDisabled && !!merchant.verifiedAt && !!merchant.activatedAt
   )
 
   return (
@@ -93,7 +95,7 @@ export const MerchantDetailPage: React.FC<MerchantDetailPageProps> = ({
               <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mr-1">
                 Rails:
               </span>
-              {merchant.status === 'active' && !!merchant.verifiedAt && !!merchant.activatedAt ? (
+              {isMerchantActive && !!merchant.verifiedAt && !!merchant.activatedAt ? (
                 <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-300 shadow-xs">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1 animate-pulse"></span>
                   Orki (Active)
@@ -114,7 +116,7 @@ export const MerchantDetailPage: React.FC<MerchantDetailPageProps> = ({
               setStatusBusy(true)
               setStatusError(null)
               try {
-                await onToggleStatus(merchant.id, merchant.status === 'active' ? 'disabled' : 'active')
+                await onToggleStatus(merchant.id, isMerchantActive ? 'disabled' : 'active')
               } catch (reason) {
                 setStatusError(reason instanceof Error ? reason.message : 'Merchant status could not be updated.')
               } finally {
@@ -124,14 +126,14 @@ export const MerchantDetailPage: React.FC<MerchantDetailPageProps> = ({
             disabled={!canToggleStatus || statusBusy}
             title={canToggleStatus ? undefined : 'Merchant must complete Orki onboarding before activation.'}
             className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center space-x-2 border shadow-sm disabled:cursor-not-allowed disabled:opacity-50 ${
-              merchant.status === 'active'
+              isMerchantActive
                 ? 'bg-rose-50 border-rose-200 text-rose-700 hover:bg-rose-100'
                 : 'bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100'
             }`}
           >
             <ShieldAlert className="w-4 h-4" />
             <span>
-              {statusBusy ? 'Updating…' : merchant.status === 'active' ? 'Disable Merchant' : 'Re-activate Merchant'}
+              {statusBusy ? 'Updating…' : isMerchantActive ? 'Disable Merchant' : 'Re-activate Merchant'}
             </span>
           </button>
         </div>
@@ -178,7 +180,7 @@ export const MerchantDetailPage: React.FC<MerchantDetailPageProps> = ({
             <div className="flex justify-between">
               <span className="text-slate-500">Sumsub KYB:</span>
               <span className={`font-bold ${merchant.verifiedAt ? 'text-emerald-600' : 'text-slate-500'}`}>
-                {merchant.verifiedAt ? `Verified ${new Date(merchant.verifiedAt).toLocaleDateString()}` : merchant.status === 'verifying' ? 'In review' : 'Not verified'}
+                {merchant.verifiedAt ? `Verified ${new Date(merchant.verifiedAt).toLocaleDateString()}` : (merchant.status || '').toLowerCase() === 'verifying' ? 'In review' : 'Not verified'}
               </span>
             </div>
           </div>
