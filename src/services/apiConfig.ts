@@ -32,19 +32,70 @@ export function saveApiConfig(config: ApiConfig): void {
   }))
 }
 
+export function resolveMerchantSession(config?: Partial<ApiConfig>): string {
+  // 1. Direct from provided config if it's a valid session token
+  if (config?.merchantSession && config.merchantSession.startsWith('onb_sec_')) {
+    return config.merchantSession
+  }
+
+  // 2. From saved API config in sessionStorage
+  const saved = getApiConfig()
+  if (saved.merchantSession && saved.merchantSession.startsWith('onb_sec_')) {
+    return saved.merchantSession
+  }
+
+  // 3. From global active merchant session key
+  const active = sessionStorage.getItem('orki_active_merchant_session')
+  if (active && active.startsWith('onb_sec_')) {
+    return active
+  }
+
+  // 4. Scan any cached merchant session keys in sessionStorage
+  for (let i = 0; i < sessionStorage.length; i++) {
+    const key = sessionStorage.key(i)
+    if (key && (key.startsWith('orki_merchant_session:') || key.startsWith('orki_merchant_session'))) {
+      const val = sessionStorage.getItem(key)
+      if (val && val.startsWith('onb_sec_')) {
+        return val
+      }
+    }
+  }
+
+  return ''
+}
+
 export async function apiRequest(config: ApiConfig, method: string, path: string, body?: string, auth: 'none' | 'admin' | 'psp' | 'merchant' = 'none') {
   if (!config.baseUrl.trim()) {
     throw new Error('Set the PSP API base URL in the Backend API workbench before making requests.')
   }
 
+  const cleanPath = path.startsWith('/') ? path : `/${path}`
+  const isMerchantOnboardingRoute =
+    cleanPath.includes('/merchant/') &&
+    !cleanPath.includes('/conversions/quote') &&
+    !(cleanPath === '/api/v1/merchant/conversions' && method === 'POST')
+
   const headers: Record<string, string> = { Accept: 'application/json' }
   if (body && method !== 'GET') headers['Content-Type'] = 'application/json'
   if (auth === 'admin' && config.adminKey) headers['X-Admin-Key'] = config.adminKey
-  if (path.includes('/fee-change-requests/') && config.feeApproverKey) headers['X-Fee-Approver-Key'] = config.feeApproverKey
-  if (auth === 'psp' && config.pspKey) headers.Authorization = `Bearer ${config.pspKey}`
-  if (auth === 'merchant' && config.merchantSession) headers.Authorization = `Bearer ${config.merchantSession}`
+  if (cleanPath.includes('/fee-change-requests/') && config.feeApproverKey) headers['X-Fee-Approver-Key'] = config.feeApproverKey
+
+  // Handle Merchant vs PSP Authentication
+  if (auth === 'merchant' || isMerchantOnboardingRoute) {
+    const sessionSecret = resolveMerchantSession(config)
+    if (!sessionSecret) {
+      throw new Error(
+        'Merchant onboarding session secret is missing. This route requires a merchant session Bearer token (starts with onb_sec_...). ' +
+        'Please execute POST /api/v1/psp/merchant-onboarding-sessions first to issue an onboarding session secret.'
+      )
+    }
+    headers.Authorization = `Bearer ${sessionSecret}`
+  } else if (auth === 'psp' && config.pspKey) {
+    headers.Authorization = `Bearer ${config.pspKey}`
+  }
+
   if (method !== 'GET' && method !== 'HEAD') headers['Idempotency-Key'] = `fc-${crypto.randomUUID()}`
-  const response = await fetch(`${config.baseUrl}${path.startsWith('/') ? path : `/${path}`}`, {
+  const response = await fetch(`${config.baseUrl}${cleanPath}`, {
     method,
     headers,
     body: body && method !== 'GET' ? body : undefined,

@@ -4,7 +4,7 @@ import { StatusBadge } from '../../components/StatusBadge'
 import { CreatePaylinkModal } from './CreatePaylinkModal'
 import { OffRampModal } from './OffRampModal'
 import { TransferModal } from './TransferModal'
-import { getApiConfig, requestApi, saveApiConfig } from '../../services/apiConfig'
+import { getApiConfig, requestApi, saveApiConfig, resolveMerchantSession } from '../../services/apiConfig'
 import {
   ArrowRightLeft,
   Send,
@@ -351,8 +351,12 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
   }
   const merchantApiConfig = useCallback(() => {
     const config = getApiConfig()
-    const merchantSession = sessionStorage.getItem(`orki_merchant_session:${merchant.externalId}`)
-    return merchantSession ? { ...config, merchantSession } : config
+    const cachedForMerchant = sessionStorage.getItem(`orki_merchant_session:${merchant.externalId}`)
+    const resolved =
+      (cachedForMerchant && cachedForMerchant.startsWith('onb_sec_') ? cachedForMerchant : null) ||
+      resolveMerchantSession(config)
+
+    return resolved ? { ...config, merchantSession: resolved } : config
   }, [merchant.externalId])
 
   const ensureMerchantSession = useCallback(async (): Promise<ReturnType<typeof getApiConfig>> => {
@@ -378,6 +382,7 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
     const newConfig = { ...baseConfig, merchantSession: session.clientSecret }
     saveApiConfig(newConfig)
     sessionStorage.setItem(`orki_merchant_session:${merchant.externalId}`, session.clientSecret)
+    sessionStorage.setItem('orki_active_merchant_session', session.clientSecret)
     return newConfig
   }, [merchant, merchantApiConfig])
 

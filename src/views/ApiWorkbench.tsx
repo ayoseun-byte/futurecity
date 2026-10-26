@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { ArrowLeft, Play, Shield, Trash2, Copy, Check, Eye, EyeOff, ExternalLink, Key } from 'lucide-react'
 import { Link } from 'react-router-dom'
-import { apiRequest, getApiConfig, saveApiConfig, type ApiConfig } from '../services/apiConfig'
+import { apiRequest, getApiConfig, saveApiConfig, resolveMerchantSession, type ApiConfig } from '../services/apiConfig'
 import { getStoredMerchants } from '../services/storageService'
 
 type Auth = 'none' | 'admin' | 'psp' | 'merchant'
@@ -102,13 +102,42 @@ export function ApiWorkbench() {
     setResult(null)
     try {
       if (body.trim() && !['GET', 'HEAD'].includes(selectedEndpoint.method)) JSON.parse(body)
-      const response = await apiRequest(config, selectedEndpoint.method, path, body, selectedEndpoint.auth)
+
+      // Auto-resolve merchant session secret from state, config, or storage
+      const resolvedSession =
+        (sessionSecret && sessionSecret.startsWith('onb_sec_') ? sessionSecret : '') ||
+        (config.merchantSession && config.merchantSession.startsWith('onb_sec_') ? config.merchantSession : '') ||
+        resolveMerchantSession(config)
+
+      const effectiveConfig: ApiConfig = {
+        ...config,
+        merchantSession: resolvedSession || config.merchantSession,
+      }
+
+      if (resolvedSession) {
+        if (config.merchantSession !== resolvedSession) {
+          update(effectiveConfig)
+        }
+        if (!sessionSecret) {
+          setSessionSecret(resolvedSession)
+        }
+      }
+
+      // Determine correct auth mode: if path is /api/v1/merchant/*, force auth='merchant' unless public quote
+      const cleanPath = path.startsWith('/') ? path : `/${path}`
+      const isMerchantRoute = cleanPath.includes('/merchant/') && !cleanPath.includes('/conversions/quote')
+      const effectiveAuth = isMerchantRoute ? 'merchant' : selectedEndpoint.auth
+
+      const response = await apiRequest(effectiveConfig, selectedEndpoint.method, path, body, effectiveAuth)
       setResult(response)
       if (response.ok && response.data && typeof response.data === 'object') {
         const sessionResult = response.data as { clientSecret?: string; setupUrl?: string | null; expiresAt?: string }
         if (sessionResult.clientSecret) {
-          update({ ...config, merchantSession: sessionResult.clientSecret })
-          setSessionSecret(sessionResult.clientSecret)
+          const freshSecret = sessionResult.clientSecret
+          const freshConfig = { ...effectiveConfig, merchantSession: freshSecret }
+          update(freshConfig)
+          setSessionSecret(freshSecret)
+          sessionStorage.setItem('orki_active_merchant_session', freshSecret)
         }
         if (sessionResult.setupUrl) {
           setSessionUrl(sessionResult.setupUrl)

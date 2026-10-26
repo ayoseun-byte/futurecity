@@ -108,6 +108,7 @@ export const MerchantDetailPage: React.FC<MerchantDetailPageProps> = ({
       setSessionData(response)
       if (response.clientSecret) {
         sessionStorage.setItem(`orki_merchant_session:${merchant.externalId}`, response.clientSecret)
+        sessionStorage.setItem('orki_active_merchant_session', response.clientSecret)
         saveApiConfig({ ...config, merchantSession: response.clientSecret })
       }
     } catch (err) {
