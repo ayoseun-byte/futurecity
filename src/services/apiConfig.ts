@@ -95,11 +95,28 @@ export async function apiRequest(config: ApiConfig, method: string, path: string
   }
 
   if (method !== 'GET' && method !== 'HEAD') headers['Idempotency-Key'] = `fc-${crypto.randomUUID()}`
-  const response = await fetch(`${config.baseUrl}${cleanPath}`, {
-    method,
-    headers,
-    body: body && method !== 'GET' ? body : undefined,
-  })
+
+  const controller = new AbortController()
+  const timeoutMs = 20000
+  const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs)
+
+  let response: Response
+  try {
+    response = await fetch(`${config.baseUrl}${cleanPath}`, {
+      method,
+      headers,
+      body: body && method !== 'GET' ? body : undefined,
+      signal: controller.signal,
+    })
+  } catch (err: unknown) {
+    if (err instanceof Error && err.name === 'AbortError') {
+      throw new Error(`Request timed out after ${timeoutMs / 1000}s (${method} ${cleanPath}). Please verify backend connectivity.`)
+    }
+    throw err
+  } finally {
+    window.clearTimeout(timeoutId)
+  }
+
   const raw = await response.text()
   let data: unknown = raw
   try { data = raw ? JSON.parse(raw) : null } catch { /* keep non-JSON response */ }

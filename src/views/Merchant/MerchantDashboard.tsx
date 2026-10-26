@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import type { Merchant, Paylink, SettlementMode, Transaction } from '../../types'
 import { StatusBadge } from '../../components/StatusBadge'
 import { CreatePaylinkModal } from './CreatePaylinkModal'
@@ -298,33 +298,17 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
   })
   const [kybData, setKybData] = useState(() => getPrefilledKybData(merchant, 'Managing Director'))
 
-  // Synchronize prefill when merchant data updates from backend/props
+  // Synchronize prefill when representative data updates from props
   useEffect(() => {
-    setSignatory((prev) => ({
-      name: prev.name || merchant.representativeName || '',
-      email: prev.email || merchant.representativeEmail || '',
-      title: prev.title || 'Managing Director',
-    }))
-    setKybData((prev) => {
-      const prefill = getPrefilledKybData(merchant, signatory.title || 'Managing Director')
-      return {
-        companyName: prev.companyName || prefill.companyName,
-        registrationNumber: prev.registrationNumber || prefill.registrationNumber,
-        country: prev.country || prefill.country,
-        incorporatedOn: prev.incorporatedOn || prefill.incorporatedOn,
-        type: prev.type || prefill.type,
-        legalAddress: prev.legalAddress || prefill.legalAddress,
-        registrationLocation: prev.registrationLocation || prefill.registrationLocation,
-        email: prev.email || prefill.email,
-        phone: prev.phone || prefill.phone,
-        taxId: prev.taxId || prefill.taxId,
-        website: prev.website || prefill.website,
-        postalAddress: prev.postalAddress || prefill.postalAddress,
-        controlScheme: prev.controlScheme || prefill.controlScheme,
-        applicantPosition: prev.applicantPosition || prefill.applicantPosition,
-      }
+    setSignatory((prev) => {
+      const repName = merchant.representativeName || ''
+      const repEmail = merchant.representativeEmail || ''
+      const name = prev.name || repName
+      const email = prev.email || repEmail
+      if (prev.name === name && prev.email === email) return prev
+      return { ...prev, name, email }
     })
-  }, [merchant, signatory.title])
+  }, [merchant.representativeName, merchant.representativeEmail])
 
   const openKybModal = () => {
     setKybData((prev) => {
@@ -394,7 +378,15 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
       sessionStorage.setItem(`orki_merchant_session_expiry:${merchant.externalId}`, session.expiresAt)
     }
     return newConfig
-  }, [merchant, merchantApiConfig])
+  }, [
+    merchant.externalId,
+    merchant.legalBusinessName,
+    merchant.tradeLicenseNumber,
+    merchant.jurisdiction,
+    merchant.representativeName,
+    merchant.representativeEmail,
+    merchantApiConfig,
+  ])
 
   const hasMerchantSession = Boolean(merchantApiConfig().merchantSession)
   const visiblePaylinks = hasMerchantSession ? dashboardPaylinks : []
@@ -616,9 +608,18 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
     }
   }
 
+  const merchantRef = useRef(merchant)
+  merchantRef.current = merchant
+
+  const isRefreshingRef = useRef(false)
+  const isDataRefreshingRef = useRef(false)
+
   const refreshDashboardData = useCallback(async () => {
+    if (isDataRefreshingRef.current) return
     const config = merchantApiConfig()
     if (!config.merchantSession) return
+
+    isDataRefreshingRef.current = true
     try {
       const [metricsResponse, balancesResponse, paylinksResponse, transactionsResponse] = await Promise.all([
         requestApi<{ metrics?: MerchantMetrics }>(config, 'GET', '/api/v1/merchant/metrics', undefined, 'merchant'),
@@ -654,6 +655,8 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
       setDashboardDataLoaded(true)
     } catch (reason) {
       setApiError(reason instanceof Error ? reason.message : 'Could not load merchant dashboard data.')
+    } finally {
+      isDataRefreshingRef.current = false
     }
   }, [asAmount, merchantApiConfig])
 
@@ -661,11 +664,83 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
     const config = merchantApiConfig()
     if (!config.merchantSession) return
     let active = true
+
     const refresh = async () => {
+      if (document.hidden || isRefreshingRef.current) return
+      isRefreshingRef.current = true
       try {
-        const state = await requestApi<{ status: string; statusReason?: string | null; nextStep?: string | null; noticeAcknowledgedAt?: string | null; kybInformationSubmittedAt?: string | null; termsAcceptedAt?: string | null; sumsubCompletedAt?: string | null; verifiedAt?: string | null; passkeyRegisteredAt?: string | null; settlementMode?: SettlementMode; orkiFeeBps?: number; pspFeeBps?: number; orkiFeeWallet?: string | null; pspFeeWallet?: string | null; merchantWallet?: string | null }>(config, 'GET', '/api/v1/merchant/onboarding', undefined, 'merchant')
+        const state = await requestApi<{
+          status: string
+          statusReason?: string | null
+          nextStep?: string | null
+          noticeAcknowledgedAt?: string | null
+          kybInformationSubmittedAt?: string | null
+          termsAcceptedAt?: string | null
+          sumsubCompletedAt?: string | null
+          verifiedAt?: string | null
+          passkeyRegisteredAt?: string | null
+          settlementMode?: SettlementMode
+          orkiFeeBps?: number
+          pspFeeBps?: number
+          orkiFeeWallet?: string | null
+          pspFeeWallet?: string | null
+          merchantWallet?: string | null
+        }>(config, 'GET', '/api/v1/merchant/onboarding', undefined, 'merchant')
+
         if (!active) return
-        onUpdateMerchant({ status: state.status as Merchant['status'], statusReason: state.statusReason || undefined, nextStep: state.nextStep as Merchant['nextStep'], noticeAcknowledgedAt: state.noticeAcknowledgedAt || undefined, kybInformationSubmittedAt: state.kybInformationSubmittedAt || undefined, termsAcceptedAt: state.termsAcceptedAt || undefined, sumsubCompletedAt: state.sumsubCompletedAt || undefined, verifiedAt: state.verifiedAt || undefined, passkeyRegisteredAt: state.passkeyRegisteredAt || undefined, settlementMode: state.settlementMode, orkiFeeBps: state.orkiFeeBps, pspFeeBps: state.pspFeeBps, orkiFeeWallet: state.orkiFeeWallet || undefined, pspFeeWallet: state.pspFeeWallet || undefined, merchantWallet: state.merchantWallet || undefined })
+
+        const current = merchantRef.current
+        const updates: Partial<Merchant> = {}
+
+        if (state.status && state.status !== current.status) {
+          updates.status = state.status as Merchant['status']
+        }
+        if (state.statusReason !== undefined && (state.statusReason || undefined) !== current.statusReason) {
+          updates.statusReason = state.statusReason || undefined
+        }
+        if (state.nextStep !== undefined && (state.nextStep || undefined) !== current.nextStep) {
+          updates.nextStep = state.nextStep as Merchant['nextStep']
+        }
+        if (state.noticeAcknowledgedAt && state.noticeAcknowledgedAt !== current.noticeAcknowledgedAt) {
+          updates.noticeAcknowledgedAt = state.noticeAcknowledgedAt
+        }
+        if (state.kybInformationSubmittedAt && state.kybInformationSubmittedAt !== current.kybInformationSubmittedAt) {
+          updates.kybInformationSubmittedAt = state.kybInformationSubmittedAt
+        }
+        if (state.termsAcceptedAt && state.termsAcceptedAt !== current.termsAcceptedAt) {
+          updates.termsAcceptedAt = state.termsAcceptedAt
+        }
+        if (state.sumsubCompletedAt && state.sumsubCompletedAt !== current.sumsubCompletedAt) {
+          updates.sumsubCompletedAt = state.sumsubCompletedAt
+        }
+        if (state.verifiedAt && state.verifiedAt !== current.verifiedAt) {
+          updates.verifiedAt = state.verifiedAt
+        }
+        if (state.passkeyRegisteredAt && state.passkeyRegisteredAt !== current.passkeyRegisteredAt) {
+          updates.passkeyRegisteredAt = state.passkeyRegisteredAt
+        }
+        if (state.settlementMode && state.settlementMode !== current.settlementMode) {
+          updates.settlementMode = state.settlementMode
+        }
+        if (state.orkiFeeBps !== undefined && state.orkiFeeBps !== current.orkiFeeBps) {
+          updates.orkiFeeBps = state.orkiFeeBps
+        }
+        if (state.pspFeeBps !== undefined && state.pspFeeBps !== current.pspFeeBps) {
+          updates.pspFeeBps = state.pspFeeBps
+        }
+        if (state.orkiFeeWallet !== undefined && (state.orkiFeeWallet || undefined) !== current.orkiFeeWallet) {
+          updates.orkiFeeWallet = state.orkiFeeWallet || undefined
+        }
+        if (state.pspFeeWallet !== undefined && (state.pspFeeWallet || undefined) !== current.pspFeeWallet) {
+          updates.pspFeeWallet = state.pspFeeWallet || undefined
+        }
+        if (state.merchantWallet !== undefined && (state.merchantWallet || undefined) !== current.merchantWallet) {
+          updates.merchantWallet = state.merchantWallet || undefined
+        }
+
+        if (Object.keys(updates).length > 0) {
+          onUpdateMerchant(updates)
+        }
       } catch (reason) {
         const msg = reason instanceof Error ? reason.message : ''
         if (msg.includes('expired') || msg.includes('merchant_session_required')) {
@@ -673,14 +748,37 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
           sessionStorage.removeItem(`orki_merchant_session_expiry:${merchant.externalId}`)
         }
         if (active) setApiError(reason instanceof Error ? reason.message : 'Could not refresh onboarding status.')
+      } finally {
+        isRefreshingRef.current = false
       }
     }
+
     void refresh()
     void refreshDashboardData()
-    const timer = window.setInterval(refresh, 15000)
-    const dataTimer = window.setInterval(() => { void refreshDashboardData() }, 60000)
-    window.addEventListener('focus', refresh)
-    return () => { active = false; window.clearInterval(timer); window.clearInterval(dataTimer); window.removeEventListener('focus', refresh) }
+
+    // 30s interval for onboarding status check, 60s for general dashboard metrics
+    const timer = window.setInterval(() => {
+      if (!document.hidden) void refresh()
+    }, 30000)
+
+    const dataTimer = window.setInterval(() => {
+      if (!document.hidden) void refreshDashboardData()
+    }, 60000)
+
+    const handleFocus = () => {
+      if (!document.hidden) {
+        void refresh()
+        void refreshDashboardData()
+      }
+    }
+    window.addEventListener('focus', handleFocus)
+
+    return () => {
+      active = false
+      window.clearInterval(timer)
+      window.clearInterval(dataTimer)
+      window.removeEventListener('focus', handleFocus)
+    }
   }, [merchant.id, merchant.externalId, merchantApiConfig, onUpdateMerchant, refreshDashboardData])
 
   const handleToggleSettlementMode = async (newMode: SettlementMode) => {

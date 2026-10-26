@@ -310,9 +310,15 @@ function MainRoutes() {
   const handleUpdateActiveMerchant = useCallback((updated: Partial<Merchant>) => {
     const merchantId = activeMerchant?.id
     if (!merchantId) return
-    setMerchants((current) =>
-      current.map((merchant) => merchant.id === merchantId ? { ...merchant, ...updated } : merchant)
-    )
+    setMerchants((current) => {
+      const existing = current.find((m) => m.id === merchantId)
+      if (!existing) return current
+      const hasRealChange = Object.entries(updated).some(
+        ([key, val]) => (existing as unknown as Record<string, unknown>)[key] !== val
+      )
+      if (!hasRealChange) return current
+      return current.map((merchant) => merchant.id === merchantId ? { ...merchant, ...updated } : merchant)
+    })
   }, [activeMerchant?.id])
 
   const handlePaylinkCreated = (newPaylink: Paylink) => {
