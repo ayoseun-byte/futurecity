@@ -29,6 +29,7 @@ import {
   Copy,
   Check,
   Key,
+  RefreshCw,
 } from 'lucide-react'
 
 interface MerchantMetrics {
@@ -272,6 +273,8 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
   const [isTransferModalOpen, setIsTransferModalOpen] = useState(false)
   const [copiedId, setCopiedId] = useState<string | null>(null)
   const [copiedSessionKey, setCopiedSessionKey] = useState(false)
+  const [sumsubUrl, setSumsubUrl] = useState<string | null>(null)
+  const [copiedField, setCopiedField] = useState<string | null>(null)
   const [showAssetBreakdown, setShowAssetBreakdown] = useState(false)
   const [selectedTxForSplit, setSelectedTxForSplit] = useState<Transaction | null>(null)
 
@@ -538,17 +541,76 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
   }
 
   const handleOpenSumsubTab = async () => {
-    const tab = window.open('about:blank', '_blank')
+    // Open a temporary tab with an informative loading UI rather than a raw about:blank
+    const tab = window.open('', '_blank')
+    if (tab) {
+      try {
+        tab.document.title = 'Preparing Verification | Orki'
+        tab.document.body.style.margin = '0'
+        tab.document.body.style.fontFamily = 'system-ui, -apple-system, sans-serif'
+        tab.document.body.style.backgroundColor = '#f8fafc'
+        tab.document.body.style.display = 'flex'
+        tab.document.body.style.alignItems = 'center'
+        tab.document.body.style.justifyContent = 'center'
+        tab.document.body.style.height = '100vh'
+        tab.document.body.innerHTML = `
+          <div style="text-align: center; max-width: 440px; padding: 32px; background: white; border-radius: 16px; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);">
+            <div style="width: 40px; height: 40px; border: 3px solid #e2e8f0; border-top-color: #0f172a; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 16px;"></div>
+            <h2 style="font-size: 16px; font-weight: 700; color: #0f172a; margin: 0 0 8px;">Connecting to SumSub...</h2>
+            <p style="font-size: 13px; color: #64748b; margin: 0;">Generating your secure identity verification session. You will be redirected momentarily.</p>
+            <style>@keyframes spin { to { transform: rotate(360deg); } }</style>
+          </div>
+        `
+      } catch {
+        // Fallback if browser security denies document manipulation
+      }
+    }
+
     setApiBusy(true)
     setApiError(null)
     try {
-      const result = await requestApi<{ url: string }>(merchantApiConfig(), 'GET', '/api/v1/merchant/kyc/start', undefined, 'merchant')
+      // Ensure we have a fresh, non-expired merchant session token
+      const config = await ensureMerchantSession()
+      const result = await requestApi<{ url: string }>(config, 'GET', '/api/v1/merchant/kyc/start', undefined, 'merchant')
       if (!result.url) throw new Error('The backend did not return the Sumsub hosted URL.')
-      if (tab) tab.location.href = result.url
-      else window.open(result.url, '_blank', 'noopener,noreferrer')
+
+      setSumsubUrl(result.url)
+
+      if (tab && !tab.closed) {
+        tab.location.replace(result.url)
+      } else {
+        window.open(result.url, '_blank', 'noopener,noreferrer')
+      }
     } catch (reason) {
-      tab?.close()
-      setApiError(reason instanceof Error ? reason.message : 'Could not start Sumsub verification.')
+      const errorMsg = reason instanceof Error ? reason.message : 'Could not start Sumsub verification.'
+      setApiError(errorMsg)
+
+      if (tab && !tab.closed) {
+        try {
+          tab.document.title = 'Verification Setup Error | Orki'
+          tab.document.body.innerHTML = `
+            <div style="font-family: system-ui, -apple-system, sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; background-color: #f8fafc; padding: 16px;">
+              <div style="max-width: 520px; width: 100%; padding: 32px; background: white; border-radius: 16px; border: 1px solid #fecdd3; box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1); text-align: center;">
+                <div style="width: 48px; height: 48px; border-radius: 12px; background: #fff1f2; color: #e11d48; display: flex; align-items: center; justify-content: center; margin: 0 auto 16px; font-size: 24px; font-weight: bold;">!</div>
+                <h2 style="font-size: 18px; font-weight: 700; color: #9f1239; margin: 0 0 10px;">SumSub Verification Could Not Start</h2>
+                <p style="font-size: 13px; color: #475569; line-height: 1.5; margin: 0 0 20px;">${errorMsg}</p>
+                <div style="font-size: 12px; color: #475569; background: #f8fafc; padding: 14px; border-radius: 10px; border: 1px solid #e2e8f0; text-align: left; margin-bottom: 20px;">
+                  <strong style="color: #0f172a;">Render Backend Environment Checklist:</strong>
+                  <ul style="margin: 8px 0 0; padding-left: 18px; line-height: 1.6;">
+                    <li><code>SUMSUB_APP_TOKEN</code> — SumSub App Token (starts with <code>sbx:</code> or <code>prd:</code>)</li>
+                    <li><code>SUMSUB_SECRET_KEY</code> — SumSub Secret Key</li>
+                    <li><code>SUMSUB_LEVEL_NAME</code> — Must match the exact Level Name configured in your SumSub dashboard (e.g. <code>basic-kyc-level</code>)</li>
+                    <li><code>SUMSUB_BASE_URL</code> — Default: <code>https://api.sumsub.com</code></li>
+                  </ul>
+                </div>
+                <button onclick="window.close()" style="background: #0f172a; color: white; border: none; padding: 10px 20px; font-size: 13px; font-weight: 600; border-radius: 8px; cursor: pointer;">Close Window</button>
+              </div>
+            </div>
+          `
+        } catch {
+          tab.close()
+        }
+      }
     } finally {
       setApiBusy(false)
     }
@@ -811,13 +873,39 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
                 </button>
               )}
               {merchant.nextStep === 'SUMSUB' && (
-                <button
-                  onClick={handleOpenSumsubTab}
-                  className="mat-btn-primary px-5 py-2.5 text-xs font-semibold flex items-center space-x-2 shadow-sm"
-                >
-                  <ExternalLink className="w-4 h-4" />
-                  <span>Open SumSub Verification (New Tab)</span>
-                </button>
+                <div className="space-y-2">
+                  <button
+                    onClick={handleOpenSumsubTab}
+                    disabled={apiBusy}
+                    className="mat-btn-primary px-5 py-2.5 text-xs font-semibold flex items-center space-x-2 shadow-sm disabled:opacity-50"
+                  >
+                    {apiBusy ? <RefreshCw className="w-4 h-4 animate-spin" /> : <ExternalLink className="w-4 h-4" />}
+                    <span>{apiBusy ? 'Connecting to SumSub…' : 'Open SumSub Verification (New Tab)'}</span>
+                  </button>
+                  {sumsubUrl && (
+                    <div className="flex items-center gap-2 pt-1 text-xs">
+                      <a
+                        href={sumsubUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs text-onion font-bold hover:underline inline-flex items-center gap-1"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" /> Direct SumSub Link
+                      </a>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText(sumsubUrl)
+                          setCopiedField('sumsubUrl')
+                          setTimeout(() => setCopiedField(null), 2000)
+                        }}
+                        className="text-[11px] text-slate-500 hover:text-slate-700 underline"
+                      >
+                        {copiedField === 'sumsubUrl' ? 'Copied Link!' : 'Copy Link'}
+                      </button>
+                    </div>
+                  )}
+                </div>
               )}
               {merchant.nextStep === 'PASSKEY' && (
                 <a
