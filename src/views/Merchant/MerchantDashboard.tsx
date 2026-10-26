@@ -30,6 +30,7 @@ import {
   Check,
   Key,
   RefreshCw,
+  AlertCircle,
 } from 'lucide-react'
 
 interface MerchantMetrics {
@@ -290,7 +291,7 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
   const [dashboardTransactions, setDashboardTransactions] = useState<Transaction[]>([])
   const [dashboardDataLoaded, setDashboardDataLoaded] = useState(false)
   const [notice, setNotice] = useState<{ title?: string; sections?: { heading: string; content: string }[] } | null>(null)
-  const [termsData, setTermsData] = useState<{ tos?: { token?: string; entityName?: string; documentLinks?: { tos?: string; privacyPolicy?: string } }; title?: string; clauses?: string[] } | null>(null)
+  const [termsData, setTermsData] = useState<{ tos?: { token?: string; entityName?: string; status?: string; documentLinks?: { tos?: string; privacyPolicy?: string } }; title?: string; clauses?: string[] } | null>(null)
   const [signatory, setSignatory] = useState({
     name: merchant.representativeName || '',
     email: merchant.representativeEmail || '',
@@ -403,18 +404,21 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
   useEffect(() => {
     const handleWindowMessage = (event: MessageEvent) => {
       if (event.origin !== window.location.origin) return
-      if (event.data?.type === 'ORKI_TOS_ACCEPTED' && event.data?.merchantId === merchant.id) {
-        onUpdateMerchant({
-          termsAcceptedAt: new Date().toISOString(),
-          status: 'terms_accepted',
-          nextStep: 'SUMSUB',
-        })
-        setShowTermsModal(false)
+      if (event.data?.type === 'ORKI_TOS_ACCEPTED') {
+        const incomingId = event.data?.merchantId
+        if (!incomingId || incomingId === merchant.id || incomingId === merchant.externalId) {
+          onUpdateMerchant({
+            termsAcceptedAt: new Date().toISOString(),
+            status: 'terms_accepted',
+            nextStep: 'SUMSUB',
+          })
+          setShowTermsModal(false)
+        }
       }
     }
     window.addEventListener('message', handleWindowMessage)
     return () => window.removeEventListener('message', handleWindowMessage)
-  }, [merchant.id, onUpdateMerchant])
+  }, [merchant.id, merchant.externalId, onUpdateMerchant])
 
   // Stepper handlers
   const handleStartOptIn = async () => {
@@ -511,22 +515,49 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
   }
 
   const handleAcceptTerms = async () => {
+    // If terms were already accepted on backend, advance directly
+    if (merchant.termsAcceptedAt || termsData?.tos?.status === 'accepted') {
+      onUpdateMerchant({ termsAcceptedAt: merchant.termsAcceptedAt || new Date().toISOString(), status: 'terms_accepted', nextStep: 'SUMSUB' })
+      setShowTermsModal(false)
+      return
+    }
+
     const token = termsData?.tos?.token
-    if (!token) { setApiError('The backend did not return an active terms acceptance token.'); return }
+    if (!token) {
+      setApiError('The backend did not return an active terms acceptance token. Please close and reopen to reload.')
+      return
+    }
+
+    const signerName = (signatory.name || merchant.representativeName || '').trim()
+    const signerEmail = (signatory.email || merchant.representativeEmail || '').trim()
+    const signerTitle = (signatory.title || 'Managing Director').trim()
+
+    if (!signerName || !signerEmail) {
+      setApiError('Please fill in both the Authorised Signatory Name and Email address below.')
+      return
+    }
+
     setApiBusy(true)
     setApiError(null)
     try {
-      const config = await ensureMerchantSession()
-      await requestApi(config, 'POST', `/api/v1/tos/${encodeURIComponent(token)}`, {
-        signerName: signatory.name,
-        signerEmail: signatory.email,
-        signerTitle: signatory.title,
+      const baseConfig = getApiConfig()
+      await requestApi(baseConfig, 'POST', `/api/v1/tos/${encodeURIComponent(token)}`, {
+        signerName,
+        signerEmail,
+        signerTitle,
         isAuthorisedSignatory: true,
       }, 'none')
+
       onUpdateMerchant({ termsAcceptedAt: new Date().toISOString(), status: 'terms_accepted', nextStep: 'SUMSUB' })
       setShowTermsModal(false)
     } catch (reason) {
-      setApiError(reason instanceof Error ? reason.message : 'Could not record terms acceptance.')
+      const msg = reason instanceof Error ? reason.message : 'Could not record terms acceptance.'
+      if (msg.includes('already been accepted') || msg.includes('already accepted')) {
+        onUpdateMerchant({ termsAcceptedAt: new Date().toISOString(), status: 'terms_accepted', nextStep: 'SUMSUB' })
+        setShowTermsModal(false)
+      } else {
+        setApiError(msg)
+      }
     } finally {
       setApiBusy(false)
     }
@@ -1804,129 +1835,208 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
             </div>
 
             <div className="p-6 space-y-4 text-xs text-slate-600 leading-relaxed">
-              {/* Document Presentation (Step 2 - Present Documents) */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-                    Required Legal Documents
-                  </span>
-                  <span className="text-[10px] text-slate-400 font-mono">GET /merchant/terms · POST /tos/{termsData?.tos?.token ? 'token' : '…'}</span>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                  <a
-                    href={
-                      termsData?.tos?.documentLinks?.tos &&
-                      termsData.tos.documentLinks.tos !== '#' &&
-                      !termsData.tos.documentLinks.tos.includes('link.to')
-                        ? termsData.tos.documentLinks.tos
-                        : '/legal/terms'
-                    }
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="p-3 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl transition flex items-center justify-between group"
-                  >
-                    <div className="flex items-center space-x-2">
-                      <FileText className="w-4 h-4 text-onion-700" />
-                      <div>
-                        <p className="font-semibold text-slate-800 text-xs">Terms of Service</p>
-                        <p className="text-[10px] text-slate-400 font-mono">documentLinks.tos · Opens full text</p>
-                      </div>
-                    </div>
-                    <ExternalLink className="w-3.5 h-3.5 text-slate-400 group-hover:text-slate-700" />
-                  </a>
-
-                  <a
-                    href={
-                      termsData?.tos?.documentLinks?.privacyPolicy &&
-                      termsData.tos.documentLinks.privacyPolicy !== '#' &&
-                      !termsData.tos.documentLinks.privacyPolicy.includes('link.to')
-                        ? termsData.tos.documentLinks.privacyPolicy
-                        : '/legal/privacy'
-                    }
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="p-3 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl transition flex items-center justify-between group"
-                  >
-                    <div className="flex items-center space-x-2">
-                      <FileText className="w-4 h-4 text-emerald-600" />
-                      <div>
-                        <p className="font-semibold text-slate-800 text-xs">Privacy Policy</p>
-                        <p className="text-[10px] text-slate-400 font-mono">documentLinks.privacyPolicy · Opens full text</p>
-                      </div>
-                    </div>
-                    <ExternalLink className="w-3.5 h-3.5 text-slate-400 group-hover:text-slate-700" />
-                  </a>
-                </div>
-              </div>
-
-              {/* Key Protocol Terms & Clauses */}
-              {termsData?.clauses && termsData.clauses.length > 0 && (
-                <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5 max-h-32 overflow-y-auto">
-                  <p className="text-[10px] font-bold text-slate-700 uppercase tracking-wider">Key Protocol Provisions</p>
-                  <ul className="space-y-1 text-[11px] text-slate-600 leading-relaxed">
-                    {termsData.clauses.map((clause, idx) => (
-                      <li key={idx} className="flex items-start space-x-1.5">
-                        <span className="text-onion-600 font-bold">•</span>
-                        <span>{clause}</span>
-                      </li>
-                    ))}
-                  </ul>
+              {apiError && (
+                <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-800 text-xs flex items-start space-x-2">
+                  <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                  <div className="flex-1">
+                    <p className="font-semibold text-rose-900">Acceptance Error</p>
+                    <p className="mt-0.5 text-rose-700">{apiError}</p>
+                  </div>
                 </div>
               )}
 
-              {/* 30-Day Locked Rate Disclosure */}
-              <div className="p-3.5 bg-onion-50/50 border border-onion-200/80 rounded-xl space-y-1.5">
-                <div className="flex justify-between items-center text-slate-800">
-                  <span className="font-semibold">Orki Protocol Fee:</span>
-                  <span className="font-mono font-bold text-slate-900">{merchant.orkiFeeBps === undefined ? 'Not configured' : `${(merchant.orkiFeeBps / 100).toFixed(2)}%`}</span>
+              {(merchant.termsAcceptedAt || termsData?.tos?.status === 'accepted') ? (
+                <div className="space-y-4">
+                  <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-800 text-xs flex items-start space-x-2">
+                    <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="font-semibold text-emerald-900">Terms of Service Already Accepted</p>
+                      <p className="mt-0.5 text-emerald-700">
+                        The authorised signatory has already been recorded on the backend. You can proceed directly to identity verification.
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => {
+                      onUpdateMerchant({
+                        termsAcceptedAt: merchant.termsAcceptedAt || new Date().toISOString(),
+                        status: 'terms_accepted',
+                        nextStep: 'SUMSUB',
+                      })
+                      setShowTermsModal(false)
+                    }}
+                    className="w-full mat-btn-primary py-3 text-xs font-semibold flex items-center justify-center space-x-1.5 shadow-sm"
+                  >
+                    <span>Continue to SumSub Verification</span>
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
                 </div>
-                <div className="flex justify-between items-center text-slate-800">
-                  <span className="font-semibold">PSP Markup:</span>
-                  <span className="font-mono font-bold text-slate-900">{merchant.pspFeeBps === undefined ? 'Not configured' : `${(merchant.pspFeeBps / 100).toFixed(2)}%`}</span>
-                </div>
-                <p className="text-[10px] text-slate-500 pt-0.5">
-                  Neither Orki nor your PSP holds your funds at any time. Settlements partition atomically on-chain.
-                </p>
-              </div>
+              ) : (
+                <>
+                  {/* Document Presentation (Step 2 - Present Documents) */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                        Required Legal Documents
+                      </span>
+                      <span className="text-[10px] text-slate-400 font-mono">GET /merchant/terms · POST /tos/{termsData?.tos?.token ? 'token' : '…'}</span>
+                    </div>
 
-              {/* Acceptance Checkbox */}
-              <label className="flex items-start space-x-2.5 cursor-pointer p-2.5 bg-slate-50 rounded-xl border border-slate-200">
-                <input
-                  type="checkbox"
-                  checked={hasAgreedTos}
-                  onChange={(e) => setHasAgreedTos(e.target.checked)}
-                  className="mt-0.5 rounded text-onion focus:ring-onion"
-                />
-                <span className="text-[11px] text-slate-600 leading-snug">
-                  I confirm that I have reviewed the Terms of Service and Privacy Policy issued by <strong>{termsData?.tos?.entityName || 'the entity named in the Terms'}</strong> and accept the settlement terms.
-                </span>
-              </label>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      <a
+                        href={
+                          termsData?.tos?.documentLinks?.tos &&
+                          termsData.tos.documentLinks.tos !== '#' &&
+                          !termsData.tos.documentLinks.tos.includes('link.to')
+                            ? termsData.tos.documentLinks.tos
+                            : '/legal/terms'
+                        }
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="p-3 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl transition flex items-center justify-between group"
+                      >
+                        <div className="flex items-center space-x-2">
+                          <FileText className="w-4 h-4 text-onion-700" />
+                          <div>
+                            <p className="font-semibold text-slate-800 text-xs">Terms of Service</p>
+                            <p className="text-[10px] text-slate-400 font-mono">documentLinks.tos · Opens full text</p>
+                          </div>
+                        </div>
+                        <ExternalLink className="w-3.5 h-3.5 text-slate-400 group-hover:text-slate-700" />
+                      </a>
 
-              {/* Two Options: Option B (Manual in Dashboard) & Option A (Hosted Page) */}
-              <div className="space-y-2 pt-1">
-                <button
-                  onClick={() => void handleAcceptTerms()}
-                  disabled={!hasAgreedTos || apiBusy}
-                  className="w-full mat-btn-primary py-3 text-xs font-semibold flex items-center justify-center space-x-1.5 shadow-sm disabled:opacity-50"
-                >
-                  <span>{apiBusy ? 'Recording acceptance…' : 'Accept terms and continue'}</span>
-                  <ChevronRight className="w-4 h-4" />
-                </button>
+                      <a
+                        href={
+                          termsData?.tos?.documentLinks?.privacyPolicy &&
+                          termsData.tos.documentLinks.privacyPolicy !== '#' &&
+                          !termsData.tos.documentLinks.privacyPolicy.includes('link.to')
+                            ? termsData.tos.documentLinks.privacyPolicy
+                            : '/legal/privacy'
+                        }
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="p-3 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl transition flex items-center justify-between group"
+                      >
+                        <div className="flex items-center space-x-2">
+                          <FileText className="w-4 h-4 text-emerald-600" />
+                          <div>
+                            <p className="font-semibold text-slate-800 text-xs">Privacy Policy</p>
+                            <p className="text-[10px] text-slate-400 font-mono">documentLinks.privacyPolicy · Opens full text</p>
+                          </div>
+                        </div>
+                        <ExternalLink className="w-3.5 h-3.5 text-slate-400 group-hover:text-slate-700" />
+                      </a>
+                    </div>
+                  </div>
 
-                <button
-                  type="button"
-                  onClick={() => {
-                    const token = termsData?.tos?.token
-                    if (token) window.open(`/tos/${encodeURIComponent(token)}`, '_blank', 'width=620,height=720')
-                  }}
-                  disabled={!termsData?.tos?.token}
-                  className="w-full py-2.5 px-3 border border-slate-200 hover:border-slate-300 bg-white hover:bg-slate-50 rounded-xl text-xs font-medium text-slate-700 transition flex items-center justify-center space-x-1.5"
-                >
-                  <ExternalLink className="w-3.5 h-3.5 text-slate-500" />
-                  <span>Open Hosted Acceptance Page (Option A: Due / Orki Hosted)</span>
-                </button>
-              </div>
+                  {/* Key Protocol Terms & Clauses */}
+                  {termsData?.clauses && termsData.clauses.length > 0 && (
+                    <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5 max-h-32 overflow-y-auto">
+                      <p className="text-[10px] font-bold text-slate-700 uppercase tracking-wider">Key Protocol Provisions</p>
+                      <ul className="space-y-1 text-[11px] text-slate-600 leading-relaxed">
+                        {termsData.clauses.map((clause, idx) => (
+                          <li key={idx} className="flex items-start space-x-1.5">
+                            <span className="text-onion-600 font-bold">•</span>
+                            <span>{clause}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {/* 30-Day Locked Rate Disclosure */}
+                  <div className="p-3.5 bg-onion-50/50 border border-onion-200/80 rounded-xl space-y-1.5">
+                    <div className="flex justify-between items-center text-slate-800">
+                      <span className="font-semibold">Orki Protocol Fee:</span>
+                      <span className="font-mono font-bold text-slate-900">{merchant.orkiFeeBps === undefined ? 'Not configured' : `${(merchant.orkiFeeBps / 100).toFixed(2)}%`}</span>
+                    </div>
+                    <div className="flex justify-between items-center text-slate-800">
+                      <span className="font-semibold">PSP Markup:</span>
+                      <span className="font-mono font-bold text-slate-900">{merchant.pspFeeBps === undefined ? 'Not configured' : `${(merchant.pspFeeBps / 100).toFixed(2)}%`}</span>
+                    </div>
+                    <p className="text-[10px] text-slate-500 pt-0.5">
+                      Neither Orki nor your PSP holds your funds at any time. Settlements partition atomically on-chain.
+                    </p>
+                  </div>
+
+                  {/* Authorised Signatory Fields */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-2 border-t border-slate-200">
+                    <label className="text-[11px] font-semibold text-slate-700">
+                      Authorised signatory name
+                      <input
+                        type="text"
+                        value={signatory.name}
+                        onChange={(e) => setSignatory({ ...signatory, name: e.target.value })}
+                        className="mt-1 w-full rounded-lg border border-slate-300 p-2 text-xs font-normal"
+                        placeholder="e.g. Alice Smith"
+                        required
+                      />
+                    </label>
+                    <label className="text-[11px] font-semibold text-slate-700">
+                      Signatory email
+                      <input
+                        type="email"
+                        value={signatory.email}
+                        onChange={(e) => setSignatory({ ...signatory, email: e.target.value })}
+                        className="mt-1 w-full rounded-lg border border-slate-300 p-2 text-xs font-normal"
+                        placeholder="e.g. alice@falconluxury.example"
+                        required
+                      />
+                    </label>
+                    <label className="text-[11px] font-semibold text-slate-700 sm:col-span-2">
+                      Signatory title
+                      <input
+                        type="text"
+                        value={signatory.title}
+                        onChange={(e) => setSignatory({ ...signatory, title: e.target.value })}
+                        className="mt-1 w-full rounded-lg border border-slate-300 p-2 text-xs font-normal"
+                        placeholder="e.g. Managing Director"
+                        required
+                      />
+                    </label>
+                  </div>
+
+                  {/* Acceptance Checkbox */}
+                  <label className="flex items-start space-x-2.5 cursor-pointer p-2.5 bg-slate-50 rounded-xl border border-slate-200">
+                    <input
+                      type="checkbox"
+                      checked={hasAgreedTos}
+                      onChange={(e) => setHasAgreedTos(e.target.checked)}
+                      className="mt-0.5 rounded text-onion focus:ring-onion"
+                    />
+                    <span className="text-[11px] text-slate-600 leading-snug">
+                      I confirm that I have reviewed the Terms of Service and Privacy Policy issued by <strong>{termsData?.tos?.entityName || 'the entity named in the Terms'}</strong> and accept the settlement terms.
+                    </span>
+                  </label>
+
+                  {/* Two Options: Option B (Manual in Dashboard) & Option A (Hosted Page) */}
+                  <div className="space-y-2 pt-1">
+                    <button
+                      onClick={() => void handleAcceptTerms()}
+                      disabled={!hasAgreedTos || apiBusy || !signatory.name || !signatory.email}
+                      className="w-full mat-btn-primary py-3 text-xs font-semibold flex items-center justify-center space-x-1.5 shadow-sm disabled:opacity-50"
+                    >
+                      {apiBusy && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
+                      <span>{apiBusy ? 'Recording acceptance…' : 'Accept terms and continue'}</span>
+                      {!apiBusy && <ChevronRight className="w-4 h-4" />}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const token = termsData?.tos?.token
+                        if (token) window.open(`/tos/${encodeURIComponent(token)}`, '_blank', 'width=620,height=720')
+                      }}
+                      disabled={!termsData?.tos?.token}
+                      className="w-full py-2.5 px-3 border border-slate-200 hover:border-slate-300 bg-white hover:bg-slate-50 rounded-xl text-xs font-medium text-slate-700 transition flex items-center justify-center space-x-1.5"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5 text-slate-500" />
+                      <span>Open Hosted Acceptance Page (Option A: Due / Orki Hosted)</span>
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>

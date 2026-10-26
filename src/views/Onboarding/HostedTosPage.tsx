@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { ArrowRight, CheckCircle2, ExternalLink, FileText, ShieldCheck } from 'lucide-react'
 import { getApiConfig, requestApi } from '../../services/apiConfig'
 
-type TermsRecord = { id: string; entityName: string; version: string; status: string; token: string; legalBusinessName: string; documentLinks: { tos: string; privacyPolicy: string } }
+type TermsRecord = { id: string; entityName: string; version: string; status: string; token: string; legalBusinessName: string; merchantId?: string; documentLinks: { tos: string; privacyPolicy: string } }
 
 const resolveDocUrl = (type: 'terms' | 'privacy', url?: string) => {
   if (url && url !== '#' && !url.includes('link.to') && url.trim() !== '') return url
@@ -38,8 +38,17 @@ export function HostedTosPage() {
       })
       setAccepted(result.status === 'accepted')
       if (window.opener && !window.opener.closed) window.opener.postMessage({ type: 'ORKI_TOS_ACCEPTED', merchantId: result.merchantId }, window.location.origin)
-    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Terms acceptance failed.') }
-    finally { setBusy(false) }
+    } catch (reason) {
+      const msg = reason instanceof Error ? reason.message : 'Terms acceptance failed.'
+      if (msg.includes('already been accepted') || msg.includes('already accepted')) {
+        setAccepted(true)
+        if (window.opener && !window.opener.closed) window.opener.postMessage({ type: 'ORKI_TOS_ACCEPTED', merchantId: terms.merchantId }, window.location.origin)
+      } else {
+        setError(msg)
+      }
+    } finally {
+      setBusy(false)
+    }
   }
 
   return <main className="min-h-screen bg-slate-950 p-4 sm:p-10 text-slate-100"><section className="mx-auto max-w-2xl rounded-3xl border border-slate-800 bg-slate-900 p-6 sm:p-9 shadow-2xl">
