@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { ArrowLeft, Play, Shield, Trash2, Copy, Check, Eye, EyeOff, ExternalLink, Key } from 'lucide-react'
+import { ArrowLeft, Play, Shield, Trash2, Copy, Check, Eye, EyeOff, ExternalLink, Key, RefreshCw } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { apiRequest, getApiConfig, saveApiConfig, resolveMerchantSession, type ApiConfig } from '../services/apiConfig'
 import { getStoredMerchants } from '../services/storageService'
@@ -29,11 +29,11 @@ const endpoints: Endpoint[] = [
   { group: 'PSP', method: 'GET', path: '/api/v1/psp/merchants', auth: 'psp' },
   { group: 'PSP', method: 'POST', path: '/api/v1/psp/merchants', auth: 'psp', body: JSON.stringify({ merchantExternalId: 'merchant-001', legalBusinessName: 'Example Trading Ltd', tradeLicenseNumber: 'LIC-001', jurisdiction: 'NG', representativeName: 'Ada Example', representativeEmail: 'ada@example.com', consent: { consentRecordedAt: '2026-10-23T00:00:00Z', consentMethod: 'dashboard', consentNoticeVersion: '1' }, settlementPreferences: { mode: 'hold_as_received' } }, null, 2) },
   { group: 'PSP', method: 'POST', path: '/api/v1/psp/merchants/batch', auth: 'psp', body: JSON.stringify({ merchants: [{ merchantExternalId: 'merchant-001', legalBusinessName: 'Example Trading Ltd', tradeLicenseNumber: 'LIC-001', jurisdiction: 'NG', consent: { consentRecordedAt: '2026-10-23T00:00:00Z', consentMethod: 'dashboard', consentNoticeVersion: '1' } }] }, null, 2) },
-  { group: 'PSP', method: 'POST', path: '/api/v1/psp/merchant-onboarding-sessions', auth: 'psp', body: JSON.stringify({ merchantExternalId: 'merchant-001', legalBusinessName: 'Example Trading Ltd', tradeLicenseNumber: 'LIC-001', jurisdiction: 'NG', representativeName: 'Ada Example', representativeEmail: 'ada@example.com', returnUrl: 'http://localhost:5173/merchant', ttlMinutes: 60 }, null, 2), note: 'Creates a backend merchant record on first onboarding start (pending consent) and returns its merchant session secret and setup URL.' },
+  { group: 'PSP', method: 'POST', path: '/api/v1/psp/merchant-onboarding-sessions', auth: 'psp', body: JSON.stringify({ merchantExternalId: 'merchant-001', legalBusinessName: 'Example Trading Ltd', tradeLicenseNumber: 'LIC-001', jurisdiction: 'NG', representativeName: 'Ada Example', representativeEmail: 'ada@example.com', returnUrl: 'http://localhost:5173/merchant', ttlMinutes: 120 }, null, 2), note: 'Creates a backend merchant record on first onboarding start (pending consent) and returns its merchant session secret and setup URL.' },
   { group: 'PSP', method: 'GET', path: '/api/v1/psp/merchants/{id}', auth: 'psp' },
   { group: 'PSP', method: 'GET', path: '/api/v1/psp/merchants/{id}/overview', auth: 'psp' },
   { group: 'PSP', method: 'PATCH', path: '/api/v1/psp/merchants/{id}/status', auth: 'psp', body: '{\n  "status": "disabled"\n}', note: 'Only active → disabled or eligible disabled → active transitions are allowed.' },
-  { group: 'PSP', method: 'POST', path: '/api/v1/psp/merchants/{id}/onboarding-sessions', auth: 'psp', body: '{\n  "returnUrl": "http://localhost:5173/setup",\n  "ttlMinutes": 30\n}' },
+  { group: 'PSP', method: 'POST', path: '/api/v1/psp/merchants/{id}/onboarding-sessions', auth: 'psp', body: '{\n  "returnUrl": "http://localhost:5173/setup",\n  "ttlMinutes": 120\n}' },
   ...[
     ['GET', '/api/v1/merchant/onboarding', undefined], ['POST', '/api/v1/merchant/accept-usdc', '{}'], ['GET', '/api/v1/merchant/notice', undefined],
     ['POST', '/api/v1/merchant/notice/acknowledge', JSON.stringify({ isAuthorisedSignatory: true, signatoryName: 'Ada Example', signatoryEmail: 'ada@example.com', signatoryTitle: 'Director' }, null, 2)],
@@ -93,6 +93,48 @@ export function ApiWorkbench() {
     saveApiConfig(next)
     if (next.merchantSession && !sessionSecret) {
       setSessionSecret(next.merchantSession)
+    }
+  }
+
+  const handleQuickReissueSession = async () => {
+    if (!config.pspKey) {
+      setError('A valid PSP API key is required in the credentials panel above to issue a new merchant onboarding session.')
+      return
+    }
+    setBusy(true)
+    setError('')
+    try {
+      const response = await apiRequest(config, 'POST', '/api/v1/psp/merchant-onboarding-sessions', JSON.stringify({
+        merchantExternalId: 'merchant-001',
+        legalBusinessName: 'Example Trading Ltd',
+        tradeLicenseNumber: 'LIC-001',
+        jurisdiction: 'NG',
+        representativeName: 'Ada Example',
+        representativeEmail: 'ada@example.com',
+        returnUrl: `${window.location.origin}/merchant`,
+        ttlMinutes: 120,
+      }), 'psp')
+      if (response.ok && response.data && typeof response.data === 'object') {
+        const sessionResult = response.data as { clientSecret?: string; setupUrl?: string | null; expiresAt?: string }
+        if (sessionResult.clientSecret) {
+          const freshSecret = sessionResult.clientSecret
+          const freshConfig = { ...config, merchantSession: freshSecret }
+          update(freshConfig)
+          setSessionSecret(freshSecret)
+          sessionStorage.setItem('orki_active_merchant_session', freshSecret)
+          if (sessionResult.expiresAt) {
+            setSessionExpiresAt(sessionResult.expiresAt)
+          }
+          if (sessionResult.setupUrl) setSessionUrl(sessionResult.setupUrl)
+          setResult({ status: 200, ok: true, data: response.data })
+        }
+      } else {
+        setResult(response)
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to re-issue session')
+    } finally {
+      setBusy(false)
     }
   }
 
@@ -423,11 +465,23 @@ export function ApiWorkbench() {
                       Issued Merchant Onboarding Credentials
                     </h3>
                   </div>
-                  {sessionExpiresAt && (
-                    <span className="text-[11px] font-medium text-emerald-800">
-                      Expires: {new Date(sessionExpiresAt).toLocaleTimeString()} ({new Date(sessionExpiresAt).toLocaleDateString()})
-                    </span>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {sessionExpiresAt && (
+                      <span className="text-[11px] font-medium text-emerald-800">
+                        Expires: {new Date(sessionExpiresAt).toLocaleTimeString()} ({new Date(sessionExpiresAt).toLocaleDateString()})
+                      </span>
+                    )}
+                    <button
+                      type="button"
+                      onClick={handleQuickReissueSession}
+                      disabled={busy || !config.pspKey}
+                      className="px-2.5 py-1 rounded-md border border-emerald-300 bg-white hover:bg-emerald-50 text-emerald-800 text-[11px] font-semibold flex items-center gap-1 transition shadow-2xs disabled:opacity-50"
+                      title={!config.pspKey ? 'Configure your PSP API key in the credentials box above' : 'Issues a fresh 2-hour onboarding session key'}
+                    >
+                      <RefreshCw size={12} className={busy ? 'animate-spin' : ''} />
+                      <span>Re-issue Fresh Key</span>
+                    </button>
+                  </div>
                 </div>
 
                 <p className="text-xs text-emerald-900 leading-relaxed">
@@ -509,6 +563,19 @@ export function ApiWorkbench() {
                 <div className={`text-sm font-semibold ${result.ok ? 'text-emerald-700' : 'text-red-700'}`}>
                   HTTP {result.status} · {result.ok ? 'Success' : 'Request failed'}
                 </div>
+                {result.status === 403 && (
+                  <div className="p-3.5 rounded-xl border border-amber-300 bg-amber-50 text-amber-950 text-xs space-y-1.5 shadow-2xs">
+                    <div className="font-bold flex items-center gap-1.5 text-amber-900">
+                      <span>⚠️ Session Key Expired or Unrecognized</span>
+                    </div>
+                    <p>
+                      The backend returned <code>merchant_session_required</code>. Onboarding sessions have a strict <strong>30 to 120 minute TTL</strong> and expire automatically on the server.
+                    </p>
+                    <p>
+                      Click <strong>"Re-issue Fresh Key"</strong> above or execute <code>POST /api/v1/psp/merchant-onboarding-sessions</code> under the PSP group with your PSP key to obtain a fresh active token.
+                    </p>
+                  </div>
+                )}
                 <pre className="max-h-[420px] overflow-auto whitespace-pre-wrap break-words rounded-lg bg-slate-950 text-slate-100 p-4 text-xs font-mono">
                   {JSON.stringify(result.data, null, 2)}
                 </pre>

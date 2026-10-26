@@ -111,9 +111,18 @@ export async function requestApi<T>(config: ApiConfig, method: string, path: str
   const result = await apiRequest(config, method, path, body, auth)
   if (!result.ok) {
     const response = result.data as { message?: string; error?: string } | string | null
-    const message = typeof response === 'object' && response
+    let message = typeof response === 'object' && response
       ? response.message || response.error
       : typeof response === 'string' ? response : undefined
+
+    // Clarify misleading backend message if an expired/unrecognized onb_sec_ token was sent
+    if (response && typeof response === 'object' && response.error === 'merchant_session_required') {
+      const sentToken = resolveMerchantSession(config)
+      if (sentToken && sentToken.startsWith('onb_sec_')) {
+        message = `The merchant session key (${sentToken.slice(0, 16)}...) has expired on the backend (sessions have a 30–120 minute TTL). Please generate a fresh onboarding session via POST /api/v1/psp/merchant-onboarding-sessions.`
+      }
+    }
+
     throw new Error(message || `Request failed (${result.status})`)
   }
   return result.data as T

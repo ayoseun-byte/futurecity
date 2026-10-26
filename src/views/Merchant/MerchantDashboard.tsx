@@ -359,16 +359,20 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
     return resolved ? { ...config, merchantSession: resolved } : config
   }, [merchant.externalId])
 
-  const ensureMerchantSession = useCallback(async (): Promise<ReturnType<typeof getApiConfig>> => {
+  const ensureMerchantSession = useCallback(async (forceRefresh = false): Promise<ReturnType<typeof getApiConfig>> => {
     const activeConfig = merchantApiConfig()
-    if (activeConfig.merchantSession && activeConfig.merchantSession.startsWith('onb_sec_')) {
+    const expiryStr = sessionStorage.getItem(`orki_merchant_session_expiry:${merchant.externalId}`)
+    const isExpired = expiryStr ? new Date(expiryStr) <= new Date() : false
+
+    if (!forceRefresh && !isExpired && activeConfig.merchantSession && activeConfig.merchantSession.startsWith('onb_sec_')) {
       return activeConfig
     }
     const baseConfig = getApiConfig()
     if (!baseConfig.pspKey) {
+      if (activeConfig.merchantSession) return activeConfig
       throw new Error('A PSP API key or active merchant session is required to initiate onboarding.')
     }
-    const session = await requestApi<{ clientSecret: string }>(baseConfig, 'POST', '/api/v1/psp/merchant-onboarding-sessions', {
+    const session = await requestApi<{ clientSecret: string; expiresAt?: string }>(baseConfig, 'POST', '/api/v1/psp/merchant-onboarding-sessions', {
       merchantExternalId: merchant.externalId,
       legalBusinessName: merchant.legalBusinessName,
       tradeLicenseNumber: merchant.tradeLicenseNumber,
@@ -376,13 +380,16 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
       representativeName: merchant.representativeName,
       representativeEmail: merchant.representativeEmail,
       returnUrl: `${window.location.origin}/merchant`,
-      ttlMinutes: 60,
+      ttlMinutes: 120,
     }, 'psp')
 
     const newConfig = { ...baseConfig, merchantSession: session.clientSecret }
     saveApiConfig(newConfig)
     sessionStorage.setItem(`orki_merchant_session:${merchant.externalId}`, session.clientSecret)
     sessionStorage.setItem('orki_active_merchant_session', session.clientSecret)
+    if (session.expiresAt) {
+      sessionStorage.setItem(`orki_merchant_session_expiry:${merchant.externalId}`, session.expiresAt)
+    }
     return newConfig
   }, [merchant, merchantApiConfig])
 
@@ -598,6 +605,11 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
         if (!active) return
         onUpdateMerchant({ status: state.status as Merchant['status'], statusReason: state.statusReason || undefined, nextStep: state.nextStep as Merchant['nextStep'], noticeAcknowledgedAt: state.noticeAcknowledgedAt || undefined, kybInformationSubmittedAt: state.kybInformationSubmittedAt || undefined, termsAcceptedAt: state.termsAcceptedAt || undefined, sumsubCompletedAt: state.sumsubCompletedAt || undefined, verifiedAt: state.verifiedAt || undefined, passkeyRegisteredAt: state.passkeyRegisteredAt || undefined, settlementMode: state.settlementMode, orkiFeeBps: state.orkiFeeBps, pspFeeBps: state.pspFeeBps, orkiFeeWallet: state.orkiFeeWallet || undefined, pspFeeWallet: state.pspFeeWallet || undefined, merchantWallet: state.merchantWallet || undefined })
       } catch (reason) {
+        const msg = reason instanceof Error ? reason.message : ''
+        if (msg.includes('expired') || msg.includes('merchant_session_required')) {
+          sessionStorage.removeItem(`orki_merchant_session:${merchant.externalId}`)
+          sessionStorage.removeItem(`orki_merchant_session_expiry:${merchant.externalId}`)
+        }
         if (active) setApiError(reason instanceof Error ? reason.message : 'Could not refresh onboarding status.')
       }
     }
@@ -607,7 +619,7 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
     const dataTimer = window.setInterval(() => { void refreshDashboardData() }, 60000)
     window.addEventListener('focus', refresh)
     return () => { active = false; window.clearInterval(timer); window.clearInterval(dataTimer); window.removeEventListener('focus', refresh) }
-  }, [merchant.id, merchantApiConfig, onUpdateMerchant, refreshDashboardData])
+  }, [merchant.id, merchant.externalId, merchantApiConfig, onUpdateMerchant, refreshDashboardData])
 
   const handleToggleSettlementMode = async (newMode: SettlementMode) => {
     setApiBusy(true)
