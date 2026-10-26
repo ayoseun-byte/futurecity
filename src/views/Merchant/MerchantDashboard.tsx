@@ -350,6 +350,33 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
     const merchantSession = sessionStorage.getItem(`orki_merchant_session:${merchant.externalId}`)
     return merchantSession ? { ...config, merchantSession } : config
   }, [merchant.externalId])
+
+  const ensureMerchantSession = useCallback(async (): Promise<ReturnType<typeof getApiConfig>> => {
+    const activeConfig = merchantApiConfig()
+    if (activeConfig.merchantSession && activeConfig.merchantSession.startsWith('onb_sec_')) {
+      return activeConfig
+    }
+    const baseConfig = getApiConfig()
+    if (!baseConfig.pspKey) {
+      throw new Error('A PSP API key or active merchant session is required to initiate onboarding.')
+    }
+    const session = await requestApi<{ clientSecret: string }>(baseConfig, 'POST', '/api/v1/psp/merchant-onboarding-sessions', {
+      merchantExternalId: merchant.externalId,
+      legalBusinessName: merchant.legalBusinessName,
+      tradeLicenseNumber: merchant.tradeLicenseNumber,
+      jurisdiction: merchant.jurisdiction,
+      representativeName: merchant.representativeName,
+      representativeEmail: merchant.representativeEmail,
+      returnUrl: `${window.location.origin}/merchant`,
+      ttlMinutes: 60,
+    }, 'psp')
+
+    const newConfig = { ...baseConfig, merchantSession: session.clientSecret }
+    saveApiConfig(newConfig)
+    sessionStorage.setItem(`orki_merchant_session:${merchant.externalId}`, session.clientSecret)
+    return newConfig
+  }, [merchant, merchantApiConfig])
+
   const hasMerchantSession = Boolean(merchantApiConfig().merchantSession)
   const visiblePaylinks = hasMerchantSession ? dashboardPaylinks : []
   const visibleTransactions = hasMerchantSession ? dashboardTransactions : []
@@ -413,7 +440,8 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
   const handleOpenNotice = async () => {
     setApiBusy(true); setApiError(null)
     try {
-      const value = await requestApi<typeof notice>(merchantApiConfig(), 'GET', '/api/v1/merchant/notice', undefined, 'merchant')
+      const config = await ensureMerchantSession()
+      const value = await requestApi<typeof notice>(config, 'GET', '/api/v1/merchant/notice', undefined, 'merchant')
       setNotice(value)
       setShowNoticeModal(true)
     } catch (reason) { setApiError(reason instanceof Error ? reason.message : 'Could not load regulatory notice.') }
@@ -423,7 +451,8 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
   const handleOpenTerms = async () => {
     setApiBusy(true); setApiError(null)
     try {
-      const value = await requestApi<typeof termsData>(merchantApiConfig(), 'GET', '/api/v1/merchant/terms', undefined, 'merchant')
+      const config = await ensureMerchantSession()
+      const value = await requestApi<typeof termsData>(config, 'GET', '/api/v1/merchant/terms', undefined, 'merchant')
       setTermsData(value)
       setShowTermsModal(true)
     } catch (reason) { setApiError(reason instanceof Error ? reason.message : 'Could not load terms.') }
@@ -434,7 +463,8 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
     setApiBusy(true)
     setApiError(null)
     try {
-      await requestApi(merchantApiConfig(), 'POST', '/api/v1/merchant/notice/acknowledge', {
+      const config = await ensureMerchantSession()
+      await requestApi(config, 'POST', '/api/v1/merchant/notice/acknowledge', {
         isAuthorisedSignatory: true,
         signatoryName: signatory.name,
         signatoryEmail: signatory.email,
@@ -455,7 +485,7 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
     setApiBusy(true)
     setApiError(null)
     try {
-      const config = merchantApiConfig()
+      const config = await ensureMerchantSession()
       await requestApi(config, 'POST', '/api/v1/merchant/kyb-information', { companyInfo: kybData }, 'merchant')
       const fetchedTerms = await requestApi<typeof termsData>(config, 'GET', '/api/v1/merchant/terms', undefined, 'merchant')
       setTermsData(fetchedTerms)
@@ -475,7 +505,8 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
     setApiBusy(true)
     setApiError(null)
     try {
-      await requestApi(merchantApiConfig(), 'POST', `/api/v1/tos/${encodeURIComponent(token)}`, {
+      const config = await ensureMerchantSession()
+      await requestApi(config, 'POST', `/api/v1/tos/${encodeURIComponent(token)}`, {
         signerName: signatory.name,
         signerEmail: signatory.email,
         signerTitle: signatory.title,

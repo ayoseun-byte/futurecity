@@ -94,7 +94,20 @@ export function ApiWorkbench() {
       </section>
       <div className="grid lg:grid-cols-[270px_1fr] gap-4">
         <nav className="mat-card p-3 max-h-[70vh] overflow-auto">{groups.map(group=><div key={group} className="mb-3"><h2 className="text-[10px] uppercase tracking-wider text-slate-400 font-bold px-2 py-1">{group}</h2>{endpoints.map((ep,i)=>ep.group===group?<button key={`${ep.method}-${ep.path}`} onClick={()=>choose(i)} className={`w-full text-left px-2 py-2 rounded-md text-xs flex gap-2 ${selected===i?'bg-slate-100 font-semibold':'hover:bg-slate-50'}`}><span className="w-12 text-slate-500">{ep.method}</span><span className="truncate">{ep.path.replace('/api/v1/','')}</span></button>:null)}</div>)}</nav>
-        <section className="mat-card p-5 space-y-4"><div><div className="text-xs text-slate-500">{selectedEndpoint.auth === 'none' ? 'Public route' : `Authentication: ${selectedEndpoint.auth}`}</div><h2 className="font-mono text-sm font-bold mt-1">{selectedEndpoint.method} {path}</h2>{selectedEndpoint.note&&<p className="mt-2 text-xs text-amber-800 bg-amber-50 rounded-lg p-3">{selectedEndpoint.note}</p>}</div>
+        <section className="mat-card p-5 space-y-4"><div><div className="text-xs text-slate-500">{selectedEndpoint.auth === 'none' ? 'Public route' : `Authentication: ${selectedEndpoint.auth}`}</div><h2 className="font-mono text-sm font-bold mt-1">{selectedEndpoint.method} {path}</h2>
+          {selectedEndpoint.group === 'Merchant' && (
+            <div className="mt-2 p-3 rounded-lg bg-blue-50 border border-blue-200 text-blue-900 text-xs space-y-1">
+              <p className="font-semibold">Merchant Session Invariant:</p>
+              <p>Merchant onboarding routes must be authenticated with an onboarding session client secret (starts with <code className="font-mono bg-blue-100/70 px-1 py-0.5 rounded">onb_sec_</code>), not a PSP administrative key. Calling <code>POST /api/v1/psp/merchant-onboarding-sessions</code> under the PSP group automatically populates this credential.</p>
+            </div>
+          )}
+          {config.merchantSession && (config.merchantSession.startsWith('orki_live_') || config.merchantSession.startsWith('orki_test_')) && (
+            <div className="mt-2 p-3 rounded-lg bg-red-50 border border-red-200 text-red-900 text-xs space-y-1">
+              <p className="font-semibold">⚠️ PSP Key Detected in Merchant Session Secret:</p>
+              <p>You have entered a PSP administrative key in the merchant session secret box. The backend will return <code className="font-mono font-bold">merchant_session_required</code>. Use an onboarding session secret (<code className="font-mono">onb_sec_...</code>) returned from <code className="font-mono">POST /api/v1/psp/merchant-onboarding-sessions</code>.</p>
+            </div>
+          )}
+          {selectedEndpoint.note&&<p className="mt-2 text-xs text-amber-800 bg-amber-50 rounded-lg p-3">{selectedEndpoint.note}</p>}</div>
           <label className="block text-xs font-semibold text-slate-700">Request path<input value={path} onChange={e=>setPath(e.target.value)} className="mt-1 w-full rounded-lg border p-2 font-mono font-normal"/></label>
           {selectedEndpoint.method!=='GET'&&<label className="block text-xs font-semibold text-slate-700">JSON body<textarea value={body} onChange={e=>setBody(e.target.value)} rows={12} className="mt-1 w-full rounded-lg border p-3 font-mono text-xs font-normal" spellCheck={false}/></label>}
           <button onClick={run} disabled={busy} className="mat-btn-primary px-4 py-2 text-sm inline-flex items-center gap-2 disabled:opacity-50"><Play size={15}/>{busy?'Sending…':'Send request'}</button>
