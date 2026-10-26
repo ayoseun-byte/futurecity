@@ -5,6 +5,11 @@ import { getApiConfig, requestApi } from '../../services/apiConfig'
 
 type TermsRecord = { id: string; entityName: string; version: string; status: string; token: string; legalBusinessName: string; documentLinks: { tos: string; privacyPolicy: string } }
 
+const resolveDocUrl = (type: 'terms' | 'privacy', url?: string) => {
+  if (url && url !== '#' && !url.includes('link.to') && url.trim() !== '') return url
+  return `/legal/${type}`
+}
+
 export function HostedTosPage() {
   const { token = '' } = useParams<{ token: string }>()
   const navigate = useNavigate()
@@ -42,7 +47,29 @@ export function HostedTosPage() {
     {error&&<p role="alert" className="mt-5 rounded-xl border border-red-900 bg-red-950/50 p-3 text-sm text-red-200">{error}</p>}
     {accepted ? <div className="py-10 text-center"><CheckCircle2 className="mx-auto h-12 w-12 text-emerald-400"/><h1 className="mt-4 text-lg font-bold">Acceptance recorded</h1><p className="mt-2 text-sm text-slate-400">The backend has recorded the authorised signatory and audit details.</p><button onClick={()=>window.close()} className="mt-5 rounded-lg bg-slate-700 px-4 py-2 text-sm">Close</button></div> : terms ? <div className="mt-6 space-y-5">
       <div className="rounded-xl bg-slate-950 p-4 text-sm"><p><span className="text-slate-400">Issued by: </span>{terms.entityName}</p><p className="mt-2"><span className="text-slate-400">Merchant: </span>{terms.legalBusinessName}</p><p className="mt-2"><span className="text-slate-400">Status: </span>{terms.status}</p></div>
-      <div className="grid gap-3 sm:grid-cols-2">{[['Terms of Service',terms.documentLinks.tos],['Privacy Policy',terms.documentLinks.privacyPolicy]].map(([label,url])=><a key={label} href={url} target="_blank" rel="noreferrer" className="flex items-center justify-between rounded-xl border border-slate-700 p-3 text-sm hover:bg-slate-800"><span className="flex items-center gap-2"><FileText size={16}/>{label}</span><ExternalLink size={14}/></a>)}</div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        {[
+          ['Terms of Service', resolveDocUrl('terms', terms.documentLinks?.tos), 'documentLinks.tos'],
+          ['Privacy Policy', resolveDocUrl('privacy', terms.documentLinks?.privacyPolicy), 'documentLinks.privacyPolicy'],
+        ].map(([label, url, sub]) => (
+          <a
+            key={label}
+            href={url}
+            target="_blank"
+            rel="noreferrer"
+            className="flex items-center justify-between rounded-xl border border-slate-700 p-3 text-sm hover:bg-slate-800 transition group"
+          >
+            <span className="flex items-center gap-2.5">
+              <FileText size={16} className="text-onion-400" />
+              <div>
+                <p className="font-semibold text-slate-200">{label}</p>
+                <p className="text-[10px] text-slate-400 font-mono">{sub}</p>
+              </div>
+            </span>
+            <ExternalLink size={14} className="text-slate-400 group-hover:text-white" />
+          </a>
+        ))}
+      </div>
       <div className="grid gap-3 sm:grid-cols-2">{[[signerName,setSignerName,'Authorised signatory name','text'],[signerEmail,setSignerEmail,'Signatory email','email'],[signerTitle,setSignerTitle,'Signatory title','text']].map(([value,setValue,label,type])=><label key={label as string} className="text-xs font-semibold text-slate-300">{label as string}<input type={type as string} value={value as string} onChange={e=>(setValue as (v:string)=>void)(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 p-2 text-sm font-normal" required/></label>)}</div>
       <label className="flex items-start gap-2 rounded-xl border border-slate-800 bg-slate-950 p-3 text-xs text-slate-300"><input type="checkbox" checked={agreed} onChange={e=>setAgreed(e.target.checked)} className="mt-0.5"/>I confirm I reviewed the Terms of Service and Privacy Policy and am authorised to accept for this merchant.</label>
       <button onClick={()=>void acceptTerms()} disabled={!agreed||!signerName||!signerEmail||!signerTitle||busy||terms.status==='accepted'} className="flex w-full items-center justify-center gap-2 rounded-xl bg-onion-700 px-4 py-3 text-sm font-semibold disabled:opacity-50">{busy?'Recording acceptance…':terms.status==='accepted'?'Terms already accepted':'Accept terms and continue'}<ArrowRight size={15}/></button>

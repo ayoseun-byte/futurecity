@@ -1554,7 +1554,13 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                   <a
-                    href={termsData?.tos?.documentLinks?.tos || '#'}
+                    href={
+                      termsData?.tos?.documentLinks?.tos &&
+                      termsData.tos.documentLinks.tos !== '#' &&
+                      !termsData.tos.documentLinks.tos.includes('link.to')
+                        ? termsData.tos.documentLinks.tos
+                        : '/legal/terms'
+                    }
                     target="_blank"
                     rel="noopener noreferrer"
                     className="p-3 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl transition flex items-center justify-between group"
@@ -1563,14 +1569,20 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
                       <FileText className="w-4 h-4 text-onion-700" />
                       <div>
                         <p className="font-semibold text-slate-800 text-xs">Terms of Service</p>
-                        <p className="text-[10px] text-slate-400 font-mono">documentLinks.tos</p>
+                        <p className="text-[10px] text-slate-400 font-mono">documentLinks.tos · Opens full text</p>
                       </div>
                     </div>
                     <ExternalLink className="w-3.5 h-3.5 text-slate-400 group-hover:text-slate-700" />
                   </a>
 
                   <a
-                    href={termsData?.tos?.documentLinks?.privacyPolicy || '#'}
+                    href={
+                      termsData?.tos?.documentLinks?.privacyPolicy &&
+                      termsData.tos.documentLinks.privacyPolicy !== '#' &&
+                      !termsData.tos.documentLinks.privacyPolicy.includes('link.to')
+                        ? termsData.tos.documentLinks.privacyPolicy
+                        : '/legal/privacy'
+                    }
                     target="_blank"
                     rel="noopener noreferrer"
                     className="p-3 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl transition flex items-center justify-between group"
@@ -1579,13 +1591,28 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
                       <FileText className="w-4 h-4 text-emerald-600" />
                       <div>
                         <p className="font-semibold text-slate-800 text-xs">Privacy Policy</p>
-                        <p className="text-[10px] text-slate-400 font-mono">documentLinks.privacyPolicy</p>
+                        <p className="text-[10px] text-slate-400 font-mono">documentLinks.privacyPolicy · Opens full text</p>
                       </div>
                     </div>
                     <ExternalLink className="w-3.5 h-3.5 text-slate-400 group-hover:text-slate-700" />
                   </a>
                 </div>
               </div>
+
+              {/* Key Protocol Terms & Clauses */}
+              {termsData?.clauses && termsData.clauses.length > 0 && (
+                <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5 max-h-32 overflow-y-auto">
+                  <p className="text-[10px] font-bold text-slate-700 uppercase tracking-wider">Key Protocol Provisions</p>
+                  <ul className="space-y-1 text-[11px] text-slate-600 leading-relaxed">
+                    {termsData.clauses.map((clause, idx) => (
+                      <li key={idx} className="flex items-start space-x-1.5">
+                        <span className="text-onion-600 font-bold">•</span>
+                        <span>{clause}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
 
               {/* 30-Day Locked Rate Disclosure */}
               <div className="p-3.5 bg-onion-50/50 border border-onion-200/80 rounded-xl space-y-1.5">

@@ -11,6 +11,7 @@ import { CustomerCheckoutView } from './views/Checkout/CustomerCheckoutView'
 import { OrkiAdminPortal } from './views/Admin/OrkiAdminPortal'
 import { PasskeyCeremonyPage } from './views/Onboarding/PasskeyCeremonyPage'
 import { HostedTosPage } from './views/Onboarding/HostedTosPage'
+import { LegalDocumentPage } from './views/Legal/LegalDocumentPage'
 import { ApiWorkbench } from './views/ApiWorkbench'
 import type { Merchant, Paylink, Transaction, Organization } from './types'
 import {
@@ -326,6 +327,9 @@ function MainRoutes() {
       {/* External Ceremony Routes (Open in New Tab / Hosted Gateway) */}
       <Route path="/tos/:token" element={<HostedTosPage />} />
       <Route path="/setup" element={<PasskeyCeremonyPage />} />
+      <Route path="/legal/:doc" element={<LegalDocumentPage />} />
+      <Route path="/legal/terms" element={<LegalDocumentPage documentType="terms" />} />
+      <Route path="/legal/privacy" element={<LegalDocumentPage documentType="privacy" />} />
 
       {/* Organization Portal */}
       <Route
