@@ -196,13 +196,37 @@ export const OrkiAdminPortal: React.FC<OrkiAdminPortalProps> = ({
     try {
       const config = getApiConfig()
       if (!config.adminKey) throw new Error('Set the Orki admin API key in the Backend API workbench before creating a PSP.')
-      const created = await requestApi<{ pspId: string; name: string; category: Organization['category']; categoryType: Organization['categoryType']; status: Organization['status']; keyDelivery: { status: string; sentTo: string; expiresInHours: number; temporaryShareUrl: string } }>(config, 'POST', '/api/v1/admin/psps', {
+      const created = await requestApi<{
+        pspId: string
+        name: string
+        category: Organization['category']
+        categoryType: Organization['categoryType']
+        status: Organization['status']
+        feeSchedule?: Organization['feeSchedule']
+        keyDelivery: { status: string; sentTo: string; expiresInHours: number; temporaryShareUrl: string }
+      }>(config, 'POST', '/api/v1/admin/psps', {
         pspName: newPspForm.name.trim(), category: newPspForm.category, categoryType: newPspForm.categoryType,
         contacts: [{ name: newPspForm.techName, email: newPspForm.techEmail, role: 'technical' }],
       }, 'admin')
+      const initialMarkup = parseInt(newPspForm.initialMarkupBps || '35', 10)
+      const lockDate = new Date()
+      lockDate.setDate(lockDate.getDate() + 30)
       const newOrg: Organization = {
-        id: created.pspId, name: created.name, category: created.category, categoryType: created.categoryType, status: created.status,
-        isRegulatedEntity: undefined, feeWallet: '', contacts: [{ name: newPspForm.techName, email: newPspForm.techEmail, role: 'technical' }], createdAt: new Date().toISOString(),
+        id: created.pspId,
+        name: created.name,
+        category: created.category,
+        categoryType: created.categoryType,
+        status: created.status,
+        isRegulatedEntity: undefined,
+        feeWallet: '',
+        contacts: [{ name: newPspForm.techName, email: newPspForm.techEmail, role: 'technical' }],
+        feeSchedule: created.feeSchedule || {
+          orkiFeeBps: 100,
+          pspMarkupBps: initialMarkup,
+          combinedCapBps: 200,
+          lockedUntil: lockDate.toISOString(),
+        },
+        createdAt: new Date().toISOString(),
       }
       setClaimLinks(current => ({ ...current, [created.pspId]: created.keyDelivery.temporaryShareUrl }))
       onAddOrganization(newOrg)

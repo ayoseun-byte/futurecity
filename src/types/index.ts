@@ -159,6 +159,7 @@ export interface PspContact {
 
 export interface PspFeeSchedule {
   orkiFeeBps?: number
+  paymentRateBps?: number
   orkiFeeCapPercent?: number
   orkiFeeCapAmount?: number
   pspMarkupBps: number // Set by PSP, hard-capped at 100 bps (1.00% max)

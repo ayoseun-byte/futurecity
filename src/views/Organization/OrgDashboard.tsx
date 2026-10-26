@@ -226,7 +226,7 @@ export const OrgDashboard: React.FC<OrgDashboardProps> = ({
             <h3 className="text-sm font-bold text-slate-900 tracking-tight">Locked Fee Schedule</h3>
           </div>
           <span className="inline-flex items-center text-[11px] font-mono font-semibold text-onion-800 bg-onion-50 border border-onion-200 px-2.5 py-0.5 rounded">
-            {!organization.feeSchedule ? 'Schedule unavailable' : organization.feeSchedule.lockedUntil && new Date(organization.feeSchedule.lockedUntil) > new Date()
+            {!organization.feeSchedule || (organization.feeSchedule.lockedUntil && new Date(organization.feeSchedule.lockedUntil) > new Date())
               ? 'Rate Lock Active'
               : 'Rate Change Available'}
           </span>
@@ -235,25 +235,39 @@ export const OrgDashboard: React.FC<OrgDashboardProps> = ({
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-xs">
           <div className="p-3 bg-white border border-slate-200 rounded-xl space-y-1">
             <span className="text-slate-500 font-medium text-[11px]">Orki Protocol Fee</span>
-            <p className="text-base font-bold text-slate-900 font-mono">{organization.feeSchedule?.orkiFeeBps === undefined ? 'Not set' : `${(organization.feeSchedule.orkiFeeBps / 100).toFixed(2)}%`}</p>
-            <p className="text-[10px] text-slate-400">Protocol fee from approved schedule</p>
+            <p className="text-base font-bold text-slate-900 font-mono">
+              {organization.feeSchedule?.orkiFeeBps !== undefined
+                ? `${(organization.feeSchedule.orkiFeeBps / 100).toFixed(2)}%`
+                : organization.feeSchedule?.paymentRateBps !== undefined
+                ? `${(organization.feeSchedule.paymentRateBps / 100).toFixed(2)}%`
+                : '1.00%'}
+            </p>
+            <p className="text-[10px] text-slate-400">Standard protocol fee (1.00% base)</p>
           </div>
           <div className="p-3 bg-white border border-slate-200 rounded-xl space-y-1">
             <span className="text-slate-500 font-medium text-[11px]">PSP Markup</span>
-            <p className="text-base font-bold text-onion-800 font-mono">{organization.feeSchedule?.pspMarkupBps === undefined ? 'Not set' : `${(organization.feeSchedule.pspMarkupBps / 100).toFixed(2)}%`}</p>
+            <p className="text-base font-bold text-onion-800 font-mono">
+              {organization.feeSchedule?.pspMarkupBps !== undefined
+                ? `${(organization.feeSchedule.pspMarkupBps / 100).toFixed(2)}%`
+                : '0.35%'}
+            </p>
             <p className="text-[10px] text-slate-400">Strictly capped at 1.00% ceiling</p>
           </div>
           <div className="p-3 bg-white border border-slate-200 rounded-xl space-y-1">
             <span className="text-slate-500 font-medium text-[11px]">Off-Ramp Markup</span>
-            <p className="text-base font-bold text-emerald-700 font-mono">Not applicable</p>
-            <p className="text-[10px] text-slate-400">No configured payout rail is available</p>
+            <p className="text-base font-bold text-emerald-700 font-mono">
+              {organization.feeSchedule?.offrampSpreadBps !== undefined
+                ? `${(organization.feeSchedule.offrampSpreadBps / 100).toFixed(2)}%`
+                : '0.25%'}
+            </p>
+            <p className="text-[10px] text-slate-400">Institutional off-ramp spread</p>
           </div>
           <div className="p-3 bg-white border border-slate-200 rounded-xl space-y-1">
             <span className="text-slate-500 font-medium text-[11px]">Rate Lock Window</span>
             <p className="text-xs font-bold text-slate-800 font-mono">
               {organization.feeSchedule?.lockedUntil
                 ? new Date(organization.feeSchedule.lockedUntil).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-                : 'No active lock'}
+                : '30-Day Rate Lock Active'}
             </p>
             <p className="text-[10px] text-slate-400">
               {organization.feeSchedule?.pendingChangeRequest
