@@ -14,7 +14,14 @@ import {
   Coins,
   ArrowRightLeft,
   FileText,
+  Key,
+  Eye,
+  EyeOff,
+  RefreshCw,
+  Sparkles,
+  Clock,
 } from 'lucide-react'
+import { getApiConfig, requestApi, saveApiConfig } from '../../services/apiConfig'
 
 interface MerchantDetailPageProps {
   merchants: Merchant[]
@@ -37,6 +44,26 @@ export const MerchantDetailPage: React.FC<MerchantDetailPageProps> = ({
 
   const merchant = merchants.find((m) => m.id === id)
 
+  // Track active onboarding session state (prefilled from sessionStorage if present)
+  const [sessionData, setSessionData] = useState<{
+    clientSecret?: string
+    setupUrl?: string | null
+    expiresAt?: string
+  } | null>(() => {
+    if (!merchant) return null
+    const cachedSecret = sessionStorage.getItem(`orki_merchant_session:${merchant.externalId}`)
+    if (cachedSecret) {
+      return {
+        clientSecret: cachedSecret,
+        setupUrl: `${window.location.origin}/setup#session=${encodeURIComponent(cachedSecret)}`,
+      }
+    }
+    return null
+  })
+  const [sessionLoading, setSessionLoading] = useState(false)
+  const [sessionError, setSessionError] = useState<string | null>(null)
+  const [showSessionSecret, setShowSessionSecret] = useState(false)
+
   if (!merchant) {
     return (
       <div className="text-center py-20 space-y-4">
@@ -55,6 +82,39 @@ export const MerchantDetailPage: React.FC<MerchantDetailPageProps> = ({
     navigator.clipboard.writeText(text)
     setCopiedField(field)
     setTimeout(() => setCopiedField(null), 2000)
+  }
+
+  const handleGenerateOnboardingSession = async () => {
+    setSessionLoading(true)
+    setSessionError(null)
+    try {
+      const config = getApiConfig()
+      if (!config.baseUrl) {
+        throw new Error('API Base URL is not configured. Please open the Workbench to configure the backend URL.')
+      }
+      if (!config.pspKey) {
+        throw new Error('A valid PSP API key is required to issue an onboarding session. Please set your PSP API Key in the Workbench.')
+      }
+
+      const response = await requestApi<{
+        clientSecret: string
+        setupUrl?: string | null
+        expiresAt?: string
+      }>(config, 'POST', `/api/v1/psp/merchants/${encodeURIComponent(merchant.id)}/onboarding-sessions`, {
+        returnUrl: `${window.location.origin}/setup`,
+        ttlMinutes: 60,
+      }, 'psp')
+
+      setSessionData(response)
+      if (response.clientSecret) {
+        sessionStorage.setItem(`orki_merchant_session:${merchant.externalId}`, response.clientSecret)
+        saveApiConfig({ ...config, merchantSession: response.clientSecret })
+      }
+    } catch (err) {
+      setSessionError(err instanceof Error ? err.message : 'Failed to issue merchant onboarding session')
+    } finally {
+      setSessionLoading(false)
+    }
   }
 
   const isMerchantActive = (merchant.status || '').toLowerCase() === 'active'
@@ -137,6 +197,132 @@ export const MerchantDetailPage: React.FC<MerchantDetailPageProps> = ({
             </span>
           </button>
         </div>
+      </div>
+
+      {/* Onboarding Session & Credentials Surface */}
+      <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div className="flex items-center space-x-3">
+            <div className="w-10 h-10 rounded-xl bg-onion-50 text-onion-800 border border-onion-200 flex items-center justify-center shrink-0">
+              <Key className="w-5 h-5 text-onion-700" />
+            </div>
+            <div>
+              <h2 className="text-sm font-bold text-slate-900">Merchant Onboarding Credentials & Session Key</h2>
+              <p className="text-xs text-slate-500">
+                Issue a single-merchant session secret (<code className="font-mono text-slate-800 bg-slate-100 px-1 py-0.5 rounded">onb_sec_...</code>) for this merchant via <code className="font-mono text-slate-800 bg-slate-100 px-1 py-0.5 rounded">POST /api/v1/psp/merchants/{'{id}'}/onboarding-sessions</code>.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={handleGenerateOnboardingSession}
+            disabled={sessionLoading}
+            className="px-4 py-2.5 rounded-xl bg-onion text-white text-xs font-semibold hover:bg-onion-700 transition flex items-center justify-center space-x-1.5 shadow-xs disabled:opacity-50 shrink-0"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${sessionLoading ? 'animate-spin' : ''}`} />
+            <span>{sessionLoading ? 'Issuing Session…' : sessionData?.clientSecret ? 'Re-issue Session Key' : 'Generate Onboarding Session'}</span>
+          </button>
+        </div>
+
+        {sessionError && (
+          <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-800">
+            {sessionError}
+          </div>
+        )}
+
+        {sessionData?.clientSecret ? (
+          <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3.5">
+            <div className="flex items-center justify-between flex-wrap gap-2 text-xs">
+              <span className="font-semibold text-slate-800 flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-onion" />
+                Active Merchant Session Secret Key:
+              </span>
+              {sessionData.expiresAt && (
+                <span className="text-[11px] text-slate-500 flex items-center gap-1 font-mono">
+                  <Clock className="w-3 h-3 text-slate-400" />
+                  Expires: {new Date(sessionData.expiresAt).toLocaleTimeString()} ({new Date(sessionData.expiresAt).toLocaleDateString()})
+                </span>
+              )}
+            </div>
+
+            {/* Secret Key with Show/Hide and 1-Click Copy */}
+            <div>
+              <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block mb-1">
+                Merchant Client Secret (onb_sec_...)
+              </label>
+              <div className="flex items-center gap-2">
+                <div className="relative flex-1">
+                  <input
+                    type={showSessionSecret ? 'text' : 'password'}
+                    readOnly
+                    value={sessionData.clientSecret}
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-xs font-mono text-slate-900 select-all pr-10 shadow-2xs"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowSessionSecret(!showSessionSecret)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                    title={showSessionSecret ? 'Hide secret key' : 'Show secret key'}
+                  >
+                    {showSessionSecret ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleCopy(sessionData.clientSecret!, 'secret')}
+                  className="px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-black text-white text-xs font-semibold flex items-center gap-1.5 transition shrink-0 shadow-xs"
+                >
+                  {copiedField === 'secret' ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                  <span>{copiedField === 'secret' ? 'Copied Key!' : 'Copy Key'}</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Setup URL */}
+            {sessionData.setupUrl && (
+              <div className="pt-1">
+                <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block mb-1">
+                  Merchant Hosted Setup URL (setupUrl)
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    readOnly
+                    value={sessionData.setupUrl}
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-mono text-slate-700 select-all shadow-2xs"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => handleCopy(sessionData.setupUrl!, 'url')}
+                    className="px-3.5 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-100 text-slate-700 text-xs font-semibold flex items-center gap-1.5 transition shrink-0 shadow-2xs"
+                  >
+                    {copiedField === 'url' ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
+                    <span>{copiedField === 'url' ? 'Copied Link!' : 'Copy Link'}</span>
+                  </button>
+                  <a
+                    href={sessionData.setupUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="px-3.5 py-2 rounded-xl bg-onion text-white text-xs font-semibold hover:bg-onion-700 flex items-center gap-1.5 transition shrink-0 shadow-xs"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    <span>Launch Setup</span>
+                  </a>
+                </div>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="p-4 bg-slate-50 border border-dashed border-slate-200 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+            <div>
+              <p className="text-xs text-slate-600 font-medium">
+                No active session token is cached for this merchant in this browser session.
+              </p>
+              <p className="text-[11px] text-slate-400 mt-0.5">
+                Click <strong>Generate Onboarding Session</strong> to issue a 60-minute time-bounded secret key and hosted link.
+              </p>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Grid: Overview Cards */}
