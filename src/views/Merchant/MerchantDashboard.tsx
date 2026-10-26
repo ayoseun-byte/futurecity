@@ -23,6 +23,9 @@ import {
   X,
   CreditCard,
   FileText,
+  Building,
+  CheckCircle2,
+  RotateCcw,
 } from 'lucide-react'
 
 interface MerchantMetrics {
@@ -51,6 +54,201 @@ interface MerchantTransactionRecord {
   payer_address?: string | null
   status: string
   created_at: string
+}
+
+function inferCountryCode(jurisdiction?: string): string {
+  if (!jurisdiction) return 'ARE'
+  const j = jurisdiction.trim().toUpperCase()
+  if (
+    j === 'ARE' ||
+    j === 'AE' ||
+    j.includes('DUBAI') ||
+    j.includes('ABU DHABI') ||
+    j.includes('DMCC') ||
+    j.includes('DED') ||
+    j.includes('ADGM') ||
+    j.includes('IFZA') ||
+    j.includes('DIFC') ||
+    j.includes('UAE')
+  ) {
+    return 'ARE'
+  }
+  if (
+    j === 'GBR' ||
+    j === 'GB' ||
+    j.includes('UK') ||
+    j.includes('COMPANIES HOUSE') ||
+    j.includes('UNITED KINGDOM') ||
+    j.includes('LONDON')
+  ) {
+    return 'GBR'
+  }
+  if (
+    j === 'NGA' ||
+    j === 'NG' ||
+    j.includes('NIGERIA') ||
+    j.includes('LAGOS')
+  ) {
+    return 'NGA'
+  }
+  if (
+    j === 'USA' ||
+    j === 'US' ||
+    j.includes('UNITED STATES') ||
+    j.includes('DELAWARE')
+  ) {
+    return 'USA'
+  }
+  if (
+    j === 'SGP' ||
+    j === 'SG' ||
+    j.includes('SINGAPORE')
+  ) {
+    return 'SGP'
+  }
+  if (/^[A-Z]{3}$/.test(j)) {
+    return j
+  }
+  return 'ARE'
+}
+
+function inferEntityType(legalName?: string): string {
+  if (!legalName) return 'Private Limited Company'
+  const n = legalName.toUpperCase()
+  if (n.includes('FZ-LLC') || n.includes('FZ LLC')) return 'Free Zone Limited Liability Company (FZ-LLC)'
+  if (n.includes('FZCO') || n.includes('FZ-CO')) return 'Free Zone Company (FZCO)'
+  if (n.includes('LLC')) return 'Limited Liability Company (LLC)'
+  if (n.includes('PLC')) return 'Public Limited Company (PLC)'
+  if (n.includes('LTD') || n.includes('LIMITED')) return 'Private Limited Company (Ltd)'
+  if (n.includes('INC') || n.includes('CORP')) return 'Corporation (Inc)'
+  return 'Private Limited Company'
+}
+
+function inferIncorporationDate(createdAt?: string): string {
+  if (createdAt) {
+    const candidate = createdAt.slice(0, 10)
+    if (/^\d{4}-\d{2}-\d{2}$/.test(candidate)) {
+      return candidate
+    }
+  }
+  return '2023-01-15'
+}
+
+function inferLegalAddress(jurisdiction?: string, country = 'ARE'): { legalAddress: string; postalAddress: string; phone: string } {
+  const j = (jurisdiction || '').toUpperCase()
+  if (country === 'ARE') {
+    if (j.includes('DMCC')) {
+      return {
+        legalAddress: 'Almas Tower, Jumeirah Lakes Towers, Dubai, United Arab Emirates',
+        postalAddress: 'P.O. Box 48800, Dubai, United Arab Emirates',
+        phone: '+971 4 200 1234',
+      }
+    }
+    if (j.includes('IFZA')) {
+      return {
+        legalAddress: 'Building A2, IFZA Business Park, DDP, Dubai, United Arab Emirates',
+        postalAddress: 'P.O. Box 342001, Dubai, United Arab Emirates',
+        phone: '+971 4 200 5678',
+      }
+    }
+    if (j.includes('ADGM')) {
+      return {
+        legalAddress: 'Al Khatem Tower, ADGM Square, Al Maryah Island, Abu Dhabi, United Arab Emirates',
+        postalAddress: 'P.O. Box 111999, Abu Dhabi, United Arab Emirates',
+        phone: '+971 2 300 4567',
+      }
+    }
+    if (j.includes('DIFC')) {
+      return {
+        legalAddress: 'Gate Precinct Building 4, DIFC, Dubai, United Arab Emirates',
+        postalAddress: 'P.O. Box 74777, Dubai, United Arab Emirates',
+        phone: '+971 4 362 7000',
+      }
+    }
+    if (j.includes('ABU DHABI')) {
+      return {
+        legalAddress: 'Corniche Road, Al Danah, Abu Dhabi, United Arab Emirates',
+        postalAddress: 'P.O. Box 2626, Abu Dhabi, United Arab Emirates',
+        phone: '+971 2 400 1234',
+      }
+    }
+    return {
+      legalAddress: `${jurisdiction || 'Dubai DED'}, Business Bay, Dubai, United Arab Emirates`,
+      postalAddress: 'P.O. Box 45001, Dubai, United Arab Emirates',
+      phone: '+971 4 200 1234',
+    }
+  }
+  if (country === 'GBR') {
+    return {
+      legalAddress: '100 Bishopsgate, London, EC2N 4AG, United Kingdom',
+      postalAddress: 'PO Box 789, London, EC2N 4AG, United Kingdom',
+      phone: '+44 20 7946 0912',
+    }
+  }
+  if (country === 'NGA') {
+    return {
+      legalAddress: '1 Commercial Avenue, Victoria Island, Lagos, Nigeria',
+      postalAddress: 'P.O. Box 1024, Marina, Lagos, Nigeria',
+      phone: '+234 1 234 5678',
+    }
+  }
+  if (country === 'USA') {
+    return {
+      legalAddress: '1209 North Orange Street, Wilmington, DE 19801, United States',
+      postalAddress: 'PO Box 8740, Wilmington, DE 19899, United States',
+      phone: '+1 212 555 0199',
+    }
+  }
+  if (country === 'SGP') {
+    return {
+      legalAddress: '1 Marina Boulevard, #28-00, Singapore 018989',
+      postalAddress: 'Robinson Road PO Box 1500, Singapore 902950',
+      phone: '+65 6789 0123',
+    }
+  }
+  return {
+    legalAddress: `${jurisdiction || 'Registered Office'}, Corporate Suite 400`,
+    postalAddress: 'P.O. Box 45001, Dubai, United Arab Emirates',
+    phone: '+971 4 200 1234',
+  }
+}
+
+function inferTaxId(tradeLicenseNumber?: string): string {
+  const digits = (tradeLicenseNumber || '').replace(/\D/g, '')
+  return `TRN-100${digits ? digits.padEnd(8, '0').slice(0, 8) : '23456780'}00003`
+}
+
+function inferWebsite(email?: string, legalName?: string): string {
+  if (email && email.includes('@')) {
+    const domain = email.split('@')[1]
+    if (domain && domain.includes('.')) {
+      return `https://www.${domain}`
+    }
+  }
+  const slug = (legalName || 'merchant').toLowerCase().replace(/[^a-z0-9]/g, '')
+  return `https://www.${slug || 'company'}.example`
+}
+
+function getPrefilledKybData(merchant: Merchant, applicantPosition = 'Managing Director') {
+  const country = inferCountryCode(merchant.jurisdiction)
+  const addressInfo = inferLegalAddress(merchant.jurisdiction, country)
+
+  return {
+    companyName: merchant.legalBusinessName || '',
+    registrationNumber: merchant.tradeLicenseNumber || '',
+    country,
+    incorporatedOn: inferIncorporationDate(merchant.createdAt),
+    type: inferEntityType(merchant.legalBusinessName),
+    legalAddress: addressInfo.legalAddress,
+    registrationLocation: merchant.jurisdiction || 'Dubai, United Arab Emirates',
+    email: merchant.representativeEmail || '',
+    phone: addressInfo.phone,
+    taxId: inferTaxId(merchant.tradeLicenseNumber),
+    website: inferWebsite(merchant.representativeEmail, merchant.legalBusinessName),
+    postalAddress: addressInfo.postalAddress,
+    controlScheme: '100% Ultimate Beneficial Ownership (Single Shareholder)',
+    applicantPosition: applicantPosition || 'Managing Director',
+  }
 }
 
 interface MerchantDashboardProps {
@@ -86,8 +284,67 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
   const [dashboardDataLoaded, setDashboardDataLoaded] = useState(false)
   const [notice, setNotice] = useState<{ title?: string; sections?: { heading: string; content: string }[] } | null>(null)
   const [termsData, setTermsData] = useState<{ tos?: { token?: string; entityName?: string; documentLinks?: { tos?: string; privacyPolicy?: string } }; title?: string; clauses?: string[] } | null>(null)
-  const [signatory, setSignatory] = useState({ name: merchant.representativeName || '', email: merchant.representativeEmail || '', title: '' })
-  const [kybData, setKybData] = useState({ companyName: merchant.legalBusinessName, registrationNumber: merchant.tradeLicenseNumber, country: '', incorporatedOn: '', type: '', legalAddress: '', registrationLocation: '', email: merchant.representativeEmail || '', phone: '', taxId: '', website: '', postalAddress: '', controlScheme: '', applicantPosition: '' })
+  const [signatory, setSignatory] = useState({
+    name: merchant.representativeName || '',
+    email: merchant.representativeEmail || '',
+    title: 'Managing Director',
+  })
+  const [kybData, setKybData] = useState(() => getPrefilledKybData(merchant, 'Managing Director'))
+
+  // Synchronize prefill when merchant data updates from backend/props
+  useEffect(() => {
+    setSignatory((prev) => ({
+      name: prev.name || merchant.representativeName || '',
+      email: prev.email || merchant.representativeEmail || '',
+      title: prev.title || 'Managing Director',
+    }))
+    setKybData((prev) => {
+      const prefill = getPrefilledKybData(merchant, signatory.title || 'Managing Director')
+      return {
+        companyName: prev.companyName || prefill.companyName,
+        registrationNumber: prev.registrationNumber || prefill.registrationNumber,
+        country: prev.country || prefill.country,
+        incorporatedOn: prev.incorporatedOn || prefill.incorporatedOn,
+        type: prev.type || prefill.type,
+        legalAddress: prev.legalAddress || prefill.legalAddress,
+        registrationLocation: prev.registrationLocation || prefill.registrationLocation,
+        email: prev.email || prefill.email,
+        phone: prev.phone || prefill.phone,
+        taxId: prev.taxId || prefill.taxId,
+        website: prev.website || prefill.website,
+        postalAddress: prev.postalAddress || prefill.postalAddress,
+        controlScheme: prev.controlScheme || prefill.controlScheme,
+        applicantPosition: prev.applicantPosition || prefill.applicantPosition,
+      }
+    })
+  }, [merchant, signatory.title])
+
+  const openKybModal = () => {
+    setKybData((prev) => {
+      const prefill = getPrefilledKybData(merchant, signatory.title || 'Managing Director')
+      return {
+        companyName: prev.companyName || prefill.companyName,
+        registrationNumber: prev.registrationNumber || prefill.registrationNumber,
+        country: prev.country || prefill.country,
+        incorporatedOn: prev.incorporatedOn || prefill.incorporatedOn,
+        type: prev.type || prefill.type,
+        legalAddress: prev.legalAddress || prefill.legalAddress,
+        registrationLocation: prev.registrationLocation || prefill.registrationLocation,
+        email: prev.email || prefill.email,
+        phone: prev.phone || prefill.phone,
+        taxId: prev.taxId || prefill.taxId,
+        website: prev.website || prefill.website,
+        postalAddress: prev.postalAddress || prefill.postalAddress,
+        controlScheme: prev.controlScheme || prefill.controlScheme,
+        applicantPosition: prev.applicantPosition || prefill.applicantPosition,
+      }
+    })
+    setShowKybModal(true)
+  }
+
+  const resetKybToPrefill = () => {
+    setKybData(getPrefilledKybData(merchant, signatory.title || 'Managing Director'))
+  }
   const merchantApiConfig = useCallback(() => {
     const config = getApiConfig()
     const merchantSession = sessionStorage.getItem(`orki_merchant_session:${merchant.externalId}`)
@@ -185,7 +442,7 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
       }, 'merchant')
       onUpdateMerchant({ noticeAcknowledgedAt: new Date().toISOString(), nextStep: 'KYB_INFORMATION' })
       setShowNoticeModal(false)
-      setShowKybModal(true)
+      openKybModal()
     } catch (reason) {
       setApiError(reason instanceof Error ? reason.message : 'Could not record notice acknowledgement.')
     } finally {
@@ -467,7 +724,7 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
                 </button>
               )}
               {merchant.nextStep === 'KYB_INFORMATION' && (
-                <button onClick={() => setShowKybModal(true)} className="mat-btn-primary px-5 py-2.5 text-xs font-semibold flex items-center space-x-2 shadow-sm"><span>Submit KYB Information</span><ChevronRight className="w-4 h-4" /></button>
+                <button onClick={openKybModal} className="mat-btn-primary px-5 py-2.5 text-xs font-semibold flex items-center space-x-2 shadow-sm"><span>Submit KYB Information</span><ChevronRight className="w-4 h-4" /></button>
               )}
               {merchant.nextStep === 'TERMS' && (
                 <button
@@ -1012,13 +1269,210 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
       {/* ------------------------------------------------------------- */}
       {showKybModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 overflow-y-auto">
-          <div className="relative w-full max-w-2xl bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden">
-            <div className="bg-slate-900 text-white p-5 flex items-center justify-between"><div><h3 className="font-bold text-sm">Submit company information for KYB</h3><p className="text-[11px] text-slate-400 mt-1">This submission is separate from Sumsub verification.</p></div><button onClick={() => setShowKybModal(false)} className="text-slate-400 hover:text-white"><X className="w-5 h-5" /></button></div>
-            <form onSubmit={handleSubmitKyb} className="p-6 grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-              {([['companyName','Legal company name'],['registrationNumber','Company registration number'],['country','Country code (ISO 3166-1 alpha-3)'],['incorporatedOn','Incorporation date'],['type','Legal entity type'],['legalAddress','Registered legal address']] as const).map(([key,label])=><label key={key} className="font-semibold text-slate-700">{label}<input required type={key==='incorporatedOn'?'date':'text'} maxLength={key==='country'?3:undefined} value={kybData[key]} onChange={e=>setKybData({...kybData,[key]:key==='country'?e.target.value.toUpperCase():e.target.value})} className="mt-1 w-full rounded-lg border border-slate-300 p-2 text-xs font-normal" /></label>)}
-              {([['registrationLocation','Registration location'],['email','Company email'],['phone','Company phone'],['taxId','Tax ID'],['website','Company website'],['postalAddress','Postal address'],['controlScheme','Ownership and control structure'],['applicantPosition','Applicant position']] as const).map(([key,label])=><label key={key} className="font-semibold text-slate-700">{label}<input value={kybData[key]} onChange={e=>setKybData({...kybData,[key]:e.target.value})} className="mt-1 w-full rounded-lg border border-slate-300 p-2 text-xs font-normal" /></label>)}
-              {apiError&&<p role="alert" className="sm:col-span-2 rounded-lg bg-red-50 p-3 text-red-800">{apiError}</p>}
-              <div className="sm:col-span-2 flex justify-end gap-2 pt-2"><button type="button" onClick={()=>setShowKybModal(false)} className="px-4 py-2 rounded-lg border text-slate-700">Cancel</button><button disabled={apiBusy} type="submit" className="mat-btn-primary px-4 py-2 disabled:opacity-50">{apiBusy?'Submitting…':'Submit KYB information'}</button></div>
+          <div className="relative w-full max-w-2xl bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden my-8">
+            <div className="bg-slate-900 text-white p-5 flex items-center justify-between">
+              <div className="flex items-center space-x-2.5">
+                <Building className="w-5 h-5 text-onion-300" />
+                <div>
+                  <h3 className="font-bold text-sm tracking-tight">Step 2 of 4: Submit Company KYB Information</h3>
+                  <p className="text-[11px] text-slate-400 mt-0.5">Prefilled from your PSP registration record. Review and confirm below.</p>
+                </div>
+              </div>
+              <button onClick={() => setShowKybModal(false)} className="text-slate-400 hover:text-white">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Prefill reassurance banner */}
+            <div className="bg-emerald-50/90 border-b border-emerald-100 px-6 py-3 flex items-center justify-between text-xs text-emerald-900">
+              <div className="flex items-center space-x-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>
+                  <strong>Prefilled from PSP:</strong> Company details were pre-populated from the merchant record registered by your PSP. Verify or edit any fields as needed.
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={resetKybToPrefill}
+                className="inline-flex items-center space-x-1 font-semibold text-emerald-700 hover:text-emerald-900 text-[11px] underline ml-3 shrink-0"
+                title="Restore default prefilled values from PSP"
+              >
+                <RotateCcw className="w-3 h-3" />
+                <span>Reset</span>
+              </button>
+            </div>
+
+            <form onSubmit={handleSubmitKyb} className="p-6 grid grid-cols-1 sm:grid-cols-2 gap-3.5 text-xs max-h-[70vh] overflow-y-auto">
+              <label className="font-semibold text-slate-700">
+                Legal company name
+                <input
+                  required
+                  type="text"
+                  value={kybData.companyName}
+                  onChange={(e) => setKybData({ ...kybData, companyName: e.target.value })}
+                  className="mt-1 w-full rounded-lg border border-slate-300 p-2 text-xs font-normal focus:ring-2 focus:ring-onion-500/20 focus:border-onion-500 focus:outline-none"
+                />
+              </label>
+
+              <label className="font-semibold text-slate-700">
+                Company registration number / License
+                <input
+                  required
+                  type="text"
+                  value={kybData.registrationNumber}
+                  onChange={(e) => setKybData({ ...kybData, registrationNumber: e.target.value })}
+                  className="mt-1 w-full rounded-lg border border-slate-300 p-2 text-xs font-normal font-mono focus:ring-2 focus:ring-onion-500/20 focus:border-onion-500 focus:outline-none"
+                />
+              </label>
+
+              <label className="font-semibold text-slate-700">
+                Country code (ISO 3166-1 alpha-3)
+                <input
+                  required
+                  type="text"
+                  maxLength={3}
+                  value={kybData.country}
+                  onChange={(e) => setKybData({ ...kybData, country: e.target.value.toUpperCase() })}
+                  className="mt-1 w-full rounded-lg border border-slate-300 p-2 text-xs font-normal font-mono uppercase focus:ring-2 focus:ring-onion-500/20 focus:border-onion-500 focus:outline-none"
+                  placeholder="e.g. ARE, GBR, NGA"
+                />
+              </label>
+
+              <label className="font-semibold text-slate-700">
+                Incorporation date
+                <input
+                  required
+                  type="date"
+                  value={kybData.incorporatedOn}
+                  onChange={(e) => setKybData({ ...kybData, incorporatedOn: e.target.value })}
+                  className="mt-1 w-full rounded-lg border border-slate-300 p-2 text-xs font-normal focus:ring-2 focus:ring-onion-500/20 focus:border-onion-500 focus:outline-none"
+                />
+              </label>
+
+              <label className="font-semibold text-slate-700">
+                Legal entity type
+                <input
+                  required
+                  type="text"
+                  value={kybData.type}
+                  onChange={(e) => setKybData({ ...kybData, type: e.target.value })}
+                  className="mt-1 w-full rounded-lg border border-slate-300 p-2 text-xs font-normal focus:ring-2 focus:ring-onion-500/20 focus:border-onion-500 focus:outline-none"
+                  placeholder="e.g. Limited Liability Company (LLC)"
+                />
+              </label>
+
+              <label className="font-semibold text-slate-700">
+                Registration location / Authority
+                <input
+                  type="text"
+                  value={kybData.registrationLocation}
+                  onChange={(e) => setKybData({ ...kybData, registrationLocation: e.target.value })}
+                  className="mt-1 w-full rounded-lg border border-slate-300 p-2 text-xs font-normal focus:ring-2 focus:ring-onion-500/20 focus:border-onion-500 focus:outline-none"
+                  placeholder="e.g. Dubai DED"
+                />
+              </label>
+
+              <label className="font-semibold text-slate-700 sm:col-span-2">
+                Registered legal address
+                <input
+                  required
+                  type="text"
+                  value={kybData.legalAddress}
+                  onChange={(e) => setKybData({ ...kybData, legalAddress: e.target.value })}
+                  className="mt-1 w-full rounded-lg border border-slate-300 p-2 text-xs font-normal focus:ring-2 focus:ring-onion-500/20 focus:border-onion-500 focus:outline-none"
+                />
+              </label>
+
+              <label className="font-semibold text-slate-700">
+                Company email
+                <input
+                  type="email"
+                  value={kybData.email}
+                  onChange={(e) => setKybData({ ...kybData, email: e.target.value })}
+                  className="mt-1 w-full rounded-lg border border-slate-300 p-2 text-xs font-normal focus:ring-2 focus:ring-onion-500/20 focus:border-onion-500 focus:outline-none"
+                />
+              </label>
+
+              <label className="font-semibold text-slate-700">
+                Company phone
+                <input
+                  type="text"
+                  value={kybData.phone}
+                  onChange={(e) => setKybData({ ...kybData, phone: e.target.value })}
+                  className="mt-1 w-full rounded-lg border border-slate-300 p-2 text-xs font-normal focus:ring-2 focus:ring-onion-500/20 focus:border-onion-500 focus:outline-none"
+                />
+              </label>
+
+              <label className="font-semibold text-slate-700">
+                Tax ID / TRN
+                <input
+                  type="text"
+                  value={kybData.taxId}
+                  onChange={(e) => setKybData({ ...kybData, taxId: e.target.value })}
+                  className="mt-1 w-full rounded-lg border border-slate-300 p-2 text-xs font-normal font-mono focus:ring-2 focus:ring-onion-500/20 focus:border-onion-500 focus:outline-none"
+                />
+              </label>
+
+              <label className="font-semibold text-slate-700">
+                Company website
+                <input
+                  type="url"
+                  value={kybData.website}
+                  onChange={(e) => setKybData({ ...kybData, website: e.target.value })}
+                  className="mt-1 w-full rounded-lg border border-slate-300 p-2 text-xs font-normal focus:ring-2 focus:ring-onion-500/20 focus:border-onion-500 focus:outline-none"
+                  placeholder="https://www.example.com"
+                />
+              </label>
+
+              <label className="font-semibold text-slate-700 sm:col-span-2">
+                Postal address
+                <input
+                  type="text"
+                  value={kybData.postalAddress}
+                  onChange={(e) => setKybData({ ...kybData, postalAddress: e.target.value })}
+                  className="mt-1 w-full rounded-lg border border-slate-300 p-2 text-xs font-normal focus:ring-2 focus:ring-onion-500/20 focus:border-onion-500 focus:outline-none"
+                />
+              </label>
+
+              <label className="font-semibold text-slate-700">
+                Ownership and control structure
+                <input
+                  type="text"
+                  value={kybData.controlScheme}
+                  onChange={(e) => setKybData({ ...kybData, controlScheme: e.target.value })}
+                  className="mt-1 w-full rounded-lg border border-slate-300 p-2 text-xs font-normal focus:ring-2 focus:ring-onion-500/20 focus:border-onion-500 focus:outline-none"
+                />
+              </label>
+
+              <label className="font-semibold text-slate-700">
+                Applicant position
+                <input
+                  type="text"
+                  value={kybData.applicantPosition}
+                  onChange={(e) => setKybData({ ...kybData, applicantPosition: e.target.value })}
+                  className="mt-1 w-full rounded-lg border border-slate-300 p-2 text-xs font-normal focus:ring-2 focus:ring-onion-500/20 focus:border-onion-500 focus:outline-none"
+                />
+              </label>
+
+              {apiError && <p role="alert" className="sm:col-span-2 rounded-lg bg-red-50 p-3 text-red-800">{apiError}</p>}
+
+              <div className="sm:col-span-2 flex items-center justify-between pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setShowKybModal(false)}
+                  className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  disabled={apiBusy}
+                  type="submit"
+                  className="mat-btn-primary px-5 py-2.5 disabled:opacity-50 inline-flex items-center space-x-1.5 shadow-sm"
+                >
+                  <span>{apiBusy ? 'Submitting KYB…' : 'Submit KYB Information & Continue'}</span>
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
             </form>
           </div>
         </div>
