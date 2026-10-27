@@ -248,6 +248,50 @@ export const INITIAL_ORGANIZATIONS: Organization[] = [
   },
 ]
 
+export interface MasterMerchantTemplate {
+  templateKey: string
+  businessNameSuffix: string
+  categoryType: string
+  jurisdiction: string
+  tradeLicensePrefix: string
+  representativeName: string
+  representativeRole: string
+  settlementMode: 'hold_as_received' | 'auto_offramp'
+}
+
+export const MASTER_MERCHANT_TEMPLATES: MasterMerchantTemplate[] = [
+  {
+    templateKey: 'retail',
+    businessNameSuffix: 'Luxury Goods FZ-LLC',
+    categoryType: 'luxury_retail',
+    jurisdiction: 'Dubai DMCC',
+    tradeLicensePrefix: 'DMCC-2024',
+    representativeName: 'Alice Smith',
+    representativeRole: 'Managing Director',
+    settlementMode: 'hold_as_received',
+  },
+  {
+    templateKey: 'logistics',
+    businessNameSuffix: 'Oasis Logistics FZCO',
+    categoryType: 'logistics',
+    jurisdiction: 'IFZA Dubai',
+    tradeLicensePrefix: 'IFZA-2024',
+    representativeName: 'Rashid Al-Nuaimi',
+    representativeRole: 'Chief Executive Officer',
+    settlementMode: 'auto_offramp',
+  },
+  {
+    templateKey: 'tech',
+    businessNameSuffix: 'Digital Commerce Solutions LLC',
+    categoryType: 'digital_services',
+    jurisdiction: 'ADGM Abu Dhabi',
+    tradeLicensePrefix: 'ADGM-2024',
+    representativeName: 'Tariq Mansoor',
+    representativeRole: 'Head of Operations',
+    settlementMode: 'hold_as_received',
+  },
+]
+
 export const INITIAL_MERCHANTS: Merchant[] = [
   // Merchant 1: Fully Active (all steps complete, tri-wallet split active)
   {

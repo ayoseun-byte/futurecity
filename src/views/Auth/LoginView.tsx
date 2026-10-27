@@ -378,7 +378,7 @@ export const LoginView: React.FC = () => {
                     >
                       {merchants.map((m) => (
                         <option key={m.id} value={m.id}>
-                          {m.legalBusinessName} ({m.status.toUpperCase()})
+                          {m.legalBusinessName} ({m.organizationId}) · {m.status.toUpperCase()}
                         </option>
                       ))}
                     </select>

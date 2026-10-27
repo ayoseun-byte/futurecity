@@ -1,12 +1,11 @@
 import type { Organization, Merchant, Paylink, Transaction } from '../types'
 import {
-  INITIAL_MERCHANTS,
   INITIAL_PAYLINKS,
   INITIAL_TRANSACTIONS,
+  MASTER_MERCHANT_TEMPLATES,
 } from './mockData'
 
 const DEMO_ORGANIZATION_IDS = new Set(['psp_xsquare01', 'psp_sandbox02', 'psp_gulfpay03'])
-const DEMO_MERCHANT_IDS = new Set(INITIAL_MERCHANTS.map((merchant) => merchant.id))
 const DEMO_PAYLINK_IDS = new Set(INITIAL_PAYLINKS.map((paylink) => paylink.id))
 const DEMO_TRANSACTION_IDS = new Set(INITIAL_TRANSACTIONS.map((transaction) => transaction.id))
 
@@ -81,7 +80,7 @@ export function getStoredMerchants(): Merchant[] {
       const parsed = JSON.parse(raw)
       if (Array.isArray(parsed)) {
         return parsed.filter((merchant): merchant is Merchant =>
-          merchant && typeof merchant.id === 'string' && !DEMO_MERCHANT_IDS.has(merchant.id)
+          merchant && typeof merchant.id === 'string'
         )
       }
     }
@@ -92,92 +91,67 @@ export function getStoredMerchants(): Merchant[] {
 }
 
 export function saveStoredMerchants(merchants: Merchant[]): void {
-  localStorage.setItem(STORAGE_KEYS.MERCHANTS, JSON.stringify(
-    merchants.filter((merchant) => !DEMO_MERCHANT_IDS.has(merchant.id))
-  ))
+  localStorage.setItem(STORAGE_KEYS.MERCHANTS, JSON.stringify(merchants))
 }
 
-export function ensureDemoDataForOrganization(organizationId: string): void {
-  const storedMerchants = getStoredMerchants()
-  const organizationSlug = organizationId.toLowerCase().replace(/[^a-z0-9]+/g, '').slice(-12) || 'org'
-  const demoTemplates = INITIAL_MERCHANTS.filter((merchant) => merchant.organizationId === 'psp_xsquare01')
-  const existingDemoMerchants = storedMerchants.filter((merchant) =>
-    merchant.organizationId === organizationId && merchant.id.startsWith('mrch_demo_')
-  )
+/**
+ * Dynamically generate a fresh set of sample merchants for a newly onboarded PSP from the Master Template.
+ * Each merchant is isolated to that specific organizationId with unique externalId and credentials.
+ */
+export function generateMerchantsForPsp(organizationId: string, orgName?: string): Merchant[] {
+  const organizationSlug = organizationId.toLowerCase().replace(/[^a-z0-9]+/g, '').slice(-8) || 'org'
+  const prefix = (orgName || organizationSlug).toUpperCase().replace(/[^A-Z0-9]+/g, '').slice(0, 4) || 'MERCH'
 
-  const existingByExternalId = new Map(existingDemoMerchants.map((merchant) => [merchant.externalId, merchant]))
-  const merchantIds = new Map(
-    demoTemplates.map((merchant, index) => [merchant.id, `mrch_demo_${organizationSlug}_${index + 1}`])
-  )
-  const demoMerchants = demoTemplates.map((merchant, index) => {
-    const externalId = `${organizationSlug.toUpperCase()}-${index + 1}`
-    const existing = existingByExternalId.get(externalId)
+  return MASTER_MERCHANT_TEMPLATES.map((tmpl, idx) => {
+    const externalId = `${prefix}-${idx + 1001}`
+    const id = `mrch_${organizationSlug}_${tmpl.templateKey}_${idx + 1}`
+    const pspDomain = organizationSlug.toLowerCase().replace(/[^a-z0-9]/g, '') || 'psp'
+    const repEmail = `${tmpl.representativeName.toLowerCase().replace(/\s+/g, '.')}@${pspDomain}.example`
+
     return {
-      ...merchant,
-      ...existing,
-      id: existing?.id ?? merchantIds.get(merchant.id) ?? merchant.id,
+      id,
       organizationId,
       externalId,
+      legalBusinessName: `${orgName || 'PSP'} ${tmpl.businessNameSuffix}`,
+      tradeLicenseNumber: `${tmpl.tradeLicensePrefix}-${Math.floor(10000 + Math.random() * 90000)}`,
+      jurisdiction: tmpl.jurisdiction,
+      categoryType: tmpl.categoryType,
+      representativeName: tmpl.representativeName,
+      representativeEmail: repEmail,
       status: 'invited' as const,
+      settlementMode: tmpl.settlementMode,
       nextStep: 'OPT_IN' as const,
-      merchantWallet: undefined,
-      baseWalletAddress: undefined,
-      solanaWalletAddress: undefined,
-      passkeyId: undefined,
-      noticeAcknowledgedAt: undefined,
-      kybInformationSubmittedAt: undefined,
-      termsAcceptedAt: undefined,
-      sumsubCompletedAt: undefined,
-      passkeyRegisteredAt: undefined,
-      verifiedAt: undefined,
-      activatedAt: undefined,
+      orkiFeeBps: 100,
+      pspFeeBps: 35,
       volumeUsdc: 0,
       balanceUsdc: 0,
+      createdAt: new Date().toISOString(),
     }
   })
+}
 
-  saveStoredMerchants([
-    ...demoMerchants,
-    ...storedMerchants.filter((merchant) =>
-      merchant.organizationId !== organizationId || !merchant.id.startsWith('mrch_demo_')
-    ),
-  ])
+/**
+ * Ensures merchants exist for a given organization without overwriting in-progress states.
+ * If merchants already exist for this organization, their progress (SumSub, KYB, Wallets, etc.) is preserved.
+ */
+export function ensureMerchantsForOrganization(organizationId: string, orgName?: string): Merchant[] {
+  const storedMerchants = getStoredMerchants()
+  const existingForOrg = storedMerchants.filter((m) => m.organizationId === organizationId)
 
-  const demoPaylinks = INITIAL_PAYLINKS
-    .filter((paylink) => paylink.organizationId === 'psp_xsquare01')
-    .map((paylink, index) => ({
-      ...paylink,
-      id: `plk_demo_${organizationSlug}_${index + 1}`,
-      merchantId: merchantIds.get(paylink.merchantId ?? ''),
-      organizationId,
-      slug: `${paylink.slug}-${organizationSlug}`,
-      checkoutUrl: `/checkout/${paylink.slug}-${organizationSlug}`,
-    }))
-  const storedPaylinks = getStoredPaylinks()
-  const demoPaylinkPrefix = `plk_demo_${organizationSlug}_`
-  saveStoredPaylinks([
-    ...demoPaylinks,
-    ...storedPaylinks.filter((paylink) =>
-      !DEMO_PAYLINK_IDS.has(paylink.id) && !paylink.id.startsWith(demoPaylinkPrefix)
-    ),
-  ])
+  // CRITICAL: If this PSP already has merchants, NEVER wipe or overwrite their onboarding progress!
+  if (existingForOrg.length > 0) {
+    return existingForOrg
+  }
 
-  const demoTransactions = INITIAL_TRANSACTIONS
-    .filter((transaction) => transaction.organizationId === 'psp_xsquare01')
-    .map((transaction, index) => ({
-      ...transaction,
-      id: `tx_demo_${organizationSlug}_${index + 1}`,
-      merchantId: merchantIds.get(transaction.merchantId) ?? transaction.merchantId,
-      organizationId,
-    }))
-  const storedTransactions = getStoredTransactions()
-  const demoTransactionPrefix = `tx_demo_${organizationSlug}_`
-  saveStoredTransactions([
-    ...demoTransactions,
-    ...storedTransactions.filter((transaction) =>
-      !DEMO_TRANSACTION_IDS.has(transaction.id) && !transaction.id.startsWith(demoTransactionPrefix)
-    ),
-  ])
+  // Generate dynamic merchants from the master template for this new PSP
+  const newMerchants = generateMerchantsForPsp(organizationId, orgName)
+  const updatedMerchants = [...newMerchants, ...storedMerchants]
+  saveStoredMerchants(updatedMerchants)
+  return newMerchants
+}
+
+export function ensureDemoDataForOrganization(organizationId: string, orgName?: string): void {
+  ensureMerchantsForOrganization(organizationId, orgName)
 }
 
 export function addStoredMerchant(merchant: Merchant): void {

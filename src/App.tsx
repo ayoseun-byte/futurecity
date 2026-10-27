@@ -23,7 +23,7 @@ import {
   saveStoredPaylinks,
   getStoredTransactions,
   saveStoredTransactions,
-  ensureDemoDataForOrganization,
+  ensureMerchantsForOrganization,
   clearAllStoredData,
 } from './services/storageService'
 import { fetchPspDashboard, type PspDashboardMetrics } from './services/pspMerchantService'
@@ -122,7 +122,7 @@ function MainRoutes() {
     const activeOrganization = storedOrganizations.find((organization) => organization.id === user.organizationId)
     if (!activeOrganization) return
 
-    ensureDemoDataForOrganization(activeOrganization.id)
+    ensureMerchantsForOrganization(activeOrganization.id, activeOrganization.name)
     setOrganizations(storedOrganizations)
     setMerchants(getStoredMerchants())
     setPaylinks(getStoredPaylinks())
@@ -130,7 +130,7 @@ function MainRoutes() {
     const demoMerchantIdsByExternalId = new Map(
       getStoredMerchants()
         .filter((merchant) =>
-          merchant.organizationId === activeOrganization.id && merchant.id.startsWith('mrch_demo_')
+          merchant.organizationId === activeOrganization.id
         )
         .map((merchant) => [merchant.externalId, merchant.id])
     )
@@ -213,6 +213,8 @@ function MainRoutes() {
 
   const handleAddOrganization = (newOrg: Organization) => {
     setOrganizations([newOrg, ...organizations])
+    const newMerchants = ensureMerchantsForOrganization(newOrg.id, newOrg.name)
+    setMerchants((current) => [...newMerchants, ...current])
   }
 
   const handleRequestFeeChange = async (
