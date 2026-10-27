@@ -97,7 +97,8 @@ export async function apiRequest(config: ApiConfig, method: string, path: string
   if (method !== 'GET' && method !== 'HEAD') headers['Idempotency-Key'] = `fc-${crypto.randomUUID()}`
 
   const controller = new AbortController()
-  const timeoutMs = 20000
+  // Increased to 60s to accommodate Render Free Tier cold-start spin-ups
+  const timeoutMs = 60000
   const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs)
 
   let response: Response
