@@ -397,7 +397,22 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
     return Number.isFinite(amount) ? amount : 0
   }, [])
 
-  const isSetupComplete = (merchant.status?.toUpperCase() === 'ACTIVE') && !merchant.nextStep
+  // Derive the active onboarding step dynamically so the UI auto-continues from the exact current step
+  const derivedStep = (() => {
+    if (merchant.status?.toUpperCase() === 'ACTIVE') return null
+    if (merchant.nextStep) return merchant.nextStep
+    if (merchant.passkeyRegisteredAt || merchant.status?.toUpperCase() === 'VERIFIED') return 'PASSKEY'
+    if (
+      merchant.status?.toUpperCase() === 'VERIFYING' ||
+      merchant.termsAcceptedAt ||
+      merchant.status?.toLowerCase() === 'terms_accepted'
+    ) return 'SUMSUB'
+    if (merchant.kybInformationSubmittedAt) return 'TERMS'
+    if (merchant.noticeAcknowledgedAt) return 'KYB_INFORMATION'
+    return 'OPT_IN'
+  })()
+
+  const isSetupComplete = (merchant.status?.toUpperCase() === 'ACTIVE') && !derivedStep
   const [hasAgreedTos, setHasAgreedTos] = useState(false)
 
   // Browser messages are navigation hints only; backend state is authoritative.
@@ -692,14 +707,22 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
   }, [asAmount, merchantApiConfig])
 
   useEffect(() => {
-    const config = merchantApiConfig()
-    if (!config.merchantSession) return
     let active = true
 
     const refresh = async () => {
       if (document.hidden || isRefreshingRef.current) return
       isRefreshingRef.current = true
       try {
+        let config = merchantApiConfig()
+        if (!config.merchantSession) {
+          try {
+            config = await ensureMerchantSession()
+          } catch {
+            // Cannot auto-resolve session yet, fallback to local derivedStep
+          }
+        }
+        if (!config.merchantSession || !active) return
+
         const state = await requestApi<{
           status: string
           statusReason?: string | null
@@ -939,7 +962,7 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
               {isSetupComplete ? 'USDC Live (Multi-Chain)' : 'Onboarding Pending'}
             </p>
           </div>
-          {(merchant.status?.toLowerCase() === 'invited') && (!merchant.nextStep || merchant.nextStep === 'OPT_IN') && (
+          {derivedStep === 'OPT_IN' && (
             <button
               onClick={() => void handleStartOptIn()}
               disabled={apiBusy}
@@ -947,6 +970,50 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
             >
               Accept USDC
             </button>
+          )}
+          {derivedStep === 'NOTICE' && (
+            <button
+              onClick={() => void handleOpenNotice()}
+              disabled={apiBusy}
+              className="mat-btn-primary px-3 py-1.5 text-xs font-medium ml-2 shadow-xs"
+            >
+              Review Notice
+            </button>
+          )}
+          {derivedStep === 'KYB_INFORMATION' && (
+            <button
+              onClick={openKybModal}
+              disabled={apiBusy}
+              className="mat-btn-primary px-3 py-1.5 text-xs font-medium ml-2 shadow-xs"
+            >
+              Submit KYB
+            </button>
+          )}
+          {derivedStep === 'TERMS' && (
+            <button
+              onClick={() => void handleOpenTerms()}
+              disabled={apiBusy}
+              className="mat-btn-primary px-3 py-1.5 text-xs font-medium ml-2 shadow-xs"
+            >
+              Review Terms
+            </button>
+          )}
+          {derivedStep === 'SUMSUB' && (
+            <button
+              onClick={handleOpenSumsubTab}
+              disabled={apiBusy}
+              className="mat-btn-primary px-3 py-1.5 text-xs font-medium ml-2 shadow-xs"
+            >
+              SumSub KYB
+            </button>
+          )}
+          {derivedStep === 'PASSKEY' && (
+            <a
+              href={`/setup${merchantApiConfig().merchantSession ? `#session=${encodeURIComponent(merchantApiConfig().merchantSession)}` : ''}`}
+              className="mat-btn-primary px-3 py-1.5 text-xs font-medium ml-2 shadow-xs inline-flex items-center"
+            >
+              Setup Wallets
+            </a>
           )}
         </div>
       </div>
@@ -958,7 +1025,7 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
             <div className="space-y-1">
               <div className="inline-flex items-center space-x-1.5 text-xs font-semibold text-onion-800 bg-onion-100/80 px-2.5 py-0.5 rounded-md">
                 <Sparkles className="w-3.5 h-3.5" />
-                <span>Next Step: {merchant.nextStep || 'OPT_IN'}</span>
+                <span>Next Step: {derivedStep || 'ACTIVE'}</span>
               </div>
               <h2 className="text-base font-bold text-slate-900 tracking-tight pt-1">
                 Complete Your USDC Merchant Activation
@@ -970,17 +1037,17 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
 
             {/* Contextual Action Button based on current nextStep */}
             <div>
-              {(merchant.status?.toLowerCase() === 'invited') && (!merchant.nextStep || merchant.nextStep === 'OPT_IN') && (
+              {derivedStep === 'OPT_IN' && (
                 <button
-              onClick={() => void handleStartOptIn()}
-              disabled={apiBusy}
+                  onClick={() => void handleStartOptIn()}
+                  disabled={apiBusy}
                   className="mat-btn-primary px-5 py-2.5 text-xs font-semibold flex items-center space-x-2 shadow-sm"
                 >
                   <span>{apiBusy ? 'Starting secure onboarding…' : 'Accept USDC Payments'}</span>
                   <ChevronRight className="w-4 h-4" />
                 </button>
               )}
-              {merchant.nextStep === 'NOTICE' && (
+              {derivedStep === 'NOTICE' && (
                 <button
                   onClick={() => void handleOpenNotice()}
                   className="mat-btn-primary px-5 py-2.5 text-xs font-semibold flex items-center space-x-2 shadow-sm"
@@ -989,10 +1056,10 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
                   <ChevronRight className="w-4 h-4" />
                 </button>
               )}
-              {merchant.nextStep === 'KYB_INFORMATION' && (
+              {derivedStep === 'KYB_INFORMATION' && (
                 <button onClick={openKybModal} className="mat-btn-primary px-5 py-2.5 text-xs font-semibold flex items-center space-x-2 shadow-sm"><span>Submit KYB Information</span><ChevronRight className="w-4 h-4" /></button>
               )}
-              {merchant.nextStep === 'TERMS' && (
+              {derivedStep === 'TERMS' && (
                 <button
                   onClick={() => void handleOpenTerms()}
                   className="mat-btn-primary px-5 py-2.5 text-xs font-semibold flex items-center space-x-2 shadow-sm"
@@ -1001,7 +1068,7 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
                   <ChevronRight className="w-4 h-4" />
                 </button>
               )}
-              {merchant.nextStep === 'SUMSUB' && (
+              {derivedStep === 'SUMSUB' && (
                 <div className="space-y-2">
                   <button
                     onClick={handleOpenSumsubTab}
@@ -1036,7 +1103,7 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
                   )}
                 </div>
               )}
-              {merchant.nextStep === 'PASSKEY' && (
+              {derivedStep === 'PASSKEY' && (
                 <a
                   href={`/setup${merchantApiConfig().merchantSession ? `#session=${encodeURIComponent(merchantApiConfig().merchantSession)}` : ''}`}
                   className="mat-btn-primary px-5 py-2.5 text-xs font-semibold inline-flex items-center space-x-2 shadow-sm"
@@ -1061,7 +1128,7 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
           {/* Stepper Progress Bar */}
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 pt-2 border-t border-slate-100">
             <div className={`p-2.5 rounded-lg text-xs border ${
-              merchant.nextStep === 'NOTICE'
+              derivedStep === 'NOTICE'
                 ? 'bg-white border-onion-300 shadow-xs ring-1 ring-onion-200'
                 : merchant.noticeAcknowledgedAt
                 ? 'bg-emerald-50/60 border-emerald-200 text-emerald-800'
@@ -1072,7 +1139,7 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
             </div>
 
             <div className={`p-2.5 rounded-lg text-xs border ${
-              merchant.nextStep === 'KYB_INFORMATION'
+              derivedStep === 'KYB_INFORMATION'
                 ? 'bg-white border-onion-300 shadow-xs ring-1 ring-onion-200'
                 : merchant.kybInformationSubmittedAt
                 ? 'bg-emerald-50/60 border-emerald-200 text-emerald-800'
@@ -1082,12 +1149,12 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
               <p className="font-bold text-xs mt-0.5">Company KYB Information</p>
             </div>
 
-            <div className={`p-2.5 rounded-lg text-xs border ${merchant.nextStep === 'TERMS' ? 'bg-white border-onion-300 shadow-xs ring-1 ring-onion-200' : merchant.termsAcceptedAt ? 'bg-emerald-50/60 border-emerald-200 text-emerald-800' : 'bg-slate-50 border-slate-200 text-slate-400'}`}>
+            <div className={`p-2.5 rounded-lg text-xs border ${derivedStep === 'TERMS' ? 'bg-white border-onion-300 shadow-xs ring-1 ring-onion-200' : merchant.termsAcceptedAt ? 'bg-emerald-50/60 border-emerald-200 text-emerald-800' : 'bg-slate-50 border-slate-200 text-slate-400'}`}>
               <p className="text-[10px] font-semibold uppercase tracking-wider">Step 3</p><p className="font-bold text-xs mt-0.5">Terms & Fee Split</p>
             </div>
 
             <div className={`p-2.5 rounded-lg text-xs border ${
-              merchant.nextStep === 'SUMSUB'
+              derivedStep === 'SUMSUB'
                 ? 'bg-white border-onion-300 shadow-xs ring-1 ring-onion-200'
                 : merchant.sumsubCompletedAt
                 ? 'bg-emerald-50/60 border-emerald-200 text-emerald-800'
@@ -1098,7 +1165,7 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
             </div>
 
             <div className={`p-2.5 rounded-lg text-xs border ${
-              merchant.nextStep === 'PASSKEY'
+              derivedStep === 'PASSKEY'
                 ? 'bg-white border-onion-300 shadow-xs ring-1 ring-onion-200'
                 : merchant.passkeyRegisteredAt
                 ? 'bg-emerald-50/60 border-emerald-200 text-emerald-800'
