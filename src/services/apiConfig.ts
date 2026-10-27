@@ -140,6 +140,13 @@ export async function requestApi<T>(config: ApiConfig, method: string, path: str
       }
     }
 
+    if (response && typeof response === 'object' && response.error === 'sumsub_not_configured') {
+      const missingList = Array.isArray((response as Record<string, unknown>).missing)
+        ? ((response as Record<string, unknown>).missing as string[]).join(', ')
+        : 'SUMSUB_APP_TOKEN, SUMSUB_SECRET_KEY, SUMSUB_LEVEL_NAME'
+      message = `SumSub is not configured on the backend server. Missing environment variables on Render: [${missingList}]. Please add them in the Render Environment tab and click 'Save and deploy'.`
+    }
+
     throw new Error(message || `Request failed (${result.status})`)
   }
   return result.data as T
