@@ -1,8 +1,10 @@
 import { useState, useEffect, useCallback } from 'react'
-import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, useNavigate, useParams } from 'react-router-dom'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import type { UserRole } from './context/AuthContext'
-import { Header } from './components/Header'
+import { AdminLayout } from './components/layout/AdminLayout'
+import { PspLayout } from './components/layout/PspLayout'
+import { MerchantLayout } from './components/layout/MerchantLayout'
 import { LoginView } from './views/Auth/LoginView'
 import { OrgDashboard } from './views/Organization/OrgDashboard'
 import { MerchantDetailPage } from './views/Organization/MerchantDetailPage'
@@ -24,7 +26,6 @@ import {
   getStoredTransactions,
   saveStoredTransactions,
   ensureMerchantsForOrganization,
-  clearAllStoredData,
 } from './services/storageService'
 import { fetchPspDashboard, type PspDashboardMetrics } from './services/pspMerchantService'
 import { getApiConfig, requestApi } from './services/apiConfig'
@@ -45,46 +46,19 @@ function ProtectedRoute({
   }
 
   if (!allowedRoles.includes(user.role)) {
-    if (user.role === 'org') return <Navigate to="/org" replace />
-    if (user.role === 'merchant') return <Navigate to="/merchant" replace />
     if (user.role === 'admin') return <Navigate to="/admin" replace />
+    if (user.role === 'org') return <Navigate to="/psp" replace />
+    if (user.role === 'merchant') return <Navigate to="/merchant" replace />
     return <Navigate to="/login" replace />
   }
 
   return <>{children}</>
 }
 
-// Main Authenticated Layout
-function AppLayout({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="min-h-screen bg-slate-50 flex flex-col font-sans">
-      <Header />
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {children}
-      </main>
-      <footer className="border-t border-slate-200 bg-white py-6 text-center text-xs text-slate-500">
-        <p className="font-medium text-slate-700">
-          Orki × PSP Multi-Tenancy Architecture · Non-Custodial Stablecoin & Fiat Settlement Core
-        </p>
-        <p className="text-[11px] text-slate-400 mt-1">
-          Base (EVM) · Solana (SVM) · Bridge Liquidity Rails · Sumsub KYB · ZeroDev Passkeys
-        </p>
-        <div className="mt-2">
-          <button
-            onClick={() => {
-              if (window.confirm('Reset all locally stored organizations and merchants?')) {
-                clearAllStoredData()
-                window.location.href = '/login'
-              }
-            }}
-            className="text-[10px] text-slate-400 hover:text-slate-600 underline"
-          >
-            Clear Local Test Data
-          </button>
-        </div>
-      </footer>
-    </div>
-  )
+// Redirect legacy /org/merchants/:id to /psp/merchants/:id
+function OrgMerchantRedirect() {
+  const { id } = useParams()
+  return <Navigate to={id ? `/psp/merchants/${id}` : '/psp'} replace />
 }
 
 function MainRoutes() {
@@ -339,12 +313,12 @@ function MainRoutes() {
       <Route path="/legal/terms" element={<LegalDocumentPage documentType="terms" />} />
       <Route path="/legal/privacy" element={<LegalDocumentPage documentType="privacy" />} />
 
-      {/* Organization Portal */}
+      {/* PSP Portal (Standard Route: /psp, Backwards-Compatible Alias: /org) */}
       <Route
-        path="/org"
+        path="/psp"
         element={
           <ProtectedRoute allowedRoles={['org']}>
-            <AppLayout>
+            <PspLayout>
               {activeOrg ? (
                 <OrgDashboard
                   organization={activeOrg}
@@ -382,34 +356,38 @@ function MainRoutes() {
                   </a>
                 </div>
               )}
-            </AppLayout>
+            </PspLayout>
           </ProtectedRoute>
         }
       />
 
-      {/* Dedicated Merchant Detail / Inspection Route */}
+      {/* Dedicated Merchant Detail / Inspection Route under PSP */}
       <Route
-        path="/org/merchants/:id"
+        path="/psp/merchants/:id"
         element={
           <ProtectedRoute allowedRoles={['org']}>
-            <AppLayout>
+            <PspLayout>
               <MerchantDetailPage
                 merchants={merchants}
                 paylinks={paylinks}
                 transactions={transactions}
                 onToggleStatus={handleToggleMerchantStatus}
               />
-            </AppLayout>
+            </PspLayout>
           </ProtectedRoute>
         }
       />
+
+      {/* Legacy /org aliases for backwards compatibility */}
+      <Route path="/org" element={<Navigate to="/psp" replace />} />
+      <Route path="/org/merchants/:id" element={<OrgMerchantRedirect />} />
 
       {/* Merchant Portal */}
       <Route
         path="/merchant"
         element={
           <ProtectedRoute allowedRoles={['merchant']}>
-            <AppLayout>
+            <MerchantLayout>
               {activeMerchant ? (
                 <MerchantDashboard
                   merchant={activeMerchant}
@@ -431,7 +409,7 @@ function MainRoutes() {
                     </p>
                   </div>
                   <a
-                    href="/org"
+                    href="/psp"
                     className="mat-btn-primary py-2.5 px-4 text-xs font-semibold inline-flex items-center space-x-1.5"
                   >
                     <span>Go to PSP Portal</span>
@@ -439,7 +417,7 @@ function MainRoutes() {
                   </a>
                 </div>
               )}
-            </AppLayout>
+            </MerchantLayout>
           </ProtectedRoute>
         }
       />
@@ -449,13 +427,13 @@ function MainRoutes() {
         path="/admin"
         element={
           <ProtectedRoute allowedRoles={['admin']}>
-            <AppLayout>
+            <AdminLayout>
               <OrkiAdminPortal
                 organizations={organizations}
                 onUpdateOrganization={handleUpdateOrganization}
                 onAddOrganization={handleAddOrganization}
               />
-            </AppLayout>
+            </AdminLayout>
           </ProtectedRoute>
         }
       />
@@ -473,12 +451,12 @@ function MainRoutes() {
         path="/"
         element={
           isAuthenticated ? (
-            user?.role === 'org' ? (
-              <Navigate to="/org" replace />
-            ) : user?.role === 'merchant' ? (
-              <Navigate to="/merchant" replace />
-            ) : (
+            user?.role === 'admin' ? (
               <Navigate to="/admin" replace />
+            ) : user?.role === 'org' ? (
+              <Navigate to="/psp" replace />
+            ) : (
+              <Navigate to="/merchant" replace />
             )
           ) : (
             <Navigate to="/login" replace />

@@ -69,7 +69,7 @@ export const MerchantDetailPage: React.FC<MerchantDetailPageProps> = ({
       <div className="text-center py-20 space-y-4">
         <h2 className="text-xl font-bold text-slate-900">Merchant Not Found</h2>
         <button
-          onClick={() => navigate('/org')}
+          onClick={() => navigate('/psp')}
           className="px-4 py-2 bg-onion text-white rounded-xl text-sm font-semibold"
         >
           Return to Merchants
@@ -135,7 +135,7 @@ export const MerchantDetailPage: React.FC<MerchantDetailPageProps> = ({
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-slate-200 pb-5">
         <div className="flex items-center space-x-4">
           <button
-            onClick={() => navigate('/org')}
+            onClick={() => navigate('/psp')}
             className="p-2.5 rounded-xl border border-slate-200 hover:border-onion-300 hover:bg-onion-50 text-slate-600 hover:text-onion transition-colors"
           >
             <ArrowLeft className="w-5 h-5" />

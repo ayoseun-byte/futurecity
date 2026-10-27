@@ -446,7 +446,7 @@ export const OrgDashboard: React.FC<OrgDashboardProps> = ({
                     </td>
                     <td className="px-6 py-3.5 text-right space-x-2">
                       <button
-                        onClick={() => navigate(`/org/merchants/${merchant.id}`)}
+                        onClick={() => navigate(`/psp/merchants/${merchant.id}`)}
                         className="px-2.5 py-1 rounded text-slate-600 hover:text-slate-900 border border-slate-200 hover:bg-slate-50 transition"
                       >
                         Inspect

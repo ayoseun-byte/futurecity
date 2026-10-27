@@ -112,7 +112,7 @@ export const LoginView: React.FC = () => {
     }
     setLoginError('')
     login('org', org.id)
-    navigate('/org')
+    navigate('/psp')
   }
 
   const handleMerchantLogin = (e: React.FormEvent) => {

@@ -30,7 +30,7 @@ export const Header: React.FC = () => {
   }
 
   const getPortalHome = () => {
-    if (user.role === 'org') return '/org'
+    if (user.role === 'org') return '/psp'
     if (user.role === 'merchant') return '/merchant'
     return '/admin'
   }

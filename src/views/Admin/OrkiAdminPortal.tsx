@@ -648,7 +648,7 @@ export const OrkiAdminPortal: React.FC<OrkiAdminPortalProps> = ({
                       <button
                         onClick={() => {
                           login('org', org.id)
-                          navigate('/org')
+                          navigate('/psp')
                         }}
                         className="inline-flex items-center space-x-1 px-3 py-1.5 rounded-xl bg-onion-50 hover:bg-onion-100 text-onion font-bold text-xs transition"
                         title="Sign in directly as this PSP"
@@ -998,7 +998,7 @@ export const OrkiAdminPortal: React.FC<OrkiAdminPortalProps> = ({
               <button
                 onClick={() => {
                   login('org', selectedOrg.id)
-                  navigate('/org')
+                  navigate('/psp')
                 }}
                 className="px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-bold hover:bg-slate-800 transition"
               >
