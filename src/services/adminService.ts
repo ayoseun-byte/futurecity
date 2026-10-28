@@ -81,6 +81,43 @@ export interface AdminMerchantRow {
   createdAt: string
 }
 
+export interface AdminMerchantDetailResponse {
+  id: string
+  organizationId: string
+  organizationName: string
+  organizationCategory: string
+  externalId: string
+  legalBusinessName: string
+  tradeLicenseNumber: string
+  jurisdiction: string
+  representativeName: string
+  representativeEmail: string
+  status: 'active' | 'disabled' | 'invited' | 'suspended'
+  settlementMode: string
+  baseWalletAddress?: string | null
+  solanaWalletAddress?: string | null
+  passkeyId?: string | null
+  hasPasskey: boolean
+  statusReason?: string | null
+  consentDetails?: Record<string, unknown> | null
+  metadata?: Record<string, unknown> | null
+  kybSubmissions?: Array<Record<string, unknown>>
+  paylinks?: Array<Record<string, unknown>>
+  recentTransactions?: Array<Record<string, unknown>>
+  onboardingSessions?: Array<Record<string, unknown>>
+  stats?: {
+    totalVolumeUsdc: number
+    totalTransactions: number
+    totalOrkiFeesUsdc: number
+    totalPspMarkupUsdc: number
+  }
+  verifiedAt?: string | null
+  activatedAt?: string | null
+  createdAt: string
+  updatedAt?: string | null
+  rawRecord?: Record<string, unknown>
+}
+
 export interface AdminTransactionRow {
   id: string
   organizationId: string
@@ -309,6 +346,11 @@ export async function fetchAdminMerchants(filters?: {
 
   const queryString = params.toString() ? `?${params.toString()}` : ''
   return requestApi<{ data: AdminMerchantRow[]; total: number }>(config, 'GET', `/api/v1/admin/merchants${queryString}`, undefined, 'admin')
+}
+
+export async function fetchAdminMerchantDetail(merchantId: string): Promise<AdminMerchantDetailResponse> {
+  const config = getApiConfig()
+  return requestApi<AdminMerchantDetailResponse>(config, 'GET', `/api/v1/admin/merchants/${encodeURIComponent(merchantId)}`, undefined, 'admin')
 }
 
 export async function updateAdminMerchantStatus(

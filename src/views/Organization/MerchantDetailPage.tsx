@@ -1,7 +1,8 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import type { Merchant, Paylink, Transaction } from '../../types'
 import { StatusBadge } from '../../components/StatusBadge'
+import { MerchantFullDetailsModal } from '../../components/MerchantFullDetailsModal'
 import {
   ArrowLeft,
   Building,
@@ -20,6 +21,7 @@ import {
   RefreshCw,
   Sparkles,
   Clock,
+  FileCode,
 } from 'lucide-react'
 import { getApiConfig, requestApi, saveApiConfig } from '../../services/apiConfig'
 
@@ -63,6 +65,52 @@ export const MerchantDetailPage: React.FC<MerchantDetailPageProps> = ({
   const [sessionLoading, setSessionLoading] = useState(false)
   const [sessionError, setSessionError] = useState<string | null>(null)
   const [showSessionSecret, setShowSessionSecret] = useState(false)
+
+  // Full Backend Details & Modal State
+  const [backendDetail, setBackendDetail] = useState<Record<string, unknown> | null>(null)
+  const [isFullModalOpen, setIsFullModalOpen] = useState(false)
+  const [backendLoading, setBackendLoading] = useState(false)
+
+  useEffect(() => {
+    if (!merchant) return
+    const config = getApiConfig()
+    if (!config.baseUrl || !config.pspKey) return
+
+    let active = true
+    setBackendLoading(true)
+    requestApi<Record<string, unknown>>(
+      config,
+      'GET',
+      `/api/v1/psp/merchants/${encodeURIComponent(merchant.id)}/overview`,
+      undefined,
+      'psp'
+    )
+      .then((data) => {
+        if (active && data) setBackendDetail(data)
+      })
+      .catch(() => {
+        // Fallback to show endpoint
+        if (!active) return
+        void requestApi<Record<string, unknown>>(
+          config,
+          'GET',
+          `/api/v1/psp/merchants/${encodeURIComponent(merchant.id)}`,
+          undefined,
+          'psp'
+        )
+          .then((showData) => {
+            if (active && showData) setBackendDetail(showData)
+          })
+          .catch(() => {})
+      })
+      .finally(() => {
+        if (active) setBackendLoading(false)
+      })
+
+    return () => {
+      active = false
+    }
+  }, [merchant?.id])
 
   if (!merchant) {
     return (
@@ -171,7 +219,19 @@ export const MerchantDetailPage: React.FC<MerchantDetailPageProps> = ({
           </div>
         </div>
 
-        <div className="flex items-center space-x-3">
+        <div className="flex items-center space-x-3 flex-wrap gap-2">
+          <button
+            onClick={() => setIsFullModalOpen(true)}
+            className="px-4 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-800 text-xs font-bold transition flex items-center space-x-2 shadow-2xs"
+          >
+            {backendLoading ? (
+              <RefreshCw className="w-4 h-4 text-onion animate-spin" />
+            ) : (
+              <Eye className="w-4 h-4 text-onion" />
+            )}
+            <span>View Complete Backend Dossier</span>
+          </button>
+
           <button
             onClick={async () => {
               setStatusBusy(true)
@@ -461,6 +521,94 @@ export const MerchantDetailPage: React.FC<MerchantDetailPageProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Complete Backend Database Record Section */}
+      <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
+          <div>
+            <h3 className="font-bold text-slate-900 text-sm flex items-center space-x-2">
+              <FileCode className="w-4 h-4 text-onion" />
+              <span>Complete Stored Backend Data & Raw Database Record</span>
+            </h3>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Comprehensive inspection of all table columns, consent proofs, KYB submissions, and timestamps stored in the database.
+            </p>
+          </div>
+
+          <div className="flex items-center space-x-2">
+            <button
+              onClick={() => setIsFullModalOpen(true)}
+              className="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-black text-white text-xs font-semibold flex items-center space-x-1.5 transition shadow-xs"
+            >
+              <Eye className="w-3.5 h-3.5 text-onion-400" />
+              <span>Open Tabbed Dossier</span>
+            </button>
+
+            <button
+              onClick={() => {
+                const dataToCopy = backendDetail || merchant
+                navigator.clipboard.writeText(JSON.stringify(dataToCopy, null, 2))
+                handleCopy(JSON.stringify(dataToCopy, null, 2), 'rawPspJson')
+              }}
+              className="px-3.5 py-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold flex items-center space-x-1.5 transition"
+            >
+              {copiedField === 'rawPspJson' ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+              <span>{copiedField === 'rawPspJson' ? 'Copied JSON!' : 'Copy Raw Record'}</span>
+            </button>
+          </div>
+        </div>
+
+        <pre className="bg-slate-950 text-emerald-400 p-4 rounded-2xl text-[11px] font-mono overflow-x-auto max-h-80 border border-slate-800 leading-relaxed select-all">
+          {JSON.stringify(backendDetail || merchant, null, 2)}
+        </pre>
+      </div>
+
+      {/* Full Merchant Details Dossier Modal */}
+      {isFullModalOpen && (
+        <MerchantFullDetailsModal
+          merchant={{
+            id: merchant.id,
+            organizationId: merchant.organizationId || 'psp_org',
+            organizationName: 'PSP Organization',
+            organizationCategory: 'FINANCE',
+            externalId: merchant.externalId,
+            legalBusinessName: merchant.legalBusinessName,
+            tradeLicenseNumber: merchant.tradeLicenseNumber,
+            jurisdiction: merchant.jurisdiction,
+            representativeName: merchant.representativeName,
+            representativeEmail: merchant.representativeEmail,
+            status: (merchant.status as 'active' | 'disabled' | 'invited' | 'suspended') || 'invited',
+            settlementMode: merchant.settlementMode,
+            baseWalletAddress: merchant.baseWalletAddress,
+            solanaWalletAddress: merchant.solanaWalletAddress,
+            passkeyId: merchant.passkeyId,
+            hasPasskey: !merchant.passkeyId,
+            statusReason: merchant.statusReason,
+            consentDetails: (backendDetail?.consentDetails as Record<string, unknown>) || {
+              consentMethod: 'dashboard',
+              consentNoticeVersion: '1.0',
+              consentRecordedAt: merchant.termsAcceptedAt,
+            },
+            metadata: (backendDetail?.metadata as Record<string, unknown>) || {},
+            kybSubmissions: (backendDetail?.kybSubmissions as Array<Record<string, unknown>>) || [],
+            paylinks: merchantPaylinks as unknown as Array<Record<string, unknown>>,
+            recentTransactions: merchantTransactions as unknown as Array<Record<string, unknown>>,
+            stats: {
+              totalVolumeUsdc: merchant.volumeUsdc || 0,
+              totalTransactions: merchantTransactions.length,
+              totalOrkiFeesUsdc: (merchant.volumeUsdc || 0) * 0.01,
+              totalPspMarkupUsdc: (merchant.volumeUsdc || 0) * 0.0035,
+            },
+            verifiedAt: merchant.verifiedAt,
+            activatedAt: merchant.activatedAt,
+            createdAt: merchant.createdAt,
+            rawRecord: (backendDetail?.rawRecord as Record<string, unknown>) || (backendDetail as Record<string, unknown>) || (merchant as unknown as Record<string, unknown>),
+          }}
+          onClose={() => setIsFullModalOpen(false)}
+          onToggleStatus={(merchantId, newStatus) => onToggleStatus(merchantId, newStatus === 'active' ? 'disabled' : 'active')}
+          isAdmin={false}
+        />
+      )}
     </div>
   )
 }

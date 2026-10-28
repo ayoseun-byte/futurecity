@@ -18,14 +18,17 @@ import {
   fetchAdminFeeChangeRequests,
   reviewAdminFeeChangeRequest,
   fetchAdminAuditLogs,
+  fetchAdminMerchantDetail,
   type AdminMetrics,
   type AdminMerchantRow,
+  type AdminMerchantDetailResponse,
   type AdminTransactionRow,
   type AdminAuditLogRow,
   type AdminUbo,
   type PspDetailResponse,
   type FeeChangeRequest,
 } from '../../services/adminService'
+import { MerchantFullDetailsModal } from '../../components/MerchantFullDetailsModal'
 import {
   ShieldCheck,
   Building2,
@@ -48,6 +51,7 @@ import {
   Lock,
   Layers,
   ArrowRight,
+  Copy,
 } from 'lucide-react'
 
 interface OrkiAdminPortalProps {
@@ -111,6 +115,9 @@ export const OrkiAdminPortal: React.FC<OrkiAdminPortalProps> = ({
   const [transactionsLoading, setTransactionsLoading] = useState(false)
   const [txChainFilter, setTxChainFilter] = useState('all')
   const [txSearch, setTxSearch] = useState('')
+
+  // Sub-Merchant Full Details State
+  const [selectedMerchantDetail, setSelectedMerchantDetail] = useState<AdminMerchantDetailResponse | null>(null)
 
   // Rate Governance State
   const [feeRequests, setFeeRequests] = useState<FeeChangeRequest[]>([])
@@ -197,6 +204,47 @@ export const OrkiAdminPortal: React.FC<OrkiAdminPortalProps> = ({
       setSelectedPspDetail(detail)
     } catch {
       // Fallback to local record metadata
+    }
+  }
+
+  // 3b. Inspect Full Sub-Merchant Dossier with all backend data
+  const handleOpenMerchantDetail = async (merchantId: string, fallbackRow?: AdminMerchantRow) => {
+    setApiError(null)
+    try {
+      const detail = await fetchAdminMerchantDetail(merchantId)
+      setSelectedMerchantDetail(detail)
+    } catch {
+      if (fallbackRow) {
+        setSelectedMerchantDetail({
+          id: fallbackRow.id,
+          organizationId: fallbackRow.organizationId,
+          organizationName: fallbackRow.organizationName,
+          organizationCategory: fallbackRow.organizationCategory,
+          externalId: fallbackRow.externalId,
+          legalBusinessName: fallbackRow.legalBusinessName,
+          tradeLicenseNumber: fallbackRow.tradeLicenseNumber,
+          jurisdiction: fallbackRow.jurisdiction,
+          representativeName: fallbackRow.representativeName,
+          representativeEmail: fallbackRow.representativeEmail,
+          status: fallbackRow.status,
+          settlementMode: fallbackRow.settlementMode,
+          baseWalletAddress: fallbackRow.baseWalletAddress,
+          solanaWalletAddress: fallbackRow.solanaWalletAddress,
+          hasPasskey: false,
+          statusReason: fallbackRow.statusReason,
+          consentDetails: { consentMethod: 'dashboard', consentNoticeVersion: '1.0' },
+          stats: {
+            totalVolumeUsdc: fallbackRow.volumeUsdc,
+            totalTransactions: fallbackRow.transactionCount,
+            totalOrkiFeesUsdc: fallbackRow.volumeUsdc * 0.01,
+            totalPspMarkupUsdc: fallbackRow.volumeUsdc * 0.0035,
+          },
+          verifiedAt: fallbackRow.verifiedAt,
+          activatedAt: fallbackRow.activatedAt,
+          createdAt: fallbackRow.createdAt,
+          rawRecord: fallbackRow as unknown as Record<string, unknown>,
+        })
+      }
     }
   }
 
@@ -972,8 +1020,15 @@ export const OrkiAdminPortal: React.FC<OrkiAdminPortalProps> = ({
                     merchantsList.map((m) => (
                       <tr key={m.id} className="hover:bg-slate-50/60 transition-colors">
                         <td className="py-3.5 px-4">
-                          <p className="font-bold text-slate-900">{m.legalBusinessName}</p>
-                          <p className="text-[11px] font-mono text-slate-400">{m.id} · {m.representativeEmail}</p>
+                          <button
+                            type="button"
+                            onClick={() => void handleOpenMerchantDetail(m.id, m)}
+                            className="font-bold text-slate-900 hover:text-onion text-left transition flex items-center space-x-1"
+                          >
+                            <span>{m.legalBusinessName}</span>
+                            <Eye className="w-3 h-3 text-slate-400 opacity-60" />
+                          </button>
+                          <p className="text-[11px] font-mono text-slate-400 mt-0.5">{m.id} · {m.representativeEmail}</p>
                         </td>
                         <td className="py-3.5 px-4">
                           <span className="font-semibold text-slate-800">{m.organizationName}</span>
@@ -1010,8 +1065,18 @@ export const OrkiAdminPortal: React.FC<OrkiAdminPortalProps> = ({
                             {m.status.toUpperCase()}
                           </span>
                         </td>
-                        <td className="py-3.5 px-4 text-right">
+                        <td className="py-3.5 px-4 text-right space-x-1.5 whitespace-nowrap">
                           <button
+                            type="button"
+                            onClick={() => void handleOpenMerchantDetail(m.id, m)}
+                            className="inline-flex items-center space-x-1 px-3 py-1.5 rounded-xl border border-slate-200 hover:bg-slate-50 font-bold text-xs text-slate-700 transition"
+                          >
+                            <Eye className="w-3.5 h-3.5 text-slate-500" />
+                            <span>View Details</span>
+                          </button>
+
+                          <button
+                            type="button"
                             onClick={() => void handleToggleMerchantStatus(m.id, m.status)}
                             className={`px-3 py-1.5 rounded-xl font-bold text-xs transition ${
                               m.status === 'disabled'
@@ -1594,6 +1659,33 @@ export const OrkiAdminPortal: React.FC<OrkiAdminPortalProps> = ({
               </div>
             </div>
 
+            {/* Complete Raw PSP Database Record Inspector */}
+            <div className="p-4 bg-slate-950 rounded-2xl border border-slate-800 space-y-2 text-xs">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="font-bold text-white text-xs">Complete Raw PSP Database Record</h4>
+                  <p className="text-[11px] text-slate-400">
+                    Live database record from organizations table, contacts, fee schedules, and compliance gates.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText(JSON.stringify(selectedPspDetail || selectedOrg, null, 2))
+                    setApiSuccess('Copied raw PSP JSON to clipboard!')
+                    setTimeout(() => setApiSuccess(null), 2000)
+                  }}
+                  className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold flex items-center space-x-1.5 transition"
+                >
+                  <Copy className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Copy Raw JSON</span>
+                </button>
+              </div>
+              <pre className="text-emerald-400 font-mono text-[11px] max-h-48 overflow-y-auto p-3 bg-black/60 rounded-xl select-all leading-relaxed">
+                {JSON.stringify(selectedPspDetail || selectedOrg, null, 2)}
+              </pre>
+            </div>
+
             {/* Modal Footer */}
             <div className="pt-4 border-t border-slate-200 flex justify-between items-center">
               <button
@@ -1909,6 +2001,18 @@ export const OrkiAdminPortal: React.FC<OrkiAdminPortalProps> = ({
             </form>
           </div>
         </div>
+      )}
+
+      {/* ─────────────────────────────────────────────────────────────
+          MERCHANT FULL DETAILS DOSSIER MODAL
+         ───────────────────────────────────────────────────────────── */}
+      {selectedMerchantDetail && (
+        <MerchantFullDetailsModal
+          merchant={selectedMerchantDetail}
+          onClose={() => setSelectedMerchantDetail(null)}
+          onToggleStatus={handleToggleMerchantStatus}
+          isAdmin={true}
+        />
       )}
     </div>
   )
