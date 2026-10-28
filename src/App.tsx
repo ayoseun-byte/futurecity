@@ -11,6 +11,8 @@ import { MerchantDetailPage } from './views/Organization/MerchantDetailPage'
 import { MerchantDashboard } from './views/Merchant/MerchantDashboard'
 import { CustomerCheckoutView } from './views/Checkout/CustomerCheckoutView'
 import { OrkiAdminPortal } from './views/Admin/OrkiAdminPortal'
+import { AdminMerchantDetailPage } from './views/Admin/AdminMerchantDetailPage'
+import { AdminPspDetailPage } from './views/Admin/AdminPspDetailPage'
 import { PasskeyCeremonyPage } from './views/Onboarding/PasskeyCeremonyPage'
 import { HostedTosPage } from './views/Onboarding/HostedTosPage'
 import { LegalDocumentPage } from './views/Legal/LegalDocumentPage'
@@ -442,6 +444,33 @@ function MainRoutes() {
                 onUpdateOrganization={handleUpdateOrganization}
                 onAddOrganization={handleAddOrganization}
               />
+            </AdminLayout>
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Admin PSP Detail Dedicated Page */}
+      <Route
+        path="/admin/psps/:id"
+        element={
+          <ProtectedRoute allowedRoles={['admin']}>
+            <AdminLayout>
+              <AdminPspDetailPage
+                organizations={organizations}
+                onUpdateOrganization={handleUpdateOrganization}
+              />
+            </AdminLayout>
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Admin Cross-Tenant Merchant Detail Dedicated Page */}
+      <Route
+        path="/admin/merchants/:id"
+        element={
+          <ProtectedRoute allowedRoles={['admin']}>
+            <AdminLayout>
+              <AdminMerchantDetailPage />
             </AdminLayout>
           </ProtectedRoute>
         }

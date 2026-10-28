@@ -437,3 +437,22 @@ export async function enforceAdminMerchantStep(
     'admin'
   )
 }
+
+// 8. Reassign Merchant to Another PSP
+export async function reassignAdminMerchant(
+  merchantId: string,
+  newOrganizationId: string,
+  reason: string
+): Promise<{ id: string; organizationId: string; organizationName: string; message: string }> {
+  const config = getApiConfig()
+  return requestApi(
+    config,
+    'POST',
+    `/api/v1/admin/merchants/${encodeURIComponent(merchantId)}/reassign`,
+    {
+      newOrganizationId,
+      reason,
+    },
+    'admin'
+  )
+}

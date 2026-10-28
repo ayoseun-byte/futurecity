@@ -1,48 +1,34 @@
 import React, { useCallback, useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import type { Organization } from '../../types'
 import { getApiConfig, requestApi } from '../../services/apiConfig'
 import {
   fetchAdminMetrics,
   fetchAdminPsps,
-  fetchAdminPspDetail,
   updateAdminPspStatus,
-  addAdminPspUbo,
-  deleteAdminPspUbo,
-  approvePspProduction,
-  reissuePspCredentials,
   fetchAdminMerchants,
   updateAdminMerchantStatus,
   fetchAdminTransactions,
   fetchAdminFeeChangeRequests,
   reviewAdminFeeChangeRequest,
   fetchAdminAuditLogs,
-  fetchAdminMerchantDetail,
   type AdminMetrics,
   type AdminMerchantRow,
-  type AdminMerchantDetailResponse,
   type AdminTransactionRow,
   type AdminAuditLogRow,
-  type AdminUbo,
-  type PspDetailResponse,
   type FeeChangeRequest,
 } from '../../services/adminService'
-import { MerchantFullDetailsModal } from '../../components/MerchantFullDetailsModal'
 import {
   ShieldCheck,
   Building2,
-  CheckCircle2,
-  AlertTriangle,
   Clock,
   Plus,
   Search,
   UserCheck,
-  Key,
   Eye,
   ChevronRight,
   X,
-  RotateCw,
   Store,
   Receipt,
   FileText,
@@ -50,8 +36,6 @@ import {
   ExternalLink,
   Lock,
   Layers,
-  ArrowRight,
-  Copy,
 } from 'lucide-react'
 
 interface OrkiAdminPortalProps {
@@ -82,27 +66,10 @@ export const OrkiAdminPortal: React.FC<OrkiAdminPortalProps> = ({
   const [categoryFilter, setCategoryFilter] = useState<string>('all')
   const [searchQuery, setSearchQuery] = useState('')
   const [visibleOrganizations, setVisibleOrganizations] = useState<Organization[]>(organizations)
-  const [backendPspIds, setBackendPspIds] = useState<Set<string>>(new Set())
-  const [selectedOrg, setSelectedOrg] = useState<Organization | null>(null)
-  const [selectedPspDetail, setSelectedPspDetail] = useState<PspDetailResponse | null>(null)
   const [isRegisterModalOpen, setIsRegisterModalOpen] = useState(false)
-  const [isApprovalModalOpen, setIsApprovalModalOpen] = useState(false)
-  const [approvalOfficer, setApprovalOfficer] = useState('david.risk@orki.com')
-  const [approvalError, setApprovalError] = useState<string | null>(null)
-  const [claimLinks, setClaimLinks] = useState<Record<string, string>>({})
   const [apiBusy, setApiBusy] = useState(false)
   const [apiError, setApiError] = useState<string | null>(null)
   const [apiSuccess, setApiSuccess] = useState<string | null>(null)
-
-  // UBO Modal / Add Form State
-  const [isAddUboOpen, setIsAddUboOpen] = useState(false)
-  const [newUboForm, setNewUboForm] = useState<AdminUbo>({
-    name: '',
-    ownershipPercentage: 25,
-    nationality: 'United Arab Emirates',
-    idDocumentType: 'Passport',
-    sanctionsClearance: 'cleared',
-  })
 
   // Sub-Merchants Directory State
   const [merchantsList, setMerchantsList] = useState<AdminMerchantRow[]>([])
@@ -115,9 +82,6 @@ export const OrkiAdminPortal: React.FC<OrkiAdminPortalProps> = ({
   const [transactionsLoading, setTransactionsLoading] = useState(false)
   const [txChainFilter, setTxChainFilter] = useState('all')
   const [txSearch, setTxSearch] = useState('')
-
-  // Sub-Merchant Full Details State
-  const [selectedMerchantDetail, setSelectedMerchantDetail] = useState<AdminMerchantDetailResponse | null>(null)
 
   // Rate Governance State
   const [feeRequests, setFeeRequests] = useState<FeeChangeRequest[]>([])
@@ -159,7 +123,6 @@ export const OrkiAdminPortal: React.FC<OrkiAdminPortalProps> = ({
       if (metricsData) setMetrics(metricsData)
       if (pspsData.length > 0) {
         setVisibleOrganizations(pspsData)
-        setBackendPspIds(new Set(pspsData.map((p) => p.id)))
       }
       setFeeRequests(feeRequestsData as unknown as FeeChangeRequest[])
     } catch (err) {
@@ -194,178 +157,14 @@ export const OrkiAdminPortal: React.FC<OrkiAdminPortalProps> = ({
     }
   }, [activeTab, merchantSearch, merchantStatusFilter, txChainFilter, txSearch, auditCategoryFilter])
 
-  // 3. Inspect PSP Dossier with deep backend details
-  const handleOpenDossier = async (org: Organization) => {
-    setSelectedOrg(org)
-    setSelectedPspDetail(null)
-    setApiError(null)
-    try {
-      const detail = await fetchAdminPspDetail(org.id)
-      setSelectedPspDetail(detail)
-    } catch {
-      // Fallback to local record metadata
-    }
+  // 3. Navigate to Dedicated PSP Partner Page
+  const handleOpenDossier = (org: Organization) => {
+    navigate(`/admin/psps/${org.id}`)
   }
 
-  // 3b. Inspect Full Sub-Merchant Dossier with all backend data
-  const handleOpenMerchantDetail = async (merchantId: string, fallbackRow?: AdminMerchantRow) => {
-    setApiError(null)
-    try {
-      const detail = await fetchAdminMerchantDetail(merchantId)
-      setSelectedMerchantDetail(detail)
-    } catch {
-      if (fallbackRow) {
-        setSelectedMerchantDetail({
-          id: fallbackRow.id,
-          organizationId: fallbackRow.organizationId,
-          organizationName: fallbackRow.organizationName,
-          organizationCategory: fallbackRow.organizationCategory,
-          externalId: fallbackRow.externalId,
-          legalBusinessName: fallbackRow.legalBusinessName,
-          tradeLicenseNumber: fallbackRow.tradeLicenseNumber,
-          jurisdiction: fallbackRow.jurisdiction,
-          representativeName: fallbackRow.representativeName,
-          representativeEmail: fallbackRow.representativeEmail,
-          status: fallbackRow.status,
-          settlementMode: fallbackRow.settlementMode,
-          baseWalletAddress: fallbackRow.baseWalletAddress,
-          solanaWalletAddress: fallbackRow.solanaWalletAddress,
-          hasPasskey: false,
-          statusReason: fallbackRow.statusReason,
-          consentDetails: { consentMethod: 'dashboard', consentNoticeVersion: '1.0' },
-          stats: {
-            totalVolumeUsdc: fallbackRow.volumeUsdc,
-            totalTransactions: fallbackRow.transactionCount,
-            totalOrkiFeesUsdc: fallbackRow.volumeUsdc * 0.01,
-            totalPspMarkupUsdc: fallbackRow.volumeUsdc * 0.0035,
-          },
-          verifiedAt: fallbackRow.verifiedAt,
-          activatedAt: fallbackRow.activatedAt,
-          createdAt: fallbackRow.createdAt,
-          rawRecord: fallbackRow as unknown as Record<string, unknown>,
-        })
-      }
-    }
-  }
-
-  // 4. Two-Person Production Approval Handler (Stage 7)
-  const handleExecuteApproval = async () => {
-    if (!selectedOrg) return
-
-    const preparer = selectedOrg.preparedBy || 'sarah.ops@orki.com'
-    if (approvalOfficer === preparer) {
-      setApprovalError(
-        `Two-Person Rule Violation: The approver (${approvalOfficer}) cannot be the same person who prepared the approval (${preparer}).`
-      )
-      return
-    }
-
-    setApiBusy(true)
-    setApprovalError(null)
-
-    const payload = {
-      preparedBy: preparer,
-      approvedBy: approvalOfficer,
-      agreement: {
-        signedAt: new Date().toISOString(),
-        version: '2026.1-ORKI-PSP-NC',
-        documentHash: '0x' + Math.random().toString(36).substring(2, 18),
-      },
-      kyb: {
-        caseReference: selectedOrg.dueDiligence?.caseReference || `KYB-${selectedOrg.id.toUpperCase()}`,
-        riskRating: (selectedOrg.dueDiligence?.riskRating || 'low').toLowerCase(),
-        nextReviewDue: new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString(),
-      },
-      pspRegulatoryStatus: {
-        isRegulatedEntity: selectedOrg.isRegulatedEntity ?? false,
-        regulator: selectedOrg.dueDiligence?.regulatorName || 'VARA',
-        licenseReference: selectedOrg.dueDiligence?.licenseNumber || 'DMCC-REG-2026',
-      },
-      feeSchedule: {
-        paymentRateBps: 100 as const,
-        pspMarkupBps: selectedOrg.feeSchedule?.pspMarkupBps || 35,
-        combinedCapBps: 500,
-        lockedUntil: new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString(),
-      },
-      goLiveChecklist: {
-        signedAt: new Date().toISOString(),
-        signedBy: selectedOrg.contacts?.find((c) => c.role === 'technical')?.email || 'tech@example.com',
-        webhookSignaturesVerified: true as const,
-        idempotencyHandled: true as const,
-        passkeyIntegrationVerified: true as const,
-        sandboxTransactionsPassed: true as const,
-        reconciliationJobTested: true as const,
-        settlementModeConfigured: true as const,
-        errorHandlingVerified: true as const,
-        rateLimitsRespected: true as const,
-        tlsAndIpWhitelistingConfirmed: true as const,
-      },
-    }
-
-    try {
-      if (backendPspIds.has(selectedOrg.id)) {
-        await approvePspProduction(selectedOrg.id, payload)
-      }
-
-      const updated: Organization = {
-        ...selectedOrg,
-        status: 'approved',
-        approvedBy: approvalOfficer,
-        approvedAt: new Date().toISOString(),
-        apiCredentials: {
-          ...selectedOrg.apiCredentials,
-          production: {
-            environment: 'production',
-            publicKey: 'pk_live_' + Math.random().toString(36).substring(2, 14),
-            secretKeyMasked: 'sk_live_••••••••••••••••' + Math.random().toString(36).substring(2, 6),
-            webhookSecretMasked: 'whsec_live_••••••••••••••••' + Math.random().toString(36).substring(2, 6),
-            shareUrl: 'https://share.1password.com/s#claim_live_' + selectedOrg.id,
-            status: 'link_sent',
-            sentTo: selectedOrg.contacts?.find((c) => c.role === 'technical')?.email || 'tech@example.com',
-            expiresAt: new Date(Date.now() + 24 * 3600 * 1000).toISOString(),
-          },
-        },
-      }
-
-      onUpdateOrganization(updated)
-      setSelectedOrg(updated)
-      setIsApprovalModalOpen(false)
-      setApiSuccess(`Production credentials approved and issued for ${selectedOrg.name}.`)
-      void loadInitialData()
-    } catch (err) {
-      setApprovalError(err instanceof Error ? err.message : 'Stage 7 sign-off failed.')
-    } finally {
-      setApiBusy(false)
-    }
-  }
-
-  // 5. Reissue API Credentials
-  const handleReissueKeys = async (environment: 'sandbox' | 'production') => {
-    if (!selectedOrg) return
-    const envUpper = environment.toUpperCase()
-    if (
-      !window.confirm(
-        `Are you sure you want to reissue ${envUpper} credentials for ${selectedOrg.name}? Any existing ${envUpper} secret keys will be immediately revoked.`
-      )
-    ) {
-      return
-    }
-
-    setApiBusy(true)
-    setApiError(null)
-    try {
-      const res = await reissuePspCredentials(
-        selectedOrg.id,
-        environment,
-        `Reissued from Admin Portal by ${approvalOfficer || 'admin'}`
-      )
-      setClaimLinks((current) => ({ ...current, [selectedOrg.id]: res.keyDelivery.temporaryShareUrl }))
-      setApiSuccess(`Fresh ${envUpper} claim link generated for ${selectedOrg.name}.`)
-    } catch (err) {
-      setApiError(err instanceof Error ? err.message : 'Failed to reissue credentials.')
-    } finally {
-      setApiBusy(false)
-    }
+  // 3b. Navigate to Dedicated Sub-Merchant Page
+  const handleOpenMerchantDetail = (merchantId: string) => {
+    navigate(`/admin/merchants/${merchantId}`)
   }
 
   // 6. Handle New PSP Registration
@@ -420,11 +219,8 @@ export const OrkiAdminPortal: React.FC<OrkiAdminPortalProps> = ({
         createdAt: new Date().toISOString(),
       }
 
-      setClaimLinks((current) => ({ ...current, [created.pspId]: created.keyDelivery.temporaryShareUrl }))
       onAddOrganization(newOrg)
       setVisibleOrganizations((current) => [newOrg, ...current.filter((org) => org.id !== newOrg.id)])
-      setBackendPspIds((current) => new Set([...current, newOrg.id]))
-      setSelectedOrg(newOrg)
       setIsRegisterModalOpen(false)
       setApiSuccess(`New PSP ${newOrg.name} successfully registered in sandbox.`)
       setNewPspForm({
@@ -462,45 +258,13 @@ export const OrkiAdminPortal: React.FC<OrkiAdminPortalProps> = ({
       setVisibleOrganizations((current) =>
         current.map((org) => (org.id === pspId ? { ...org, status: newStatus as Organization['status'] } : org))
       )
-      if (selectedOrg && selectedOrg.id === pspId) {
-        setSelectedOrg({ ...selectedOrg, status: newStatus as Organization['status'] })
+      const found = organizations.find((o) => o.id === pspId)
+      if (found) {
+        onUpdateOrganization({ ...found, status: newStatus as Organization['status'] })
       }
       setApiSuccess(`PSP status updated to ${newStatus}.`)
     } catch (err) {
       setApiError(err instanceof Error ? err.message : 'Status update failed.')
-    } finally {
-      setApiBusy(false)
-    }
-  }
-
-  // 8. Add UBO to PSP
-  const handleAddUbo = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!selectedOrg) return
-    setApiBusy(true)
-    try {
-      await addAdminPspUbo(selectedOrg.id, newUboForm)
-      setIsAddUboOpen(false)
-      setApiSuccess(`Beneficial owner ${newUboForm.name} screened and added.`)
-      await handleOpenDossier(selectedOrg)
-    } catch (err) {
-      setApiError(err instanceof Error ? err.message : 'Failed to add UBO.')
-    } finally {
-      setApiBusy(false)
-    }
-  }
-
-  // 9. Delete UBO from PSP
-  const handleDeleteUbo = async (uboId: string) => {
-    if (!selectedOrg) return
-    if (!window.confirm('Remove this beneficial owner from the entity dossier?')) return
-    setApiBusy(true)
-    try {
-      await deleteAdminPspUbo(selectedOrg.id, uboId)
-      setApiSuccess('Beneficial owner removed.')
-      await handleOpenDossier(selectedOrg)
-    } catch (err) {
-      setApiError(err instanceof Error ? err.message : 'Failed to remove UBO.')
     } finally {
       setApiBusy(false)
     }
@@ -837,10 +601,13 @@ export const OrkiAdminPortal: React.FC<OrkiAdminPortalProps> = ({
                         <tr key={org.id} className="hover:bg-slate-50/60 transition-colors">
                           {/* Name & ID */}
                           <td className="py-3.5 px-4">
-                            <div className="font-bold text-slate-900 text-sm flex items-center space-x-1.5">
+                            <Link
+                              to={`/admin/psps/${org.id}`}
+                              className="font-bold text-slate-900 text-sm flex items-center space-x-1.5 hover:text-onion hover:underline"
+                            >
                               <span>{org.name}</span>
                               <span className="text-[10px] font-mono text-slate-400 font-normal">({org.categoryType?.toUpperCase() || 'PSP'})</span>
-                            </div>
+                            </Link>
                             <p className="text-[11px] font-mono text-slate-400 mt-0.5">{org.id}</p>
                           </td>
 
@@ -912,11 +679,11 @@ export const OrkiAdminPortal: React.FC<OrkiAdminPortalProps> = ({
                           {/* Actions */}
                           <td className="py-3.5 px-4 text-right space-x-1.5 whitespace-nowrap">
                             <button
-                              onClick={() => void handleOpenDossier(org)}
+                              onClick={() => handleOpenDossier(org)}
                               className="inline-flex items-center space-x-1 px-3 py-1.5 rounded-xl border border-slate-200 hover:bg-slate-50 font-bold text-xs text-slate-700 transition"
                             >
                               <Eye className="w-3.5 h-3.5 text-slate-500" />
-                              <span>Dossier</span>
+                              <span>Partner Page</span>
                             </button>
 
                             <button
@@ -1020,14 +787,13 @@ export const OrkiAdminPortal: React.FC<OrkiAdminPortalProps> = ({
                     merchantsList.map((m) => (
                       <tr key={m.id} className="hover:bg-slate-50/60 transition-colors">
                         <td className="py-3.5 px-4">
-                          <button
-                            type="button"
-                            onClick={() => void handleOpenMerchantDetail(m.id, m)}
+                          <Link
+                            to={`/admin/merchants/${m.id}`}
                             className="font-bold text-slate-900 hover:text-onion text-left transition flex items-center space-x-1"
                           >
                             <span>{m.legalBusinessName}</span>
-                            <Eye className="w-3 h-3 text-slate-400 opacity-60" />
-                          </button>
+                            <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
+                          </Link>
                           <p className="text-[11px] font-mono text-slate-400 mt-0.5">{m.id} · {m.representativeEmail}</p>
                         </td>
                         <td className="py-3.5 px-4">
@@ -1068,11 +834,11 @@ export const OrkiAdminPortal: React.FC<OrkiAdminPortalProps> = ({
                         <td className="py-3.5 px-4 text-right space-x-1.5 whitespace-nowrap">
                           <button
                             type="button"
-                            onClick={() => void handleOpenMerchantDetail(m.id, m)}
+                            onClick={() => handleOpenMerchantDetail(m.id)}
                             className="inline-flex items-center space-x-1 px-3 py-1.5 rounded-xl border border-slate-200 hover:bg-slate-50 font-bold text-xs text-slate-700 transition"
                           >
                             <Eye className="w-3.5 h-3.5 text-slate-500" />
-                            <span>View Details</span>
+                            <span>Merchant Page</span>
                           </button>
 
                           <button
@@ -1461,403 +1227,6 @@ export const OrkiAdminPortal: React.FC<OrkiAdminPortalProps> = ({
       )}
 
       {/* ─────────────────────────────────────────────────────────────
-          PSP DOSSIER INSPECTION MODAL (STAGE 1 TO 8 INSPECTION)
-         ───────────────────────────────────────────────────────────── */}
-      {selectedOrg && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 overflow-y-auto">
-          <div className="w-full max-w-4xl bg-white rounded-3xl shadow-2xl p-6 sm:p-8 space-y-6 border border-slate-200 my-8">
-            <div className="flex justify-between items-center border-b border-slate-100 pb-4">
-              <div>
-                <h2 className="text-xl font-bold text-slate-900 flex items-center space-x-2">
-                  <span>{selectedOrg.name}</span>
-                  <span className="text-xs font-mono px-2 py-0.5 rounded bg-slate-100 text-slate-600">
-                    {selectedOrg.id}
-                  </span>
-                </h2>
-                <p className="text-xs text-slate-400 mt-1">
-                  Onboarded on {new Date(selectedOrg.createdAt).toLocaleDateString()} · Category: {selectedOrg.category || 'FINANCE'}
-                </p>
-              </div>
-
-              <button
-                onClick={() => setSelectedOrg(null)}
-                className="p-1.5 rounded-xl border border-slate-200 text-slate-400 hover:text-slate-600 hover:bg-slate-50 transition"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Left Column: Due Diligence & UBOs */}
-              <div className="space-y-4">
-                <div className="p-4 rounded-2xl border border-slate-200 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <h3 className="font-bold text-slate-900 uppercase tracking-wider text-[11px]">
-                      Due Diligence & Beneficial Ownership (UBO)
-                    </h3>
-                    {!selectedOrg.isRegulatedEntity && (
-                      <button
-                        onClick={() => setIsAddUboOpen(true)}
-                        className="inline-flex items-center space-x-1 text-[11px] font-bold text-onion hover:underline"
-                      >
-                        <Plus className="w-3.5 h-3.5" />
-                        <span>Add UBO</span>
-                      </button>
-                    )}
-                  </div>
-
-                  {selectedOrg.isRegulatedEntity ? (
-                    <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-200 text-xs text-emerald-800 space-y-1">
-                      <p className="font-bold">Regulated Financial Institution</p>
-                      <p className="text-[11px]">
-                        Licensed under {selectedOrg.dueDiligence?.regulatorName || 'VARA'} (License #{selectedOrg.dueDiligence?.licenseNumber || 'DMCC-2026'}).
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="space-y-2 text-xs">
-                      <div className="p-3 bg-amber-50 rounded-xl border border-amber-200 text-amber-900 text-[11px]">
-                        Heightened UBO screening applied for unlicensed FinTech entity.
-                      </div>
-
-                      {/* UBO list from backend or local */}
-                      <div className="space-y-1.5 mt-2">
-                        {((selectedPspDetail?.kyb?.ubos) ?? (selectedOrg.dueDiligence?.ubos) ?? []).map((ubo, idx) => (
-                          <div key={idx} className="p-2 bg-slate-50 rounded-lg border border-slate-200 flex justify-between items-center text-[11px]">
-                            <div>
-                              <p className="font-bold text-slate-800">{ubo.name} ({ubo.ownershipPercentage}%)</p>
-                              <p className="text-slate-400">{ubo.nationality} · {ubo.idDocumentType}</p>
-                            </div>
-                            <div className="flex items-center space-x-2">
-                              <span className="text-emerald-600 font-bold">Clear</span>
-                              {(ubo as AdminUbo).id && (
-                                <button
-                                  onClick={() => void handleDeleteUbo((ubo as AdminUbo).id!)}
-                                  className="text-rose-500 hover:text-rose-700 font-bold text-xs"
-                                >
-                                  ✕
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Fee Schedule */}
-                <div className="p-4 rounded-2xl border border-slate-200 space-y-2 text-xs">
-                  <h3 className="font-bold text-slate-900 uppercase tracking-wider text-[11px]">
-                    Fee Schedule & Safety Caps
-                  </h3>
-                  <div className="grid grid-cols-3 gap-2 text-center pt-1">
-                    <div className="p-2 bg-slate-50 rounded-xl border border-slate-200">
-                      <p className="text-slate-400 text-[10px]">Orki Base</p>
-                      <p className="font-bold text-slate-900 mt-0.5">1.00%</p>
-                    </div>
-                    <div className="p-2 bg-slate-50 rounded-xl border border-slate-200">
-                      <p className="text-slate-400 text-[10px]">PSP Markup</p>
-                      <p className="font-bold text-onion mt-0.5">{((selectedOrg.feeSchedule?.pspMarkupBps || 35) / 100).toFixed(2)}%</p>
-                    </div>
-                    <div className="p-2 bg-slate-50 rounded-xl border border-slate-200">
-                      <p className="text-slate-400 text-[10px]">Safety Cap</p>
-                      <p className="font-bold text-slate-900 mt-0.5">5.00%</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Right Column: Key Delivery & Stage 7 Production Gate */}
-              <div className="space-y-4">
-                <div className="p-4 rounded-2xl border border-slate-200 space-y-3 text-xs">
-                  <h3 className="font-bold text-slate-900 uppercase tracking-wider text-[11px]">
-                    Cryptographic Credentials & Key Rotation
-                  </h3>
-
-                  {claimLinks[selectedOrg.id] && (
-                    <div className="p-3 bg-onion-50 border border-onion-200 rounded-xl space-y-2">
-                      <div className="flex items-center justify-between">
-                        <span className="text-[11px] font-bold text-onion-900">Reissued Credentials Ready</span>
-                        <span className="text-[10px] text-onion-700 bg-onion-100 font-bold px-2 py-0.5 rounded-full">Single-Use</span>
-                      </div>
-                      <a
-                        href={claimLinks[selectedOrg.id]}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-slate-900 text-white font-semibold text-xs hover:bg-slate-800 shadow"
-                      >
-                        <Key className="w-3.5 h-3.5 text-onion-400" />
-                        <span>Claim Credentials (Single-Use Link)</span>
-                      </a>
-                    </div>
-                  )}
-
-                  <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex items-center justify-between">
-                    <div>
-                      <p className="font-semibold text-slate-800">Sandbox API Key</p>
-                      <p className="font-mono text-[11px] text-slate-500">pk_test_••••••••••••</p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => void handleReissueKeys('sandbox')}
-                      disabled={apiBusy}
-                      className="inline-flex items-center space-x-1 text-xs font-semibold text-onion hover:text-onion-700"
-                    >
-                      <RotateCw className="w-3 h-3" />
-                      <span>Reissue</span>
-                    </button>
-                  </div>
-
-                  <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex items-center justify-between">
-                    <div>
-                      <p className="font-semibold text-slate-800">Production Key</p>
-                      <p className="font-mono text-[11px] text-slate-500">
-                        {(selectedOrg.status || '').toLowerCase() === 'approved' ? 'pk_live_••••••••••••' : 'Awaiting Stage 7 Sign-Off'}
-                      </p>
-                    </div>
-                    {(selectedOrg.status || '').toLowerCase() === 'approved' && (
-                      <button
-                        type="button"
-                        onClick={() => void handleReissueKeys('production')}
-                        disabled={apiBusy}
-                        className="inline-flex items-center space-x-1 text-xs font-semibold text-emerald-700 hover:text-emerald-800"
-                      >
-                        <RotateCw className="w-3 h-3" />
-                        <span>Reissue</span>
-                      </button>
-                    )}
-                  </div>
-                </div>
-
-                {/* Stage 7 Two-Person Sign-Off Card */}
-                <div className="p-5 rounded-2xl bg-onion-50/60 border border-onion-200 space-y-3">
-                  <div className="flex items-center space-x-2 text-onion">
-                    <Key className="w-5 h-5 flex-shrink-0" />
-                    <h4 className="font-bold text-sm text-slate-900">
-                      Stage 7: Two-Person Production Approval Rule
-                    </h4>
-                  </div>
-                  <p className="text-xs text-slate-600">
-                    Prepared by: <strong>{selectedOrg.preparedBy || 'sarah.ops@orki.com'}</strong>. Sign-off requires an independent compliance or risk officer.
-                  </p>
-
-                  {(selectedOrg.status || '').toLowerCase() === 'approved' ? (
-                    <div className="p-3 bg-emerald-100 rounded-xl border border-emerald-300 text-xs text-emerald-900 font-bold flex items-center space-x-2">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-700" />
-                      <span>Production Approved by {selectedOrg.approvedBy}</span>
-                    </div>
-                  ) : (
-                    <button
-                      onClick={() => setIsApprovalModalOpen(true)}
-                      className="w-full py-2.5 px-4 bg-onion hover:bg-onion-700 text-white font-bold rounded-xl text-xs shadow-md transition-all flex items-center justify-center space-x-1.5"
-                    >
-                      <ShieldCheck className="w-4 h-4" />
-                      <span>Execute Two-Person Production Sign-Off</span>
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Complete Raw PSP Database Record Inspector */}
-            <div className="p-4 bg-slate-950 rounded-2xl border border-slate-800 space-y-2 text-xs">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h4 className="font-bold text-white text-xs">Complete Raw PSP Database Record</h4>
-                  <p className="text-[11px] text-slate-400">
-                    Live database record from organizations table, contacts, fee schedules, and compliance gates.
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    navigator.clipboard.writeText(JSON.stringify(selectedPspDetail || selectedOrg, null, 2))
-                    setApiSuccess('Copied raw PSP JSON to clipboard!')
-                    setTimeout(() => setApiSuccess(null), 2000)
-                  }}
-                  className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold flex items-center space-x-1.5 transition"
-                >
-                  <Copy className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>Copy Raw JSON</span>
-                </button>
-              </div>
-              <pre className="text-emerald-400 font-mono text-[11px] max-h-48 overflow-y-auto p-3 bg-black/60 rounded-xl select-all leading-relaxed">
-                {JSON.stringify(selectedPspDetail || selectedOrg, null, 2)}
-              </pre>
-            </div>
-
-            {/* Modal Footer */}
-            <div className="pt-4 border-t border-slate-200 flex justify-between items-center">
-              <button
-                onClick={() => {
-                  login('org', selectedOrg.id)
-                  navigate('/psp')
-                }}
-                className="px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-bold hover:bg-slate-800 transition flex items-center space-x-1.5"
-              >
-                <span>Access this PSP Portal View</span>
-                <ArrowRight className="w-3.5 h-3.5" />
-              </button>
-              <button
-                onClick={() => setSelectedOrg(null)}
-                className="px-4 py-2 bg-slate-100 text-slate-700 rounded-xl text-xs font-bold hover:bg-slate-200 transition"
-              >
-                Close Dossier
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ─────────────────────────────────────────────────────────────
-          TWO-PERSON APPROVAL CONFIRMATION MODAL
-         ───────────────────────────────────────────────────────────── */}
-      {isApprovalModalOpen && selectedOrg && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-          <div className="w-full max-w-md bg-white rounded-3xl shadow-2xl p-6 space-y-4 border border-onion-200">
-            <div className="flex justify-between items-center">
-              <h3 className="font-bold text-slate-900 text-base flex items-center space-x-2">
-                <ShieldCheck className="w-5 h-5 text-onion" />
-                <span>Confirm Production Approval</span>
-              </h3>
-              <button onClick={() => setIsApprovalModalOpen(false)} className="p-1 text-slate-400">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <p className="text-xs text-slate-600">
-              Confirm that all mandatory Stage 7 preconditions have been reviewed and verified:
-            </p>
-
-            <div className="space-y-1.5 text-xs text-slate-700 bg-slate-50 p-3 rounded-xl border border-slate-200">
-              <div className="flex items-center space-x-2">
-                <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                <span>Non-Custodial Agreement & Fee Schedule Signed</span>
-              </div>
-              <div className="flex items-center space-x-2">
-                <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                <span>Due Diligence Completed ({selectedOrg.isRegulatedEntity ? 'Regulator Verified' : 'UBOs Screened'})</span>
-              </div>
-              <div className="flex items-center space-x-2">
-                <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                <span>Go-Live Checklist Signed by PSP Technical Lead</span>
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">
-                Authorizing Second Approver Email
-              </label>
-              <input
-                type="email"
-                value={approvalOfficer}
-                onChange={(e) => setApprovalOfficer(e.target.value)}
-                className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-onion-500 focus:outline-none"
-              />
-              <p className="text-[10px] text-slate-400 mt-1">
-                Cannot match preparer: <strong>{selectedOrg.preparedBy || 'sarah.ops@orki.com'}</strong>
-              </p>
-            </div>
-
-            {approvalError && (
-              <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 font-semibold flex items-center space-x-2">
-                <AlertTriangle className="w-4 h-4 flex-shrink-0" />
-                <span>{approvalError}</span>
-              </div>
-            )}
-
-            <div className="flex space-x-2 pt-2">
-              <button
-                onClick={() => setIsApprovalModalOpen(false)}
-                className="w-1/2 py-2.5 bg-slate-100 text-slate-700 rounded-xl text-xs font-bold hover:bg-slate-200"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => void handleExecuteApproval()}
-                disabled={apiBusy}
-                className="w-1/2 py-2.5 bg-onion text-white rounded-xl text-xs font-bold hover:bg-onion-700 shadow-md disabled:opacity-50"
-              >
-                {apiBusy ? 'Issuing...' : 'Issue Production Keys'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ─────────────────────────────────────────────────────────────
-          ADD UBO MODAL
-         ───────────────────────────────────────────────────────────── */}
-      {isAddUboOpen && selectedOrg && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <div className="w-full max-w-md bg-white rounded-3xl shadow-2xl p-6 space-y-4 border border-slate-200">
-            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
-              <h3 className="font-bold text-slate-900 text-base">Add Beneficial Owner (≥25%)</h3>
-              <button onClick={() => setIsAddUboOpen(false)} className="p-1 text-slate-400">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <form onSubmit={handleAddUbo} className="space-y-3 text-xs">
-              <div>
-                <label className="block font-bold text-slate-700 mb-1">Full Legal Name</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. Tariq Al-Mansoor"
-                  value={newUboForm.name}
-                  onChange={(e) => setNewUboForm({ ...newUboForm, name: e.target.value })}
-                  className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-onion-500 focus:outline-none"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">Ownership Share (%)</label>
-                  <input
-                    type="number"
-                    min="1"
-                    max="100"
-                    required
-                    value={newUboForm.ownershipPercentage}
-                    onChange={(e) => setNewUboForm({ ...newUboForm, ownershipPercentage: parseFloat(e.target.value) || 0 })}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-onion-500 focus:outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">Nationality</label>
-                  <input
-                    type="text"
-                    required
-                    value={newUboForm.nationality}
-                    onChange={(e) => setNewUboForm({ ...newUboForm, nationality: e.target.value })}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-onion-500 focus:outline-none"
-                  />
-                </div>
-              </div>
-
-              <div className="flex space-x-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setIsAddUboOpen(false)}
-                  className="w-1/2 py-2 bg-slate-100 text-slate-700 rounded-xl text-xs font-bold"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={apiBusy}
-                  className="w-1/2 py-2 bg-onion text-white rounded-xl text-xs font-bold hover:bg-onion-700"
-                >
-                  Screen & Add UBO
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* ─────────────────────────────────────────────────────────────
           REGISTER NEW PSP MODAL (STAGES 1-3)
          ───────────────────────────────────────────────────────────── */}
       {isRegisterModalOpen && (
@@ -2001,18 +1370,6 @@ export const OrkiAdminPortal: React.FC<OrkiAdminPortalProps> = ({
             </form>
           </div>
         </div>
-      )}
-
-      {/* ─────────────────────────────────────────────────────────────
-          MERCHANT FULL DETAILS DOSSIER MODAL
-         ───────────────────────────────────────────────────────────── */}
-      {selectedMerchantDetail && (
-        <MerchantFullDetailsModal
-          merchant={selectedMerchantDetail}
-          onClose={() => setSelectedMerchantDetail(null)}
-          onToggleStatus={handleToggleMerchantStatus}
-          isAdmin={true}
-        />
       )}
     </div>
   )
