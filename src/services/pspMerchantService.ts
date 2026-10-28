@@ -308,3 +308,53 @@ async function fetchAllPspPages<T>(path: string): Promise<T[]> {
 
   return records
 }
+
+export interface PspWebhookEndpoint {
+  id: string
+  organizationId: string
+  url: string
+  events: string[]
+  secret?: string
+  status: string
+  createdAt: string
+  updatedAt?: string
+}
+
+export async function fetchPspWebhooks(): Promise<PspWebhookEndpoint[]> {
+  const config = getApiConfig()
+  const res = await requestApi<{ data: PspWebhookEndpoint[] }>(config, 'GET', '/api/v1/psp/webhooks', undefined, 'psp')
+  return res.data || []
+}
+
+export async function registerPspWebhook(url: string, events: string[]): Promise<PspWebhookEndpoint> {
+  const config = getApiConfig()
+  return requestApi<PspWebhookEndpoint>(config, 'POST', '/api/v1/psp/webhooks', { url, events }, 'psp')
+}
+
+export async function deletePspWebhook(id: string): Promise<{ status: string; message: string }> {
+  const config = getApiConfig()
+  return requestApi(config, 'DELETE', `/api/v1/psp/webhooks/${encodeURIComponent(id)}`, undefined, 'psp')
+}
+
+export interface PspMarkupSettingsResponse {
+  organizationId: string
+  defaultPaymentMarkupBps: number
+  pspMarkupCeilingBps: number
+  maxTotalMerchantCostBps: number
+  feeSchedule?: Record<string, unknown>
+}
+
+export async function fetchPspMarkupSettings(): Promise<PspMarkupSettingsResponse> {
+  const config = getApiConfig()
+  return requestApi<PspMarkupSettingsResponse>(config, 'GET', '/api/v1/psp/settings/markup', undefined, 'psp')
+}
+
+export async function updatePspMarkupSettings(defaultPaymentMarkupBps: number): Promise<{
+  organizationId: string
+  defaultPaymentMarkupBps: number
+  pspMarkupCeilingBps: number
+  updatedAt: string
+}> {
+  const config = getApiConfig()
+  return requestApi(config, 'POST', '/api/v1/psp/settings/markup', { defaultPaymentMarkupBps }, 'psp')
+}

@@ -331,6 +331,32 @@ export async function reissuePspCredentials(
   return requestApi(config, 'POST', `/api/v1/admin/psps/${encodeURIComponent(pspId)}/reissue-keys`, { environment, reason }, 'admin')
 }
 
+export interface AdminFeeSchedulePayload {
+  baseRates: { paymentBps: number; offrampBps: number }
+  pspMarkupCeiling: { paymentBps: number }
+  pspOfframpSharePercent: number
+  maxTotalMerchantCostBps: number
+  payoutCurrency: string
+}
+
+export async function fetchAdminPspFeeSchedule(pspId: string): Promise<{
+  pspId: string
+  pspName: string
+  defaultMarkupBps: number
+  feeSchedule: AdminFeeSchedulePayload
+}> {
+  const config = getApiConfig()
+  return requestApi(config, 'GET', `/api/v1/admin/psps/${encodeURIComponent(pspId)}/fee-schedule`, undefined, 'admin')
+}
+
+export async function setAdminPspFeeSchedule(
+  pspId: string,
+  payload: AdminFeeSchedulePayload
+): Promise<{ pspId: string; pspName: string; feeSchedule: AdminFeeSchedulePayload }> {
+  const config = getApiConfig()
+  return requestApi(config, 'POST', `/api/v1/admin/psps/${encodeURIComponent(pspId)}/fee-schedule`, payload, 'admin')
+}
+
 // 3. Cross-Tenant Sub-Merchants
 export async function fetchAdminMerchants(filters?: {
   organizationId?: string
