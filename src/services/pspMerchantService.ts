@@ -1,7 +1,9 @@
 import type { Merchant, MerchantStatus, OnboardingStep, Organization, SettlementMode, Transaction } from '../types'
 import { getApiConfig, requestApi } from './apiConfig'
+import { resolveMonotonicStep } from './onboardingStepService'
 
 interface PspMerchantRecord {
+  [key: string]: unknown
   id: string
   organization_id?: string
   organizationId?: string
@@ -143,9 +145,22 @@ function mapMerchant(record: PspMerchantRecord, organizationId: string): Merchan
   const status = merchantStatuses.includes(record.status as MerchantStatus)
     ? record.status as MerchantStatus
     : 'invited'
-  const nextStep = onboardingSteps.includes((record.next_step ?? record.nextStep) as OnboardingStep)
+  const rawStep = onboardingSteps.includes((record.next_step ?? record.nextStep) as OnboardingStep)
     ? (record.next_step ?? record.nextStep) as OnboardingStep
     : null
+  const nextStep = resolveMonotonicStep(
+    {
+      status,
+      noticeAcknowledgedAt: (record as Record<string, unknown>).notice_acknowledged_at as string || undefined,
+      kybInformationSubmittedAt: (record as Record<string, unknown>).kyb_information_submitted_at as string || undefined,
+      termsAcceptedAt: (record as Record<string, unknown>).terms_accepted_at as string || undefined,
+      sumsubCompletedAt: (record as Record<string, unknown>).sumsub_completed_at as string || undefined,
+      verifiedAt: (record as Record<string, unknown>).verified_at as string || undefined,
+      passkeyRegisteredAt: (record as Record<string, unknown>).passkey_registered_at as string || undefined,
+      activatedAt: (record as Record<string, unknown>).activated_at as string || undefined,
+    },
+    rawStep
+  )
   const settlementMode = (record.settlement_mode ?? record.settlementMode) as SettlementMode
 
   return {

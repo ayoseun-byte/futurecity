@@ -28,6 +28,7 @@ import {
   ensureMerchantsForOrganization,
 } from './services/storageService'
 import { fetchPspDashboard, type PspDashboardMetrics } from './services/pspMerchantService'
+import { resolveMonotonicStep } from './services/onboardingStepService'
 import { getApiConfig, requestApi } from './services/apiConfig'
 import { AlertCircle, ArrowRight } from 'lucide-react'
 
@@ -283,17 +284,25 @@ function MainRoutes() {
     )
   }
 
-  const handleUpdateActiveMerchant = useCallback((updated: Partial<Merchant>) => {
+  const handleUpdateActiveMerchant = useCallback((updated: Partial<Merchant>, isEnforcedByAdmin = false) => {
     const merchantId = activeMerchant?.id
     if (!merchantId) return
     setMerchants((current) => {
       const existing = current.find((m) => m.id === merchantId)
       if (!existing) return current
-      const hasRealChange = Object.entries(updated).some(
+
+      const safeUpdates: Partial<Merchant> = { ...updated }
+      const mergedCandidate = { ...existing, ...updated }
+
+      // Step monotonicity invariant: steps can NEVER go backwards unless enforced by Orki Admin
+      const resolvedStep = resolveMonotonicStep(mergedCandidate, updated.nextStep ?? existing.nextStep, isEnforcedByAdmin)
+      safeUpdates.nextStep = resolvedStep
+
+      const hasRealChange = Object.entries(safeUpdates).some(
         ([key, val]) => (existing as unknown as Record<string, unknown>)[key] !== val
       )
       if (!hasRealChange) return current
-      return current.map((merchant) => merchant.id === merchantId ? { ...merchant, ...updated } : merchant)
+      return current.map((merchant) => merchant.id === merchantId ? { ...merchant, ...safeUpdates } : merchant)
     })
   }, [activeMerchant?.id])
 

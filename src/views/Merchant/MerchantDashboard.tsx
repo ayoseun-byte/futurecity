@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import type { Merchant, Paylink, SettlementMode, Transaction } from '../../types'
 import { StatusBadge } from '../../components/StatusBadge'
+import { resolveMonotonicStep } from '../../services/onboardingStepService'
 import { CreatePaylinkModal } from './CreatePaylinkModal'
 import { OffRampModal } from './OffRampModal'
 import { TransferModal } from './TransferModal'
@@ -397,20 +398,9 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
     return Number.isFinite(amount) ? amount : 0
   }, [])
 
-  // Derive the active onboarding step dynamically so the UI auto-continues from the exact current step
-  const derivedStep = (() => {
-    if (merchant.status?.toUpperCase() === 'ACTIVE') return null
-    if (merchant.nextStep) return merchant.nextStep
-    if (merchant.passkeyRegisteredAt || merchant.status?.toUpperCase() === 'VERIFIED') return 'PASSKEY'
-    if (
-      merchant.status?.toUpperCase() === 'VERIFYING' ||
-      merchant.termsAcceptedAt ||
-      merchant.status?.toLowerCase() === 'terms_accepted'
-    ) return 'SUMSUB'
-    if (merchant.kybInformationSubmittedAt) return 'TERMS'
-    if (merchant.noticeAcknowledgedAt) return 'KYB_INFORMATION'
-    return 'OPT_IN'
-  })()
+  // Derive the active onboarding step monotonically so the UI auto-continues from the exact current step
+  // and CANNOT be taken back to any earlier completed step unless enforced by Orki admin
+  const derivedStep = resolveMonotonicStep(merchant, merchant.nextStep)
 
   const isSetupComplete = (merchant.status?.toUpperCase() === 'ACTIVE') && !derivedStep
   const [hasAgreedTos, setHasAgreedTos] = useState(false)
@@ -458,7 +448,7 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
       await requestApi(sessionConfig, 'POST', '/api/v1/merchant/accept-usdc', {}, 'merchant')
       const fetchedNotice = await requestApi<typeof notice>(sessionConfig, 'GET', '/api/v1/merchant/notice', undefined, 'merchant')
       setNotice(fetchedNotice)
-      onUpdateMerchant({ nextStep: 'NOTICE' })
+      onUpdateMerchant({ nextStep: resolveMonotonicStep(merchant, 'NOTICE') })
       setShowNoticeModal(true)
     } catch (reason) {
       setApiError(reason instanceof Error ? reason.message : 'Could not start merchant onboarding.')
@@ -500,7 +490,7 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
         signatoryEmail: signatory.email,
         signatoryTitle: signatory.title,
       }, 'merchant')
-      onUpdateMerchant({ noticeAcknowledgedAt: new Date().toISOString(), nextStep: 'KYB_INFORMATION' })
+      onUpdateMerchant({ noticeAcknowledgedAt: new Date().toISOString(), nextStep: resolveMonotonicStep(merchant, 'KYB_INFORMATION') })
       setShowNoticeModal(false)
       openKybModal()
     } catch (reason) {
@@ -519,7 +509,7 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
       await requestApi(config, 'POST', '/api/v1/merchant/kyb-information', { companyInfo: kybData }, 'merchant')
       const fetchedTerms = await requestApi<typeof termsData>(config, 'GET', '/api/v1/merchant/terms', undefined, 'merchant')
       setTermsData(fetchedTerms)
-      onUpdateMerchant({ nextStep: 'TERMS' })
+      onUpdateMerchant({ kybInformationSubmittedAt: new Date().toISOString(), nextStep: resolveMonotonicStep(merchant, 'TERMS') })
       setShowKybModal(false)
       setShowTermsModal(true)
     } catch (reason) {
@@ -532,7 +522,7 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
   const handleAcceptTerms = async () => {
     // If terms were already accepted on backend, advance directly
     if (merchant.termsAcceptedAt || termsData?.tos?.status === 'accepted') {
-      onUpdateMerchant({ termsAcceptedAt: merchant.termsAcceptedAt || new Date().toISOString(), status: 'terms_accepted', nextStep: 'SUMSUB' })
+      onUpdateMerchant({ termsAcceptedAt: merchant.termsAcceptedAt || new Date().toISOString(), status: 'terms_accepted', nextStep: resolveMonotonicStep(merchant, 'SUMSUB') })
       setShowTermsModal(false)
       return
     }
@@ -563,12 +553,12 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
         isAuthorisedSignatory: true,
       }, 'none')
 
-      onUpdateMerchant({ termsAcceptedAt: new Date().toISOString(), status: 'terms_accepted', nextStep: 'SUMSUB' })
+      onUpdateMerchant({ termsAcceptedAt: new Date().toISOString(), status: 'terms_accepted', nextStep: resolveMonotonicStep(merchant, 'SUMSUB') })
       setShowTermsModal(false)
     } catch (reason) {
       const msg = reason instanceof Error ? reason.message : 'Could not record terms acceptance.'
       if (msg.includes('already been accepted') || msg.includes('already accepted')) {
-        onUpdateMerchant({ termsAcceptedAt: new Date().toISOString(), status: 'terms_accepted', nextStep: 'SUMSUB' })
+        onUpdateMerchant({ termsAcceptedAt: new Date().toISOString(), status: 'terms_accepted', nextStep: resolveMonotonicStep(merchant, 'SUMSUB') })
         setShowTermsModal(false)
       } else {
         setApiError(msg)
@@ -752,8 +742,21 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
         if (state.statusReason !== undefined && (state.statusReason || undefined) !== current.statusReason) {
           updates.statusReason = state.statusReason || undefined
         }
-        if (state.nextStep !== undefined && (state.nextStep || undefined) !== current.nextStep) {
-          updates.nextStep = state.nextStep as Merchant['nextStep']
+        if (state.nextStep !== undefined) {
+          const candidate = {
+            ...current,
+            noticeAcknowledgedAt: state.noticeAcknowledgedAt || current.noticeAcknowledgedAt,
+            kybInformationSubmittedAt: state.kybInformationSubmittedAt || current.kybInformationSubmittedAt,
+            termsAcceptedAt: state.termsAcceptedAt || current.termsAcceptedAt,
+            sumsubCompletedAt: state.sumsubCompletedAt || current.sumsubCompletedAt,
+            verifiedAt: state.verifiedAt || current.verifiedAt,
+            passkeyRegisteredAt: state.passkeyRegisteredAt || current.passkeyRegisteredAt,
+            status: (state.status as Merchant['status']) || current.status,
+          }
+          const monotonic = resolveMonotonicStep(candidate, state.nextStep)
+          if ((monotonic || undefined) !== current.nextStep) {
+            updates.nextStep = monotonic as Merchant['nextStep']
+          }
         }
         if (state.noticeAcknowledgedAt && state.noticeAcknowledgedAt !== current.noticeAcknowledgedAt) {
           updates.noticeAcknowledgedAt = state.noticeAcknowledgedAt

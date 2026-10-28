@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
 import type { Merchant, OnboardingStep } from '../types'
+import { resolveMonotonicStep } from '../services/onboardingStepService'
 import {
   X,
   ShieldCheck,
@@ -34,8 +35,9 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
 }) => {
   // Determine initial step based on merchant's current nextStep or default to 'NOTICE'
   const getInitialStep = (): OnboardingStep => {
-    if (merchant.nextStep === 'OPT_IN' || !merchant.nextStep) return 'NOTICE'
-    return merchant.nextStep
+    const resolved = resolveMonotonicStep(merchant, merchant.nextStep)
+    if (resolved === 'OPT_IN' || !resolved) return 'NOTICE'
+    return resolved
   }
 
   const [currentStep, setCurrentStep] = useState<OnboardingStep>(getInitialStep)
@@ -56,15 +58,17 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
 
   // 1. Advance to Terms after Notice
   const handleAcknowledgeNotice = () => {
-    setCurrentStep('TERMS')
-    onStepChange?.('TERMS')
+    const step = resolveMonotonicStep(merchant, 'TERMS') || 'TERMS'
+    setCurrentStep(step)
+    onStepChange?.(step)
   }
 
   // 2. Advance to SumSub after Terms
   const handleAcceptTerms = () => {
     if (!termsAccepted) return
-    setCurrentStep('SUMSUB')
-    onStepChange?.('SUMSUB')
+    const step = resolveMonotonicStep(merchant, 'SUMSUB') || 'SUMSUB'
+    setCurrentStep(step)
+    onStepChange?.(step)
   }
 
   // 3. Launch SumSub Window
@@ -85,8 +89,9 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
       setTimeout(() => {
         // Automatically closes Sumsub window and moves back to dashboard passkey step
         setIsSumsubOpen(false)
-        setCurrentStep('PASSKEY')
-        onStepChange?.('PASSKEY')
+        const step = resolveMonotonicStep(merchant, 'PASSKEY') || 'PASSKEY'
+        setCurrentStep(step)
+        onStepChange?.(step)
       }, 1000)
     }, 4500)
   }

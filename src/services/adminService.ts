@@ -70,6 +70,7 @@ export interface AdminMerchantRow {
   representativeName: string
   representativeEmail: string
   status: 'active' | 'disabled' | 'invited' | 'suspended'
+  nextStep?: string | null
   settlementMode: string
   baseWalletAddress?: string | null
   solanaWalletAddress?: string | null
@@ -93,6 +94,7 @@ export interface AdminMerchantDetailResponse {
   representativeName: string
   representativeEmail: string
   status: 'active' | 'disabled' | 'invited' | 'suspended'
+  nextStep?: string | null
   settlementMode: string
   baseWalletAddress?: string | null
   solanaWalletAddress?: string | null
@@ -413,4 +415,25 @@ export async function fetchAdminAuditLogs(category?: string): Promise<{ data: Ad
   if (!config.adminKey) return { data: [], total: 0 }
   const query = category && category !== 'all' ? `?category=${encodeURIComponent(category)}` : ''
   return requestApi<{ data: AdminAuditLogRow[]; total: number }>(config, 'GET', `/api/v1/admin/audit-logs${query}`, undefined, 'admin')
+}
+
+// 7. Admin Onboarding Step Enforcement
+export async function enforceAdminMerchantStep(
+  merchantId: string,
+  step: string,
+  reason: string,
+  clearSubsequentMilestones = true
+): Promise<{ id: string; nextStep: string | null; status: string; message: string }> {
+  const config = getApiConfig()
+  return requestApi(
+    config,
+    'PATCH',
+    `/api/v1/admin/merchants/${encodeURIComponent(merchantId)}/step`,
+    {
+      step,
+      reason,
+      clearSubsequentMilestones,
+    },
+    'admin'
+  )
 }

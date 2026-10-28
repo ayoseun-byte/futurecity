@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
 import type { AdminMerchantDetailResponse } from '../services/adminService'
+import { enforceAdminMerchantStep } from '../services/adminService'
 import {
   ShieldCheck,
   Wallet,
@@ -25,11 +26,48 @@ export const MerchantFullDetailsModal: React.FC<MerchantFullDetailsModalProps> =
   merchant,
   onClose,
   onToggleStatus,
-  isAdmin: _isAdmin = false,
+  isAdmin = false,
 }) => {
   const [activeTab, setActiveTab] = useState<ModalTab>('identity')
   const [copiedKey, setCopiedKey] = useState<string | null>(null)
   const [statusBusy, setStatusBusy] = useState(false)
+
+  // Step Monotonicity & Admin Enforcement State
+  const [currentStepState, setCurrentStepState] = useState<string>(
+    String(
+      merchant.nextStep ||
+        (merchant.rawRecord as Record<string, unknown> | undefined)?.next_step ||
+        ((merchant.status || '').toLowerCase() === 'active' ? 'COMPLETED' : 'OPT_IN')
+    )
+  )
+  const [isEnforcingStep, setIsEnforcingStep] = useState(false)
+  const [selectedEnforceStep, setSelectedEnforceStep] = useState<string>('OPT_IN')
+  const [enforceReason, setEnforceReason] = useState<string>('')
+  const [enforceSuccess, setEnforceSuccess] = useState<string | null>(null)
+  const [enforceError, setEnforceError] = useState<string | null>(null)
+  const [showEnforceForm, setShowEnforceForm] = useState(false)
+
+  const handleEnforceStep = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!enforceReason.trim()) {
+      setEnforceError('Please provide an audit reason for enforcing this step.')
+      return
+    }
+    setIsEnforcingStep(true)
+    setEnforceError(null)
+    try {
+      const res = await enforceAdminMerchantStep(merchant.id, selectedEnforceStep, enforceReason.trim(), true)
+      setCurrentStepState(res.nextStep || 'COMPLETED')
+      setEnforceSuccess(`Step successfully enforced to ${selectedEnforceStep} by Orki Admin.`)
+      setShowEnforceForm(false)
+      setEnforceReason('')
+      setTimeout(() => setEnforceSuccess(null), 4000)
+    } catch (err) {
+      setEnforceError(err instanceof Error ? err.message : 'Failed to enforce step.')
+    } finally {
+      setIsEnforcingStep(false)
+    }
+  }
 
   const handleCopy = (text: string, key: string) => {
     navigator.clipboard.writeText(text)
@@ -251,6 +289,104 @@ export const MerchantFullDetailsModal: React.FC<MerchantFullDetailsModalProps> =
                     )}
                   </div>
                 </div>
+              </div>
+
+              {/* Onboarding State & Step Monotonicity Invariant */}
+              <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-2">
+                    <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                    <h3 className="font-bold text-slate-900 uppercase text-[10px] tracking-wider">
+                      Onboarding Step & Monotonicity Protection
+                    </h3>
+                  </div>
+                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800">
+                    Protected (Never Regresses)
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-slate-500">Current Onboarding Step:</span>
+                  <span className="font-mono font-bold text-slate-900 px-2 py-0.5 bg-white border border-slate-200 rounded">
+                    {currentStepState}
+                  </span>
+                </div>
+
+                <p className="text-[11px] text-slate-500 leading-relaxed">
+                  Invariant enforced: When a merchant passes any onboarding milestone, they can never be moved backward to a previous step by normal flows, webhooks, or session creation unless explicitly enforced by Orki Admin.
+                </p>
+
+                {enforceSuccess && (
+                  <div className="p-2.5 bg-emerald-50 text-emerald-800 text-xs rounded-xl border border-emerald-200 font-medium">
+                    {enforceSuccess}
+                  </div>
+                )}
+
+                {enforceError && (
+                  <div className="p-2.5 bg-rose-50 text-rose-800 text-xs rounded-xl border border-rose-200 font-medium">
+                    {enforceError}
+                  </div>
+                )}
+
+                {isAdmin && (
+                  <div className="pt-2 border-t border-slate-200">
+                    {!showEnforceForm ? (
+                      <button
+                        type="button"
+                        onClick={() => setShowEnforceForm(true)}
+                        className="text-xs font-bold text-onion hover:text-onion-dark hover:underline flex items-center space-x-1"
+                      >
+                        <span>Enforce Step Override (Admin Authority)</span>
+                      </button>
+                    ) : (
+                      <form onSubmit={handleEnforceStep} className="space-y-3 pt-2">
+                        <div className="space-y-1">
+                          <label className="text-[11px] font-bold text-slate-700">Select Target Step to Enforce:</label>
+                          <select
+                            value={selectedEnforceStep}
+                            onChange={(e) => setSelectedEnforceStep(e.target.value)}
+                            className="w-full text-xs font-mono p-2 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-onion focus:outline-none"
+                          >
+                            <option value="OPT_IN">OPT_IN (Initial state)</option>
+                            <option value="NOTICE">NOTICE (Regulatory Notice)</option>
+                            <option value="KYB_INFORMATION">KYB_INFORMATION (Business Profile)</option>
+                            <option value="TERMS">TERMS (Terms of Service)</option>
+                            <option value="SUMSUB">SUMSUB (Biometric / KYB Verification)</option>
+                            <option value="PASSKEY">PASSKEY (Biometric MFA & Wallets)</option>
+                            <option value="COMPLETED">COMPLETED (Fully Active)</option>
+                          </select>
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[11px] font-bold text-slate-700">Admin Audit Reason:</label>
+                          <input
+                            type="text"
+                            required
+                            value={enforceReason}
+                            onChange={(e) => setEnforceReason(e.target.value)}
+                            placeholder="e.g. Compliance requested document re-submission"
+                            className="w-full text-xs p-2 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-onion focus:outline-none"
+                          />
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <button
+                            type="submit"
+                            disabled={isEnforcingStep}
+                            className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold transition disabled:opacity-50"
+                          >
+                            {isEnforcingStep ? 'Enforcing...' : 'Confirm Step Enforcement'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setShowEnforceForm(false)}
+                            className="px-3 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl text-xs font-medium transition"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </form>
+                    )}
+                  </div>
+                )}
               </div>
 
               {merchant.metadata && Object.keys(merchant.metadata).length > 0 && (
