@@ -311,15 +311,13 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
 
   // Synchronize prefill when representative data updates from props
   useEffect(() => {
-    setSignatory((prev) => {
-      const repName = merchant.representativeName || ''
-      const repEmail = merchant.representativeEmail || ''
-      const name = prev.name || repName
-      const email = prev.email || repEmail
-      if (prev.name === name && prev.email === email) return prev
-      return { ...prev, name, email }
+    setSignatory({
+      name: merchant.representativeName || '',
+      email: merchant.representativeEmail || '',
+      title: 'Managing Director',
     })
-  }, [merchant.representativeName, merchant.representativeEmail])
+    setKybData(getPrefilledKybData(merchant, 'Managing Director'))
+  }, [merchant.id, merchant.representativeName, merchant.representativeEmail, merchant.legalBusinessName, merchant.jurisdiction])
 
   const openKybModal = () => {
     setKybData((prev) => {
@@ -2257,7 +2255,7 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
                         value={signatory.name}
                         onChange={(e) => setSignatory({ ...signatory, name: e.target.value })}
                         className="mt-1 w-full rounded-lg border border-slate-300 p-2 text-xs font-normal"
-                        placeholder="e.g. Alice Smith"
+                        placeholder="Authorised signatory name"
                         required
                       />
                     </label>
@@ -2268,7 +2266,7 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
                         value={signatory.email}
                         onChange={(e) => setSignatory({ ...signatory, email: e.target.value })}
                         className="mt-1 w-full rounded-lg border border-slate-300 p-2 text-xs font-normal"
-                        placeholder="e.g. alice@falconluxury.example"
+                        placeholder="signatory@company.com"
                         required
                       />
                     </label>
