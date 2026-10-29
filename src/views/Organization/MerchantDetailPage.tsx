@@ -78,38 +78,67 @@ export const MerchantDetailPage: React.FC<MerchantDetailPageProps> = ({
   useEffect(() => {
     if (!merchant) return
     const config = getApiConfig()
-    if (!config.baseUrl || !config.pspKey) return
+    if (!config.baseUrl) return
 
     let active = true
     setBackendLoading(true)
-    requestApi<Record<string, unknown>>(
-      config,
-      'GET',
-      `/api/v1/psp/merchants/${encodeURIComponent(merchant.id)}/overview`,
-      undefined,
-      'psp'
-    )
-      .then((data) => {
-        if (active && data) setBackendDetail(data)
-      })
-      .catch(() => {
-        // Fallback to show endpoint
-        if (!active) return
-        void requestApi<Record<string, unknown>>(
-          config,
-          'GET',
-          `/api/v1/psp/merchants/${encodeURIComponent(merchant.id)}`,
-          undefined,
-          'psp'
-        )
-          .then((showData) => {
-            if (active && showData) setBackendDetail(showData)
-          })
-          .catch(() => {})
-      })
-      .finally(() => {
-        if (active) setBackendLoading(false)
-      })
+
+    const tryFetch = async () => {
+      // 1. Try PSP endpoint if pspKey is available
+      if (config.pspKey) {
+        try {
+          const data = await requestApi<Record<string, unknown>>(
+            config,
+            'GET',
+            `/api/v1/psp/merchants/${encodeURIComponent(merchant.id)}/overview`,
+            undefined,
+            'psp'
+          )
+          if (active && data) {
+            setBackendDetail(data)
+            return
+          }
+        } catch {
+          try {
+            const showData = await requestApi<Record<string, unknown>>(
+              config,
+              'GET',
+              `/api/v1/psp/merchants/${encodeURIComponent(merchant.id)}`,
+              undefined,
+              'psp'
+            )
+            if (active && showData) {
+              setBackendDetail(showData)
+              return
+            }
+          } catch {
+            // fall back to admin
+          }
+        }
+      }
+
+      // 2. Admin fallback
+      if (config.adminKey) {
+        try {
+          const adminData = await requestApi<Record<string, unknown>>(
+            config,
+            'GET',
+            `/api/v1/admin/merchants/${encodeURIComponent(merchant.id)}`,
+            undefined,
+            'admin'
+          )
+          if (active && adminData) {
+            setBackendDetail(adminData)
+          }
+        } catch (err) {
+          console.warn('Failed to load merchant overview from admin fallback:', err)
+        }
+      }
+    }
+
+    tryFetch().finally(() => {
+      if (active) setBackendLoading(false)
+    })
 
     return () => {
       active = false

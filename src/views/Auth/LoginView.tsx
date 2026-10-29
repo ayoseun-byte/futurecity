@@ -134,7 +134,14 @@ export const LoginView: React.FC = () => {
       return
     }
     setLoginError('')
-    login('org', org.id)
+    login('org', org.id, {
+      id: 'usr_org_' + org.id,
+      name: org.name,
+      email: pspEmail || 'ops@' + org.id + '.example',
+      organizationId: org.id,
+      status: org.status,
+      isRegulatedEntity: org.isRegulatedEntity,
+    })
     navigate('/psp')
   }
 
@@ -149,7 +156,14 @@ export const LoginView: React.FC = () => {
       return
     }
     setLoginError('')
-    login('merchant', merch.id)
+    login('merchant', merch.id, {
+      id: 'usr_merch_' + merch.id,
+      name: merch.legalBusinessName,
+      email: merch.representativeEmail,
+      organizationId: merch.organizationId,
+      merchantId: merch.id,
+      status: merch.status,
+    })
     navigate('/merchant')
   }
 

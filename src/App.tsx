@@ -121,7 +121,7 @@ function MainRoutes() {
         ))
       }
 
-      if (dashboard.merchants.length > 0) {
+      if (Array.isArray(dashboard.merchants)) {
         setMerchants((current) => [
           ...current.filter((merchant) => merchant.organizationId !== activeOrganization.id),
           ...dashboard.merchants,
@@ -143,7 +143,6 @@ function MainRoutes() {
     const activeOrganization = storedOrganizations.find((organization) => organization.id === user.organizationId)
     if (!activeOrganization) return
 
-    ensureMerchantsForOrganization(activeOrganization.id, activeOrganization.name)
     setOrganizations(storedOrganizations)
     setMerchants(getStoredMerchants())
     setPaylinks(getStoredPaylinks())
