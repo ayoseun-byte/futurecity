@@ -180,7 +180,7 @@ function mapMerchant(record: PspMerchantRecord, organizationId: string): Merchan
     merchantWallet: record.merchant_wallet ?? record.merchantWallet ?? undefined,
     orkiFeeBps: number(record.orki_fee_bps ?? record.orkiFeeBps),
     pspFeeBps: number(record.psp_fee_bps ?? record.pspFeeBps),
-    baseWalletAddress: record.base_wallet_address ?? record.baseWalletAddress ?? undefined,
+    baseWalletAddress: record.base_wallet_address ?? record.baseWalletAddress ?? record.merchant_wallet ?? record.merchantWallet ?? undefined,
     solanaWalletAddress: record.solana_wallet_address ?? record.solanaWalletAddress ?? undefined,
     passkeyId: record.passkey_id ?? record.passkeyId ?? undefined,
     statusReason: record.status_reason ?? record.statusReason ?? undefined,
