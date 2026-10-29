@@ -565,6 +565,29 @@ function WalletSetup({
     if (!evmSignerAddress || !zeroDevSmartAccount || !solanaAddress || !web3Auth?.provider) {
       return
     }
+
+    let activeBaseAccount = zeroDevSmartAccount
+    if (zeroDevProjectId && !passkeyEnrolled) {
+      try {
+        setEnrollingPasskey(true)
+        const passkeyName = (registeredEmail || connectedEmail || onboarding.legalBusinessName || 'Orki Merchant Passkey').trim()
+        activeBaseAccount = await createZeroDevPasskeyAccount({
+          passkeyName,
+          projectId: zeroDevProjectId,
+        })
+        setZeroDevSmartAccount(activeBaseAccount)
+        setPasskeyEnrolled(true)
+      } catch (reason: unknown) {
+        setZeroDevError(
+          reason instanceof Error ? reason.message : 'Biometric passkey registration was cancelled or failed.',
+        )
+        setEnrollingPasskey(false)
+        return
+      } finally {
+        setEnrollingPasskey(false)
+      }
+    }
+
     const challenge =
       onboarding.walletSetupChallenge || `orki_wallet_setup:${onboarding.merchantId}`
 
@@ -576,7 +599,7 @@ function WalletSetup({
     })) as string
 
     await onActivate({
-      baseSmartAccountAddress: zeroDevSmartAccount,
+      baseSmartAccountAddress: activeBaseAccount,
       solanaWalletAddress: solanaAddress,
       evmSignerAddress,
       merchantEmail: connectedEmail || registeredEmail || undefined,
