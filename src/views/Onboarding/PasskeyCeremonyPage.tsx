@@ -537,9 +537,12 @@ function WalletSetup({
 
     const deriveNativeSolana = async () => {
       try {
+        const provider = web3Auth.provider
+        if (!provider) return
+
         const rawKey =
-          ((await web3Auth.provider.request({ method: 'solana_privateKey' })) as string) ||
-          ((await web3Auth.provider.request({ method: 'private_key' })) as string)
+          ((await provider.request({ method: 'solana_privateKey' })) as string) ||
+          ((await provider.request({ method: 'private_key' })) as string)
         if (!rawKey) return
 
         const cleanHex = rawKey.replace(/^0x/, '').padStart(64, '0').slice(0, 64)
