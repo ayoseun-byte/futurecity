@@ -336,6 +336,55 @@ export async function deletePspWebhook(id: string): Promise<{ status: string; me
   return requestApi(config, 'DELETE', `/api/v1/psp/webhooks/${encodeURIComponent(id)}`, undefined, 'psp')
 }
 
+export interface PspWebhookDelivery {
+  id: string
+  organizationId: string
+  eventType: string
+  status: 'DELIVERED' | 'FAILED' | 'PENDING' | 'PROCESSING'
+  attempts: number
+  lastError?: string | null
+  signature?: string | null
+  nextAttemptAt?: string | null
+  deliveredAt?: string | null
+  createdAt: string
+  payload?: Record<string, unknown> | null
+}
+
+export async function fetchPspWebhookDeliveries(): Promise<PspWebhookDelivery[]> {
+  const config = getApiConfig()
+  const res = await requestApi<{ data: PspWebhookDelivery[] }>(
+    config,
+    'GET',
+    '/api/v1/psp/webhooks/deliveries',
+    undefined,
+    'psp',
+  )
+  return res.data || []
+}
+
+export async function triggerTestWebhook(eventType = 'charge.payment_received'): Promise<{
+  status: string
+  message: string
+  dispatch?: PspWebhookDelivery
+}> {
+  const config = getApiConfig()
+  return requestApi(config, 'POST', '/api/v1/psp/webhooks/test', { eventType }, 'psp')
+}
+
+export async function retryWebhookDelivery(id: string): Promise<{
+  status: string
+  dispatch: Partial<PspWebhookDelivery>
+}> {
+  const config = getApiConfig()
+  return requestApi(
+    config,
+    'POST',
+    `/api/v1/psp/webhooks/deliveries/${encodeURIComponent(id)}/retry`,
+    undefined,
+    'psp',
+  )
+}
+
 export interface PspMarkupSettingsResponse {
   organizationId: string
   defaultPaymentMarkupBps: number
