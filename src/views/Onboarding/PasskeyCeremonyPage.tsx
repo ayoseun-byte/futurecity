@@ -21,7 +21,6 @@ import {
   useWeb3AuthDisconnect,
   useWeb3AuthUser,
 } from '@web3auth/modal/react'
-import { useSolanaWallet } from '@web3auth/modal/react/solana'
 import { getEd25519 } from '@toruslabs/metadata-helpers'
 import { getBase58Decoder } from '@solana/kit'
 import { useConnection, useSignMessage, useWalletClient } from 'wagmi'
@@ -490,7 +489,6 @@ function WalletSetup({
   const { userInfo, getUserInfo } = useWeb3AuthUser()
   const { address: evmSignerAddress } = useConnection()
   const { data: walletClient } = useWalletClient()
-  const { accounts: solanaAccounts, solanaWallet } = useSolanaWallet()
   const { signMessageAsync } = useSignMessage()
 
   const registeredEmail = (onboarding.representativeEmail || '').trim()
@@ -502,11 +500,10 @@ function WalletSetup({
   const [enrollingPasskey, setEnrollingPasskey] = useState(false)
   const [signing, setSigning] = useState(false)
   const [passkeyEnrolled, setPasskeyEnrolled] = useState(Boolean(onboarding.passkeyRegisteredAt))
-  const [nativeSolanaKey, setNativeSolanaKey] = useState<{
+  const [solanaKey, setSolanaKey] = useState<{
     address: string
     privateKeyBytes: Uint8Array
   } | null>(null)
-  const [walletStdAddresses, setWalletStdAddresses] = useState<string[]>([])
   const [solanaTimedOut, setSolanaTimedOut] = useState(false)
   const [zeroDevError, setZeroDevError] = useState<string | null>(null)
   const [activationError, setActivationError] = useState<string | null>(null)
@@ -515,10 +512,7 @@ function WalletSetup({
   const zeroDevProjectId = (import.meta.env.VITE_ZERODEV_PROJECT_ID || '').trim()
   const connectedEmail = (userInfo?.email || '').trim()
 
-  // Prefer the live Web3Auth Solana account; then standard:connect accounts; only fall back to the locally derived key.
-  const hookSolanaAddress = solanaAccounts?.[0] || walletStdAddresses[0] || undefined
-  const solanaAddress = hookSolanaAddress || nativeSolanaKey?.address || undefined
-  const solanaFromFallback = !hookSolanaAddress && Boolean(nativeSolanaKey?.address)
+  const solanaAddress = solanaKey?.address || onboarding.solanaWalletAddress || undefined
 
   const passkeyDisplayName = () =>
     (registeredEmail || connectedEmail || onboarding.legalBusinessName || 'Orki Merchant Passkey').trim()
@@ -546,64 +540,23 @@ function WalletSetup({
     }
   }
 
-  // The hook can return null accounts while the wallet object already exists
-  // (_accounts: null). Calling the wallet-standard connect feature loads them.
-  useEffect(() => {
-    if (!isConnected || !solanaWallet || solanaAccounts?.[0]) return
-
-    let cancelled = false
-    const loadAccounts = async () => {
-      try {
-        const w = solanaWallet as any
-        const res = await w.features?.['standard:connect']?.connect()
-        const raw = res?.accounts ?? w.accounts ?? []
-        const addrs: string[] = raw
-          .map((a: any) => (typeof a === 'string' ? a : a?.address))
-          .filter(Boolean)
-        console.log('[wallet-setup] solana wallet-standard accounts:', addrs)
-        if (!cancelled) setWalletStdAddresses(addrs)
-      } catch (e) {
-        console.warn('[wallet-setup] solana standard:connect failed:', e)
-      }
-    }
-    void loadAccounts()
-
-    return () => {
-      cancelled = true
-    }
-  }, [isConnected, solanaWallet, solanaAccounts])
-
-  // Fallback Solana derivation. Each provider method is tried independently so one
-  // unsupported method no longer aborts the other.
+  // Derive Solana address & ed25519 signing key from Web3Auth core private key (same as Frontend).
   useEffect(() => {
     if (!isConnected || !web3Auth?.provider) {
-      setNativeSolanaKey(null)
-      setWalletStdAddresses([])
+      setSolanaKey(null)
       return
     }
 
     let active = true
 
-    const deriveNativeSolana = async () => {
-      const provider = web3Auth.provider
-      if (!provider) return
-
-      const tryRequest = async (method: string): Promise<string | null> => {
-        try {
-          return ((await provider.request({ method })) as string) || null
-        } catch (e) {
-          console.warn(`provider.request(${method}) failed:`, e)
-          return null
-        }
-      }
-
+    const deriveSolana = async () => {
       try {
-        const rawKey =
-          (await tryRequest('solanaPrivateKey')) ??
-          (await tryRequest('solana_privateKey')) ??
-          (await tryRequest('private_key'))
+        const provider = web3Auth.provider
+        if (!provider) return
+
+        const rawKey = (await provider.request({ method: 'private_key' })) as string | undefined
         if (!rawKey) {
-          console.warn('No private key method succeeded for Solana derivation')
+          console.warn('[wallet-setup] No private_key returned by Web3Auth')
           return
         }
 
@@ -611,25 +564,26 @@ function WalletSetup({
         const { sk, pk } = getED25519Key(cleanHex)
         const address = getBase58Decoder().decode(pk)
 
+        console.log('[wallet-setup] Derived Solana address:', address)
         if (active && address) {
-          setNativeSolanaKey({
+          setSolanaKey({
             address,
             privateKeyBytes: sk.slice(0, 32),
           })
         }
       } catch (err) {
-        console.warn('Native Solana derivation via Web3Auth failed:', err)
+        console.warn('[wallet-setup] Solana key derivation failed:', err)
       }
     }
 
-    void deriveNativeSolana()
+    void deriveSolana()
 
     return () => {
       active = false
     }
   }, [isConnected, web3Auth?.provider])
 
-  // Stop showing "Deriving…" forever if neither source produces an address.
+  // Stop showing "Deriving…" forever if Solana derivation fails.
   useEffect(() => {
     if (!isConnected || solanaAddress) {
       setSolanaTimedOut(false)
@@ -638,17 +592,6 @@ function WalletSetup({
     const t = window.setTimeout(() => setSolanaTimedOut(true), SOLANA_UI_TIMEOUT_MS)
     return () => window.clearTimeout(t)
   }, [isConnected, solanaAddress])
-
-  // Diagnostics: compare the hook account with the fallback derivation.
-  useEffect(() => {
-    if (!isConnected) return
-    console.log('[wallet-setup] solana accounts:', solanaAccounts, 'wallet:', solanaWallet, 'fallback:', nativeSolanaKey?.address)
-    if (hookSolanaAddress && nativeSolanaKey?.address && hookSolanaAddress !== nativeSolanaKey.address) {
-      console.warn(
-        '[wallet-setup] Solana address mismatch: hook account differs from fallback derivation. Using the hook account; consider removing the fallback.',
-      )
-    }
-  }, [isConnected, solanaAccounts, solanaWallet, nativeSolanaKey, hookSolanaAddress])
 
   useEffect(() => {
     if (isConnected && !userInfo) {
@@ -698,50 +641,36 @@ function WalletSetup({
     registeredEmail.toLowerCase() !== connectedEmail.toLowerCase()
 
   const handleConnectWithEmail = async () => {
+    if (connecting || (web3Auth as any)?.status === 'connecting') return
     onClearError()
     const targetEmail = (registeredEmail || emailInput).trim()
-    if (!targetEmail) {
-      await connect()
-      return
+    try {
+      if (!targetEmail) {
+        await connect()
+        return
+      }
+      await connectTo(WALLET_CONNECTORS.AUTH, {
+        authConnection: AUTH_CONNECTION.EMAIL_PASSWORDLESS,
+        extraLoginOptions: {
+          login_hint: targetEmail,
+        },
+      })
+    } catch (err: unknown) {
+      console.warn('Connect error:', err)
+      const msg = errorMessage(err, 'Failed to connect with email.')
+      if (!msg.includes('Already connecting')) {
+        setActivationError(msg)
+      }
     }
-    await connectTo(WALLET_CONNECTORS.AUTH, {
-      authConnection: AUTH_CONNECTION.EMAIL_PASSWORDLESS,
-      extraLoginOptions: {
-        login_hint: targetEmail,
-      },
-    })
   }
 
   const signSolanaChallenge = async (challenge: string): Promise<string> => {
-    const msgBytes = new TextEncoder().encode(challenge)
-    let sig: unknown
-
-    // 1) Preferred: Web3Auth's Solana wallet (matches hook account[0]).
-    if (solanaWallet && typeof (solanaWallet as any)?.signMessage === 'function') {
-      sig = await (solanaWallet as any).signMessage(msgBytes)
-    } else if (solanaWallet && (solanaWallet as any)?.features?.['solana:signMessage']) {
-      const feature = (solanaWallet as any).features['solana:signMessage']
-      const account =
-        solanaWallet.accounts?.find((a: any) => a.address === solanaAddress) ||
-        solanaWallet.accounts?.[0]
-      if (account) {
-        const [output] = await feature.signMessage({ account, message: msgBytes })
-        sig = output.signature
-      }
-    }
-
-    // 2) Fallback key — ONLY when the displayed address actually came from that key,
-    //    otherwise we'd sign with a key that doesn't own the submitted address.
-    if (!sig && solanaFromFallback && nativeSolanaKey?.privateKeyBytes) {
-      sig = getEd25519().sign(msgBytes, nativeSolanaKey.privateKeyBytes)
-    }
-
-    if (!sig) {
+    if (!solanaKey?.privateKeyBytes) {
       throw new Error('Solana wallet is not ready to sign. Please wait a moment and retry.')
     }
-
-    // If a string is returned, confirm its encoding (base58 vs base64) matches your backend.
-    return typeof sig === 'string' ? sig : toBase64(sig as Uint8Array)
+    const msgBytes = new TextEncoder().encode(challenge)
+    const sig = getEd25519().sign(msgBytes, solanaKey.privateKeyBytes)
+    return toBase64(sig)
   }
 
   const handleSignAndActivate = async () => {
@@ -889,15 +818,15 @@ function WalletSetup({
           <button
             type="button"
             onClick={() => void handleConnectWithEmail()}
-            disabled={connecting}
+            disabled={connecting || (web3Auth as any)?.status === 'connecting'}
             className="flex w-full items-center justify-center gap-2 rounded-xl bg-onion-700 px-4 py-3 text-sm font-semibold text-white transition hover:bg-onion-600 disabled:opacity-60"
           >
-            {connecting ? (
+            {connecting || (web3Auth as any)?.status === 'connecting' ? (
               <LoaderCircle className="h-4 w-4 animate-spin" />
             ) : (
               <Fingerprint className="h-4 w-4" />
             )}
-            {connecting
+            {connecting || (web3Auth as any)?.status === 'connecting'
               ? 'Authenticating with Web3Auth…'
               : registeredEmail
                 ? `Continue with ${registeredEmail} + Passkey`
@@ -907,10 +836,11 @@ function WalletSetup({
           <button
             type="button"
             onClick={() => {
+              if (connecting || (web3Auth as any)?.status === 'connecting') return
               onClearError()
-              void connect()
+              void connect().catch((e) => console.warn(e))
             }}
-            disabled={connecting}
+            disabled={connecting || (web3Auth as any)?.status === 'connecting'}
             className="flex w-full items-center justify-center gap-2 rounded-xl border border-slate-800 bg-slate-950/60 px-4 py-2.5 text-xs font-medium text-slate-300 transition hover:border-slate-700 hover:text-white disabled:opacity-50"
           >
             <Wallet className="h-3.5 w-3.5" />
