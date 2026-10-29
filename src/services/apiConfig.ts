@@ -34,33 +34,41 @@ export function saveApiConfig(config: ApiConfig): void {
   }))
 }
 
-export function resolveMerchantSession(config?: Partial<ApiConfig>): string {
-  // 1. Direct from provided config if it's a valid session token
+export function clearAllMerchantSessions(): void {
+  sessionStorage.removeItem('orki_active_merchant_session')
+  const keysToRemove: string[] = []
+  for (let i = 0; i < sessionStorage.length; i++) {
+    const key = sessionStorage.key(i)
+    if (key && (key.startsWith('orki_merchant_session:') || key.startsWith('orki_merchant_session'))) {
+      keysToRemove.push(key)
+    }
+  }
+  keysToRemove.forEach((k) => sessionStorage.removeItem(k))
+}
+
+export function resolveMerchantSession(config?: Partial<ApiConfig>, merchantExternalId?: string): string {
+  // 1. If a specific merchant identifier is provided, only return their session
+  if (merchantExternalId) {
+    const specific = sessionStorage.getItem(`orki_merchant_session:${merchantExternalId}`)
+    if (specific && specific.startsWith('onb_sec_')) return specific
+    return ''
+  }
+
+  // 2. Direct from provided config if it's a valid session token
   if (config?.merchantSession && config.merchantSession.startsWith('onb_sec_')) {
     return config.merchantSession
   }
 
-  // 2. From saved API config in sessionStorage
+  // 3. From saved API config in sessionStorage
   const saved = getApiConfig()
   if (saved.merchantSession && saved.merchantSession.startsWith('onb_sec_')) {
     return saved.merchantSession
   }
 
-  // 3. From global active merchant session key
+  // 4. From global active merchant session key
   const active = sessionStorage.getItem('orki_active_merchant_session')
   if (active && active.startsWith('onb_sec_')) {
     return active
-  }
-
-  // 4. Scan any cached merchant session keys in sessionStorage
-  for (let i = 0; i < sessionStorage.length; i++) {
-    const key = sessionStorage.key(i)
-    if (key && (key.startsWith('orki_merchant_session:') || key.startsWith('orki_merchant_session'))) {
-      const val = sessionStorage.getItem(key)
-      if (val && val.startsWith('onb_sec_')) {
-        return val
-      }
-    }
   }
 
   return ''

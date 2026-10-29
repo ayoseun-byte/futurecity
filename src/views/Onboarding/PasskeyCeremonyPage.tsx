@@ -22,6 +22,8 @@ import {
   useWeb3AuthUser,
 } from '@web3auth/modal/react'
 import { useSolanaWallet } from '@web3auth/modal/react/solana'
+import { createKeyPairFromPrivateKeyBytes } from '@solana/keys'
+import { getAddressFromPublicKey } from '@solana/addresses'
 import { useConnection } from 'wagmi'
 import { constants, createKernelAccount } from '@zerodev/sdk'
 import { getKernelAddressFromECDSA, signerToEcdsaValidator } from '@zerodev/ecdsa-validator'
@@ -89,7 +91,26 @@ function resolveApiBaseUrl(): string {
 function readSessionFromFragmentOrConfig(): string {
   const fragment = new URLSearchParams(window.location.hash.slice(1))
   const fromHash = fragment.get('session')
-  if (fromHash) return fromHash
+  if (fromHash) {
+    sessionStorage.setItem('orki_setup_active_session', fromHash)
+    return fromHash
+  }
+  const fromSetupStorage = sessionStorage.getItem('orki_setup_active_session')
+  if (fromSetupStorage) return fromSetupStorage
+
+  try {
+    const rawUser = localStorage.getItem('orki_auth_user')
+    if (rawUser) {
+      const parsed = JSON.parse(rawUser)
+      if (parsed?.merchantId) {
+        const forMerchant = sessionStorage.getItem(`orki_merchant_session:${parsed.merchantId}`)
+        if (forMerchant) return forMerchant
+      }
+    }
+  } catch {
+    // ignore
+  }
+
   return getApiConfig().merchantSession || ''
 }
 
@@ -263,8 +284,13 @@ export const PasskeyCeremonyPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null)
   const clientId = import.meta.env.VITE_WEB3AUTH_CLIENT_ID
 
+  // Preserve session fragment so browser reloads stay bound to the exact merchant session
   useEffect(() => {
-    if (session && window.location.hash) window.history.replaceState(null, '', '/setup')
+    const fragment = new URLSearchParams(window.location.hash.slice(1))
+    const fromHash = fragment.get('session')
+    if (fromHash) {
+      sessionStorage.setItem('orki_setup_active_session', fromHash)
+    }
   }, [session])
 
   useEffect(() => {
@@ -461,6 +487,7 @@ function WalletSetup({
   const [derivingZeroDev, setDerivingZeroDev] = useState(false)
   const [enrollingPasskey, setEnrollingPasskey] = useState(false)
   const [passkeyEnrolled, setPasskeyEnrolled] = useState(Boolean(onboarding.passkeyRegisteredAt))
+  const [derivedSolanaAddress, setDerivedSolanaAddress] = useState<string | null>(null)
   const [zeroDevError, setZeroDevError] = useState<string | null>(null)
   const [copiedKey, setCopiedKey] = useState<string | null>(null)
 
@@ -492,8 +519,54 @@ function WalletSetup({
     }
   }
 
-  const solanaAddress = accounts?.[0] || onboarding.solanaWalletAddress || undefined
+  const solanaAddress = derivedSolanaAddress || accounts?.[0] || onboarding.solanaWalletAddress || undefined
   const connectedEmail = (userInfo?.email || '').trim()
+
+  useEffect(() => {
+    if (!isConnected || !web3Auth?.provider) {
+      setDerivedSolanaAddress(null)
+      return
+    }
+
+    let active = true
+
+    const deriveSolanaAddress = async () => {
+      if (accounts?.[0]) {
+        setDerivedSolanaAddress(accounts[0])
+        return
+      }
+
+      if (!web3Auth?.provider) return
+
+      try {
+        const rawKey = (await web3Auth.provider.request({
+          method: 'private_key',
+        })) as string
+
+        if (!rawKey) return
+
+        const cleanHex = rawKey.replace(/^0x/, '').padStart(64, '0').slice(0, 64)
+        const seed = new Uint8Array(32)
+        for (let i = 0; i < 32; i++) {
+          seed[i] = parseInt(cleanHex.substring(i * 2, i * 2 + 2), 16)
+        }
+
+        const keypair = await createKeyPairFromPrivateKeyBytes(seed)
+        const solAddr = await getAddressFromPublicKey(keypair.publicKey)
+        if (active && solAddr) {
+          setDerivedSolanaAddress(solAddr)
+        }
+      } catch (err) {
+        console.warn('Native Solana address derivation failed:', err)
+      }
+    }
+
+    void deriveSolanaAddress()
+
+    return () => {
+      active = false
+    }
+  }, [isConnected, web3Auth?.provider, accounts])
 
   useEffect(() => {
     if (isConnected && !userInfo) {

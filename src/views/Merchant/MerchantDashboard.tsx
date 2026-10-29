@@ -5,7 +5,7 @@ import { resolveMonotonicStep } from '../../services/onboardingStepService'
 import { CreatePaylinkModal } from './CreatePaylinkModal'
 import { OffRampModal } from './OffRampModal'
 import { TransferModal } from './TransferModal'
-import { getApiConfig, requestApi, saveApiConfig, resolveMerchantSession } from '../../services/apiConfig'
+import { getApiConfig, requestApi, saveApiConfig } from '../../services/apiConfig'
 import {
   ArrowRightLeft,
   Send,
@@ -348,11 +348,9 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
   const merchantApiConfig = useCallback(() => {
     const config = getApiConfig()
     const cachedForMerchant = sessionStorage.getItem(`orki_merchant_session:${merchant.externalId}`)
-    const resolved =
-      (cachedForMerchant && cachedForMerchant.startsWith('onb_sec_') ? cachedForMerchant : null) ||
-      resolveMerchantSession(config)
+    const resolved = (cachedForMerchant && cachedForMerchant.startsWith('onb_sec_')) ? cachedForMerchant : ''
 
-    return resolved ? { ...config, merchantSession: resolved } : config
+    return { ...config, merchantSession: resolved }
   }, [merchant.externalId])
 
   const ensureMerchantSession = useCallback(async (forceRefresh = false): Promise<ReturnType<typeof getApiConfig>> => {
