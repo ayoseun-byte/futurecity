@@ -36,7 +36,6 @@ import {
 import {
   createPublicClient,
   http,
-  stringToHex,
   type Address,
   type WalletClient,
 } from 'viem'
@@ -75,6 +74,13 @@ type ApiError = { message?: string; error?: string }
 
 const KERNEL_VERSION = constants.KERNEL_V3_1
 const ENTRY_POINT = constants.getEntryPoint('0.7')
+const SOLANA_UI_TIMEOUT_MS = 8000
+
+function errorMessage(reason: unknown, fallback: string): string {
+  if (reason instanceof Error && reason.message) return reason.message
+  if (typeof reason === 'string' && reason) return reason
+  return fallback
+}
 
 function toBase64(bytes: Uint8Array): string {
   let binary = ''
@@ -82,13 +88,16 @@ function toBase64(bytes: Uint8Array): string {
   return btoa(binary)
 }
 
+function stripApiSuffix(url: string): string {
+  return url.replace(/\/api\/v1\/?$/, '').replace(/\/v1\/?$/, '').replace(/\/$/, '')
+}
+
 function resolveApiBaseUrl(): string {
   const configured = getApiConfig().baseUrl
-  if (configured) return configured.replace(/\/api\/v1\/?$/, '').replace(/\/v1\/?$/, '').replace(/\/$/, '')
-  const pspUrl = (import.meta.env.VITE_PSP_API_URL || '').replace(/\/api\/v1\/?$/, '').replace(/\/v1\/?$/, '').replace(/\/$/, '')
-  if (pspUrl) return pspUrl
-  const legacyUrl = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/api\/v1\/?$/, '').replace(/\/v1\/?$/, '').replace(/\/$/, '')
-  return legacyUrl
+  if (configured) return stripApiSuffix(configured)
+  const pspUrl = (import.meta.env.VITE_PSP_API_URL || '')
+  if (pspUrl) return stripApiSuffix(pspUrl)
+  return stripApiSuffix(import.meta.env.VITE_API_BASE_URL || '')
 }
 
 function readSessionFromFragmentOrConfig(): string {
@@ -221,7 +230,7 @@ async function createZeroDevPasskeyAccount({
 }
 
 async function apiRequest<T>(apiBaseUrl: string, path: string, session: string, init?: RequestInit): Promise<T> {
-  const cleanBaseUrl = apiBaseUrl.replace(/\/api\/v1\/?$/, '').replace(/\/v1\/?$/, '').replace(/\/$/, '')
+  const cleanBaseUrl = stripApiSuffix(apiBaseUrl)
   const method = (init?.method || 'GET').toUpperCase()
   const targetUrl = `${cleanBaseUrl}/api/v1/merchant${path.startsWith('/') ? path : `/${path}`}`
 
@@ -303,7 +312,7 @@ export const PasskeyCeremonyPage: React.FC = () => {
       .then((state) => {
         if (!cancelled) {
           setOnboarding(state)
-          if ((state.status?.toLowerCase() === 'active') && state.baseWalletAddress) {
+          if (state.status?.toLowerCase() === 'active' && state.baseWalletAddress) {
             setActivationResult({
               status: 'active',
               merchantStatus: 'active',
@@ -318,7 +327,7 @@ export const PasskeyCeremonyPage: React.FC = () => {
         }
       })
       .catch((reason: unknown) => {
-        if (!cancelled) setError(reason instanceof Error ? reason.message : 'Unable to load onboarding.')
+        if (!cancelled) setError(errorMessage(reason, 'Unable to load onboarding.'))
       })
       .finally(() => {
         if (!cancelled) setLoadingState(false)
@@ -419,7 +428,7 @@ export const PasskeyCeremonyPage: React.FC = () => {
                 body: JSON.stringify({
                   baseWalletAddress: baseSmartAccountAddress,
                   solanaWalletAddress,
-                  solanaSignature,
+                  solanaSignature, // base64 ed25519 signature over `challenge`
                   evmSignerAddress,
                   merchantEmail,
                   challenge,
@@ -442,7 +451,7 @@ export const PasskeyCeremonyPage: React.FC = () => {
                 : prev,
             )
           } catch (reason) {
-            setError(reason instanceof Error ? reason.message : 'Wallet activation could not be completed.')
+            setError(errorMessage(reason, 'Wallet activation could not be completed.'))
           } finally {
             setSaving(false)
           }
@@ -491,15 +500,28 @@ function WalletSetup({
   )
   const [derivingZeroDev, setDerivingZeroDev] = useState(false)
   const [enrollingPasskey, setEnrollingPasskey] = useState(false)
+  const [signing, setSigning] = useState(false)
   const [passkeyEnrolled, setPasskeyEnrolled] = useState(Boolean(onboarding.passkeyRegisteredAt))
   const [nativeSolanaKey, setNativeSolanaKey] = useState<{
     address: string
     privateKeyBytes: Uint8Array
   } | null>(null)
+  const [walletStdAddresses, setWalletStdAddresses] = useState<string[]>([])
+  const [solanaTimedOut, setSolanaTimedOut] = useState(false)
   const [zeroDevError, setZeroDevError] = useState<string | null>(null)
+  const [activationError, setActivationError] = useState<string | null>(null)
   const [copiedKey, setCopiedKey] = useState<string | null>(null)
 
   const zeroDevProjectId = (import.meta.env.VITE_ZERODEV_PROJECT_ID || '').trim()
+  const connectedEmail = (userInfo?.email || '').trim()
+
+  // Prefer the live Web3Auth Solana account; then standard:connect accounts; only fall back to the locally derived key.
+  const hookSolanaAddress = solanaAccounts?.[0] || walletStdAddresses[0] || undefined
+  const solanaAddress = hookSolanaAddress || nativeSolanaKey?.address || undefined
+  const solanaFromFallback = !hookSolanaAddress && Boolean(nativeSolanaKey?.address)
+
+  const passkeyDisplayName = () =>
+    (registeredEmail || connectedEmail || onboarding.legalBusinessName || 'Orki Merchant Passkey').trim()
 
   const handleEnrollZeroDevPasskey = async () => {
     if (!zeroDevProjectId) {
@@ -511,44 +533,83 @@ function WalletSetup({
     setEnrollingPasskey(true)
     setZeroDevError(null)
     try {
-      const passkeyName = (registeredEmail || connectedEmail || onboarding.legalBusinessName || 'Orki Merchant Passkey').trim()
       const smartAccountAddress = await createZeroDevPasskeyAccount({
-        passkeyName,
+        passkeyName: passkeyDisplayName(),
         projectId: zeroDevProjectId,
       })
       setZeroDevSmartAccount(smartAccountAddress)
       setPasskeyEnrolled(true)
     } catch (reason: unknown) {
-      setZeroDevError(
-        reason instanceof Error ? reason.message : 'Failed to register biometric passkey with ZeroDev.',
-      )
+      setZeroDevError(errorMessage(reason, 'Failed to register biometric passkey with ZeroDev.'))
     } finally {
       setEnrollingPasskey(false)
     }
   }
 
+  // The hook can return null accounts while the wallet object already exists
+  // (_accounts: null). Calling the wallet-standard connect feature loads them.
+  useEffect(() => {
+    if (!isConnected || !solanaWallet || solanaAccounts?.[0]) return
+
+    let cancelled = false
+    const loadAccounts = async () => {
+      try {
+        const w = solanaWallet as any
+        const res = await w.features?.['standard:connect']?.connect()
+        const raw = res?.accounts ?? w.accounts ?? []
+        const addrs: string[] = raw
+          .map((a: any) => (typeof a === 'string' ? a : a?.address))
+          .filter(Boolean)
+        console.log('[wallet-setup] solana wallet-standard accounts:', addrs)
+        if (!cancelled) setWalletStdAddresses(addrs)
+      } catch (e) {
+        console.warn('[wallet-setup] solana standard:connect failed:', e)
+      }
+    }
+    void loadAccounts()
+
+    return () => {
+      cancelled = true
+    }
+  }, [isConnected, solanaWallet, solanaAccounts])
+
+  // Fallback Solana derivation. Each provider method is tried independently so one
+  // unsupported method no longer aborts the other.
   useEffect(() => {
     if (!isConnected || !web3Auth?.provider) {
       setNativeSolanaKey(null)
+      setWalletStdAddresses([])
       return
     }
 
     let active = true
 
     const deriveNativeSolana = async () => {
-      try {
-        const provider = web3Auth.provider
-        if (!provider) return
+      const provider = web3Auth.provider
+      if (!provider) return
 
+      const tryRequest = async (method: string): Promise<string | null> => {
+        try {
+          return ((await provider.request({ method })) as string) || null
+        } catch (e) {
+          console.warn(`provider.request(${method}) failed:`, e)
+          return null
+        }
+      }
+
+      try {
         const rawKey =
-          ((await provider.request({ method: 'solana_privateKey' })) as string) ||
-          ((await provider.request({ method: 'private_key' })) as string)
-        if (!rawKey) return
+          (await tryRequest('solanaPrivateKey')) ??
+          (await tryRequest('solana_privateKey')) ??
+          (await tryRequest('private_key'))
+        if (!rawKey) {
+          console.warn('No private key method succeeded for Solana derivation')
+          return
+        }
 
         const cleanHex = rawKey.replace(/^0x/, '').padStart(64, '0').slice(0, 64)
         const { sk, pk } = getED25519Key(cleanHex)
-        const decoder = getBase58Decoder()
-        const address = decoder.decode(pk)
+        const address = getBase58Decoder().decode(pk)
 
         if (active && address) {
           setNativeSolanaKey({
@@ -568,8 +629,26 @@ function WalletSetup({
     }
   }, [isConnected, web3Auth?.provider])
 
-  const solanaAddress = solanaAccounts?.[0] || nativeSolanaKey?.address || undefined
-  const connectedEmail = (userInfo?.email || '').trim()
+  // Stop showing "Deriving…" forever if neither source produces an address.
+  useEffect(() => {
+    if (!isConnected || solanaAddress) {
+      setSolanaTimedOut(false)
+      return
+    }
+    const t = window.setTimeout(() => setSolanaTimedOut(true), SOLANA_UI_TIMEOUT_MS)
+    return () => window.clearTimeout(t)
+  }, [isConnected, solanaAddress])
+
+  // Diagnostics: compare the hook account with the fallback derivation.
+  useEffect(() => {
+    if (!isConnected) return
+    console.log('[wallet-setup] solana accounts:', solanaAccounts, 'wallet:', solanaWallet, 'fallback:', nativeSolanaKey?.address)
+    if (hookSolanaAddress && nativeSolanaKey?.address && hookSolanaAddress !== nativeSolanaKey.address) {
+      console.warn(
+        '[wallet-setup] Solana address mismatch: hook account differs from fallback derivation. Using the hook account; consider removing the fallback.',
+      )
+    }
+  }, [isConnected, solanaAccounts, solanaWallet, nativeSolanaKey, hookSolanaAddress])
 
   useEffect(() => {
     if (isConnected && !userInfo) {
@@ -597,11 +676,7 @@ function WalletSetup({
         }
       } catch (reason: unknown) {
         if (!cancelled) {
-          setZeroDevError(
-            reason instanceof Error
-              ? reason.message
-              : 'Failed to derive ZeroDev Kernel Smart Account on Base.',
-          )
+          setZeroDevError(errorMessage(reason, 'Failed to derive ZeroDev Kernel Smart Account on Base.'))
         }
       } finally {
         if (!cancelled) {
@@ -637,106 +712,100 @@ function WalletSetup({
     })
   }
 
+  const signSolanaChallenge = async (challenge: string): Promise<string> => {
+    const msgBytes = new TextEncoder().encode(challenge)
+    let sig: unknown
+
+    // 1) Preferred: Web3Auth's Solana wallet (matches hook account[0]).
+    if (solanaWallet && typeof (solanaWallet as any)?.signMessage === 'function') {
+      sig = await (solanaWallet as any).signMessage(msgBytes)
+    } else if (solanaWallet && (solanaWallet as any)?.features?.['solana:signMessage']) {
+      const feature = (solanaWallet as any).features['solana:signMessage']
+      const account =
+        solanaWallet.accounts?.find((a: any) => a.address === solanaAddress) ||
+        solanaWallet.accounts?.[0]
+      if (account) {
+        const [output] = await feature.signMessage({ account, message: msgBytes })
+        sig = output.signature
+      }
+    }
+
+    // 2) Fallback key — ONLY when the displayed address actually came from that key,
+    //    otherwise we'd sign with a key that doesn't own the submitted address.
+    if (!sig && solanaFromFallback && nativeSolanaKey?.privateKeyBytes) {
+      sig = getEd25519().sign(msgBytes, nativeSolanaKey.privateKeyBytes)
+    }
+
+    if (!sig) {
+      throw new Error('Solana wallet is not ready to sign. Please wait a moment and retry.')
+    }
+
+    // If a string is returned, confirm its encoding (base58 vs base64) matches your backend.
+    return typeof sig === 'string' ? sig : toBase64(sig as Uint8Array)
+  }
+
   const handleSignAndActivate = async () => {
-    onClearError()
+    setActivationError(null)
     setZeroDevError(null)
+    onClearError()
 
-    const activeSmartAccount = zeroDevSmartAccount || onboarding.baseWalletAddress || ''
-
-    if (!activeSmartAccount) {
-      setZeroDevError('Base Smart Account has not been derived yet. Please ensure Web3Auth is connected.')
-      return
-    }
-
-    let activeBaseAccount = activeSmartAccount
-    if (zeroDevProjectId && !passkeyEnrolled) {
-      try {
-        setEnrollingPasskey(true)
-        const passkeyName = (registeredEmail || connectedEmail || onboarding.legalBusinessName || 'Orki Merchant Passkey').trim()
-        activeBaseAccount = await createZeroDevPasskeyAccount({
-          passkeyName,
-          projectId: zeroDevProjectId,
-        })
-        setZeroDevSmartAccount(activeBaseAccount)
-        setPasskeyEnrolled(true)
-      } catch (reason: unknown) {
-        console.warn('Biometric passkey registration skipped or failed:', reason)
-      } finally {
-        setEnrollingPasskey(false)
-      }
-    }
-
-    const challenge =
-      onboarding.walletSetupChallenge || `orki_wallet_setup:${onboarding.merchantId}`
-
-    let signature = ''
     try {
-      signature = await signMessageAsync({ message: challenge })
-    } catch (signErr) {
-      console.warn('wagmi signMessageAsync failed, trying fallback:', signErr)
-    }
+      const activeSmartAccount = zeroDevSmartAccount || onboarding.baseWalletAddress || ''
 
-    // Ensure a valid 65-byte hex signature (0x + 130 chars) matching backend regex /^0x[a-fA-F0-9]{130}$/
-    if (!signature || !signature.startsWith('0x') || signature.length !== 132) {
-      const hashSeed = stringToHex(`${challenge}:${evmSignerAddress || activeBaseAccount}`).replace(/^0x/, '')
-      signature = `0x${hashSeed.padEnd(130, '0').slice(0, 130)}`
-    }
+      if (!evmSignerAddress) {
+        throw new Error('No EVM signer is connected. Use "Switch account" and sign in again.')
+      }
+      if (!activeSmartAccount) {
+        throw new Error('Base Smart Account has not been derived yet. Please ensure Web3Auth is connected.')
+      }
 
-    let solanaSignature: string | undefined
-    if (solanaAddress) {
-      try {
-        let sig: unknown
-        if (solanaWallet && typeof (solanaWallet as any)?.signMessage === 'function') {
-          sig = await (solanaWallet as any).signMessage(new TextEncoder().encode(challenge))
-        } else if (solanaWallet && (solanaWallet as any)?.features?.['solana:signMessage']) {
-          const feature = (solanaWallet as any).features['solana:signMessage']
-          const account =
-            solanaWallet.accounts?.find((a: any) => a.address === solanaAddress) ||
-            solanaWallet.accounts?.[0]
-          if (account) {
-            const [output] = await feature.signMessage({
-              account,
-              message: new TextEncoder().encode(challenge),
-            })
-            sig = output.signature
-          }
-        }
-
-        if (!sig && nativeSolanaKey?.privateKeyBytes) {
-          const ed = getEd25519()
-          const msgBytes = new TextEncoder().encode(challenge)
-          sig = ed.sign(msgBytes, nativeSolanaKey.privateKeyBytes)
-        }
-
-        if (sig) {
-          solanaSignature = typeof sig === 'string' ? sig : toBase64(sig as Uint8Array)
-        }
-      } catch (solanaSignErr) {
-        console.warn('Solana message signing failed, falling back to native ed25519:', solanaSignErr)
-        if (nativeSolanaKey?.privateKeyBytes) {
-          const ed = getEd25519()
-          const msgBytes = new TextEncoder().encode(challenge)
-          const sigBytes = ed.sign(msgBytes, nativeSolanaKey.privateKeyBytes)
-          solanaSignature = toBase64(sigBytes)
-        } else {
-          throw new Error(
-            solanaSignErr instanceof Error
-              ? `Solana verification failed: ${solanaSignErr.message}`
-              : 'Solana signature verification could not be completed.',
-          )
+      let activeBaseAccount = activeSmartAccount
+      if (zeroDevProjectId && !passkeyEnrolled) {
+        setEnrollingPasskey(true)
+        try {
+          activeBaseAccount = await createZeroDevPasskeyAccount({
+            passkeyName: passkeyDisplayName(),
+            projectId: zeroDevProjectId,
+          })
+          setZeroDevSmartAccount(activeBaseAccount)
+          setPasskeyEnrolled(true)
+        } finally {
+          setEnrollingPasskey(false)
         }
       }
-    }
 
-    await onActivate({
-      baseSmartAccountAddress: activeBaseAccount,
-      solanaWalletAddress: solanaAddress || undefined,
-      solanaSignature,
-      evmSignerAddress: evmSignerAddress || activeBaseAccount,
-      merchantEmail: connectedEmail || registeredEmail || undefined,
-      challenge,
-      signature,
-    })
+      const challenge =
+        onboarding.walletSetupChallenge || `orki_wallet_setup:${onboarding.merchantId}`
+
+      // EVM signature (no synthetic fallback: a failure must surface, not be faked).
+      setSigning(true)
+      let signature: string
+      let solanaSignature: string | undefined
+      try {
+        signature = await signMessageAsync({ message: challenge })
+        if (!signature || !signature.startsWith('0x') || signature.length !== 132) {
+          throw new Error('Received an invalid EVM signature from the wallet. Please retry.')
+        }
+        if (solanaAddress) {
+          solanaSignature = await signSolanaChallenge(challenge)
+        }
+      } finally {
+        setSigning(false)
+      }
+
+      await onActivate({
+        baseSmartAccountAddress: activeBaseAccount,
+        solanaWalletAddress: solanaAddress,
+        solanaSignature,
+        evmSignerAddress,
+        merchantEmail: connectedEmail || registeredEmail || undefined,
+        challenge,
+        signature,
+      })
+    } catch (reason) {
+      console.error('[wallet-setup] activation failed', reason)
+      setActivationError(errorMessage(reason, 'Signing or passkey step failed.'))
+    }
   }
 
   const copyText = (value: string, key: string) => {
@@ -748,8 +817,20 @@ function WalletSetup({
   const canActivate =
     isConnected &&
     Boolean(zeroDevSmartAccount || onboarding.baseWalletAddress) &&
+    Boolean(evmSignerAddress) &&
     !derivingZeroDev &&
     !emailMismatch
+
+  const busy = saving || signing || enrollingPasskey
+  const visibleError = activationError || error
+
+  const solanaRowValue =
+    solanaAddress ||
+    (!isConnected
+      ? 'Not derived'
+      : solanaTimedOut
+        ? 'Solana wallet unavailable. Check the Solana chain config and RPC (see console).'
+        : 'Deriving Solana wallet from Web3Auth…')
 
   const recoveryVaultUrl = zeroDevSmartAccount
     ? `https://orki-organisation.github.io/orki-evm-emergency-recovery/?account=${zeroDevSmartAccount}`
@@ -898,11 +979,7 @@ function WalletSetup({
                   : zeroDevSmartAccount || 'Unable to derive Base Smart Account'
               }
               loading={derivingZeroDev}
-              onCopy={
-                zeroDevSmartAccount
-                  ? () => copyText(zeroDevSmartAccount, 'base')
-                  : undefined
-              }
+              onCopy={zeroDevSmartAccount ? () => copyText(zeroDevSmartAccount, 'base') : undefined}
               copied={copiedKey === 'base'}
             />
 
@@ -910,15 +987,9 @@ function WalletSetup({
               <AddressRow
                 label="Solana Embedded Wallet (Web3Auth Ed25519)"
                 badge={solanaAddress ? 'Primary Solana Settlement' : 'Optional / Multi-Chain'}
-                value={
-                  solanaAddress ||
-                  (isConnected
-                    ? 'Deriving Solana wallet from Web3Auth…'
-                    : 'Not derived')
-                }
-                onCopy={
-                  solanaAddress ? () => copyText(solanaAddress, 'solana') : undefined
-                }
+                value={solanaRowValue}
+                loading={!solanaAddress && !solanaTimedOut}
+                onCopy={solanaAddress ? () => copyText(solanaAddress, 'solana') : undefined}
                 copied={copiedKey === 'solana'}
               />
             </div>
@@ -928,9 +999,7 @@ function WalletSetup({
                 label="Web3Auth Passkey Root Signer (EVM EOA)"
                 badge="Kernel ECDSA Validator"
                 value={evmSignerAddress || 'No EVM signer returned'}
-                onCopy={
-                  evmSignerAddress ? () => copyText(evmSignerAddress, 'eoa') : undefined
-                }
+                onCopy={evmSignerAddress ? () => copyText(evmSignerAddress, 'eoa') : undefined}
                 copied={copiedKey === 'eoa'}
               />
             </div>
@@ -947,12 +1016,12 @@ function WalletSetup({
         </div>
       )}
 
-      {error && (
+      {visibleError && (
         <p
           role="alert"
           className="rounded-xl border border-rose-900/70 bg-rose-950/40 p-3 text-sm text-rose-200"
         >
-          {error}
+          {visibleError}
         </p>
       )}
 
@@ -1010,23 +1079,42 @@ function WalletSetup({
         </div>
       ) : (
         isConnected && (
-          <button
-            type="button"
-            onClick={() => void handleSignAndActivate()}
-            disabled={!canActivate || saving}
-            className="flex w-full items-center justify-center gap-2 rounded-xl bg-onion-700 px-4 py-3 text-sm font-semibold text-white transition hover:bg-onion-600 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            {saving ? (
-              <LoaderCircle className="h-4 w-4 animate-spin" />
-            ) : (
-              <Fingerprint className="h-4 w-4" />
+          <div className="space-y-2">
+            <button
+              type="button"
+              onClick={() => void handleSignAndActivate()}
+              disabled={!canActivate || busy}
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-onion-700 px-4 py-3 text-sm font-semibold text-white transition hover:bg-onion-600 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {busy ? (
+                <LoaderCircle className="h-4 w-4 animate-spin" />
+              ) : (
+                <Fingerprint className="h-4 w-4" />
+              )}
+              <span>
+                {enrollingPasskey
+                  ? 'Registering passkey…'
+                  : signing
+                    ? 'Waiting for signature…'
+                    : saving
+                      ? 'Verifying signature & activating merchant…'
+                      : 'Sign Attestation & Activate Merchant Wallets'}
+              </span>
+            </button>
+            {!canActivate && !busy && (
+              <p className="text-center text-[11px] text-slate-500">
+                {emailMismatch
+                  ? 'Sign in with the registered merchant email to continue.'
+                  : derivingZeroDev
+                    ? 'Deriving your Base smart account…'
+                    : !evmSignerAddress
+                      ? 'Waiting for an EVM signer from Web3Auth…'
+                      : !zeroDevSmartAccount
+                        ? 'Base smart account not available yet.'
+                        : null}
+              </p>
             )}
-            <span>
-              {saving
-                ? 'Verifying signature & activating merchant…'
-                : 'Sign Attestation & Activate Merchant Wallets'}
-            </span>
-          </button>
+          </div>
         )
       )}
 
@@ -1108,7 +1196,7 @@ function AddressRow({
         )}
       </div>
       <div className="mt-1.5 flex items-center justify-between gap-2">
-        <p className=" flex items-center gap-2 break-all font-mono text-xs text-slate-100">
+        <p className="flex items-center gap-2 break-all font-mono text-xs text-slate-100">
           {loading && <LoaderCircle className="h-3.5 w-3.5 shrink-0 animate-spin text-onion-300" />}
           <span>{value}</span>
         </p>
