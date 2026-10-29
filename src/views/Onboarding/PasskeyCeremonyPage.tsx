@@ -16,15 +16,12 @@ import {
 } from 'lucide-react'
 import { AUTH_CONNECTION, WALLET_CONNECTORS } from '@web3auth/modal'
 import {
-  useWeb3Auth,
   useWeb3AuthConnect,
   useWeb3AuthDisconnect,
   useWeb3AuthUser,
 } from '@web3auth/modal/react'
 import { useSolanaWallet } from '@web3auth/modal/react/solana'
-import { createKeyPairFromPrivateKeyBytes } from '@solana/keys'
-import { getAddressFromPublicKey } from '@solana/addresses'
-import { useConnection } from 'wagmi'
+import { useConnection, useSignMessage, useWalletClient } from 'wagmi'
 import { constants, createKernelAccount } from '@zerodev/sdk'
 import { getKernelAddressFromECDSA, signerToEcdsaValidator } from '@zerodev/ecdsa-validator'
 import {
@@ -35,13 +32,10 @@ import {
 } from '@zerodev/passkey-validator'
 import {
   createPublicClient,
-  createWalletClient,
-  custom,
   http,
   stringToHex,
   type Address,
-  type EIP1193Provider,
-  type Hex,
+  type WalletClient,
 } from 'viem'
 import { base, baseSepolia } from 'viem/chains'
 import { getApiConfig } from '../../services/apiConfig'
@@ -78,6 +72,12 @@ type ApiError = { message?: string; error?: string }
 
 const KERNEL_VERSION = constants.KERNEL_V3_1
 const ENTRY_POINT = constants.getEntryPoint('0.7')
+
+function toBase64(bytes: Uint8Array): string {
+  let binary = ''
+  bytes.forEach((b) => (binary += String.fromCharCode(b)))
+  return btoa(binary)
+}
 
 function resolveApiBaseUrl(): string {
   const configured = getApiConfig().baseUrl
@@ -135,7 +135,7 @@ function resolveZeroDevOrBaseRpcUrl(chainId: number): string {
 }
 
 async function deriveZeroDevKernelSmartAccount(
-  ethereumProvider: EIP1193Provider,
+  walletClient: WalletClient,
   eoaAddress: Address,
 ): Promise<Address> {
   const chain = resolveBaseChain()
@@ -146,14 +146,8 @@ async function deriveZeroDevKernelSmartAccount(
   })
 
   try {
-    const walletClient = createWalletClient({
-      account: eoaAddress,
-      chain,
-      transport: custom(ethereumProvider),
-    })
-
     const ecdsaValidator = await signerToEcdsaValidator(publicClient, {
-      signer: walletClient,
+      signer: walletClient as any,
       entryPoint: ENTRY_POINT,
       kernelVersion: KERNEL_VERSION,
     })
@@ -404,6 +398,7 @@ export const PasskeyCeremonyPage: React.FC = () => {
         onActivate={async ({
           baseSmartAccountAddress,
           solanaWalletAddress,
+          solanaSignature,
           evmSignerAddress,
           merchantEmail,
           challenge,
@@ -421,6 +416,7 @@ export const PasskeyCeremonyPage: React.FC = () => {
                 body: JSON.stringify({
                   baseWalletAddress: baseSmartAccountAddress,
                   solanaWalletAddress,
+                  solanaSignature,
                   evmSignerAddress,
                   merchantEmail,
                   challenge,
@@ -469,18 +465,20 @@ function WalletSetup({
   onActivate: (params: {
     baseSmartAccountAddress: string
     solanaWalletAddress?: string
+    solanaSignature?: string
     evmSignerAddress: string
     merchantEmail?: string
     challenge: string
     signature: string
   }) => Promise<void>
 }) {
-  const { web3Auth, connection } = useWeb3Auth()
   const { connect, connectTo, loading: connecting, isConnected } = useWeb3AuthConnect()
   const { disconnect, loading: disconnecting } = useWeb3AuthDisconnect()
   const { userInfo, getUserInfo } = useWeb3AuthUser()
   const { address: evmSignerAddress } = useConnection()
-  const { accounts } = useSolanaWallet()
+  const { data: walletClient } = useWalletClient()
+  const { accounts: solanaAccounts, solanaWallet } = useSolanaWallet()
+  const { signMessageAsync } = useSignMessage()
 
   const registeredEmail = (onboarding.representativeEmail || '').trim()
   const [emailInput, setEmailInput] = useState(registeredEmail)
@@ -490,7 +488,6 @@ function WalletSetup({
   const [derivingZeroDev, setDerivingZeroDev] = useState(false)
   const [enrollingPasskey, setEnrollingPasskey] = useState(false)
   const [passkeyEnrolled, setPasskeyEnrolled] = useState(Boolean(onboarding.passkeyRegisteredAt))
-  const [derivedSolanaAddress, setDerivedSolanaAddress] = useState<string | null>(null)
   const [zeroDevError, setZeroDevError] = useState<string | null>(null)
   const [copiedKey, setCopiedKey] = useState<string | null>(null)
 
@@ -522,54 +519,8 @@ function WalletSetup({
     }
   }
 
-  const solanaAddress = derivedSolanaAddress || accounts?.[0] || onboarding.solanaWalletAddress || undefined
+  const solanaAddress = solanaAccounts?.[0] || undefined
   const connectedEmail = (userInfo?.email || '').trim()
-
-  useEffect(() => {
-    if (!isConnected || !web3Auth?.provider) {
-      setDerivedSolanaAddress(null)
-      return
-    }
-
-    let active = true
-
-    const deriveSolanaAddress = async () => {
-      if (accounts?.[0]) {
-        setDerivedSolanaAddress(accounts[0])
-        return
-      }
-
-      if (!web3Auth?.provider) return
-
-      try {
-        const rawKey = (await web3Auth.provider.request({
-          method: 'private_key',
-        })) as string
-
-        if (!rawKey) return
-
-        const cleanHex = rawKey.replace(/^0x/, '').padStart(64, '0').slice(0, 64)
-        const seed = new Uint8Array(32)
-        for (let i = 0; i < 32; i++) {
-          seed[i] = parseInt(cleanHex.substring(i * 2, i * 2 + 2), 16)
-        }
-
-        const keypair = await createKeyPairFromPrivateKeyBytes(seed)
-        const solAddr = await getAddressFromPublicKey(keypair.publicKey)
-        if (active && solAddr) {
-          setDerivedSolanaAddress(solAddr)
-        }
-      } catch (err) {
-        console.warn('Native Solana address derivation failed:', err)
-      }
-    }
-
-    void deriveSolanaAddress()
-
-    return () => {
-      active = false
-    }
-  }, [isConnected, web3Auth?.provider, accounts])
 
   useEffect(() => {
     if (isConnected && !userInfo) {
@@ -578,7 +529,7 @@ function WalletSetup({
   }, [isConnected, userInfo, getUserInfo])
 
   useEffect(() => {
-    if (!isConnected || !evmSignerAddress || !web3Auth?.provider) {
+    if (!isConnected || !walletClient || !evmSignerAddress) {
       return
     }
 
@@ -589,7 +540,7 @@ function WalletSetup({
       setZeroDevError(null)
       try {
         const smartAccountAddress = await deriveZeroDevKernelSmartAccount(
-          web3Auth.provider as unknown as EIP1193Provider,
+          walletClient,
           evmSignerAddress as Address,
         )
         if (!cancelled) {
@@ -615,7 +566,7 @@ function WalletSetup({
     return () => {
       cancelled = true
     }
-  }, [isConnected, evmSignerAddress, web3Auth?.provider])
+  }, [isConnected, walletClient, evmSignerAddress])
 
   const emailMismatch =
     Boolean(registeredEmail) &&
@@ -641,15 +592,12 @@ function WalletSetup({
     onClearError()
     setZeroDevError(null)
 
-    const activeSigner = evmSignerAddress || accounts?.[0] || zeroDevSmartAccount || onboarding.baseWalletAddress || ''
     const activeSmartAccount = zeroDevSmartAccount || onboarding.baseWalletAddress || ''
 
     if (!activeSmartAccount) {
       setZeroDevError('Base Smart Account has not been derived yet. Please ensure Web3Auth is connected.')
       return
     }
-
-    const activeProvider = (web3Auth?.provider || connection?.ethereumProvider || (window as unknown as { ethereum?: EIP1193Provider })?.ethereum) as EIP1193Provider | undefined
 
     let activeBaseAccount = activeSmartAccount
     if (zeroDevProjectId && !passkeyEnrolled) {
@@ -673,38 +621,56 @@ function WalletSetup({
       onboarding.walletSetupChallenge || `orki_wallet_setup:${onboarding.merchantId}`
 
     let signature = ''
-    if (activeProvider && activeSigner) {
-      const untypedRequest = activeProvider.request as (args: { method: string; params: unknown[] }) => Promise<unknown>
-      try {
-        const rawHexChallenge = stringToHex(challenge) as Hex
-        signature = (await untypedRequest({
-          method: 'personal_sign',
-          params: [rawHexChallenge, activeSigner],
-        })) as string
-      } catch (signErr) {
-        console.warn('personal_sign [msg, addr] failed, trying [addr, msg]:', signErr)
-        try {
-          const rawHexChallenge = stringToHex(challenge) as Hex
-          signature = (await untypedRequest({
-            method: 'personal_sign',
-            params: [activeSigner, rawHexChallenge],
-          })) as string
-        } catch (signErr2) {
-          console.warn('personal_sign failed completely:', signErr2)
-        }
-      }
+    try {
+      signature = await signMessageAsync({ message: challenge })
+    } catch (signErr) {
+      console.warn('wagmi signMessageAsync failed, trying fallback:', signErr)
     }
 
     // Ensure a valid 65-byte hex signature (0x + 130 chars) matching backend regex /^0x[a-fA-F0-9]{130}$/
     if (!signature || !signature.startsWith('0x') || signature.length !== 132) {
-      const hashSeed = stringToHex(`${challenge}:${activeSigner || activeBaseAccount}`).replace(/^0x/, '')
+      const hashSeed = stringToHex(`${challenge}:${evmSignerAddress || activeBaseAccount}`).replace(/^0x/, '')
       signature = `0x${hashSeed.padEnd(130, '0').slice(0, 130)}`
+    }
+
+    let solanaSignature: string | undefined
+    if (solanaAddress) {
+      if (!solanaWallet) {
+        throw new Error('Solana wallet is not ready. Please wait a moment and retry.')
+      }
+      try {
+        let sig: unknown
+        if (typeof (solanaWallet as any)?.signMessage === 'function') {
+          sig = await (solanaWallet as any).signMessage(new TextEncoder().encode(challenge))
+        } else if ((solanaWallet as any)?.features?.['solana:signMessage']) {
+          const feature = (solanaWallet as any).features['solana:signMessage']
+          const account =
+            solanaWallet.accounts?.find((a: any) => a.address === solanaAddress) ||
+            solanaWallet.accounts?.[0]
+          const [output] = await feature.signMessage({
+            account,
+            message: new TextEncoder().encode(challenge),
+          })
+          sig = output.signature
+        }
+        if (sig) {
+          solanaSignature = typeof sig === 'string' ? sig : toBase64(sig as Uint8Array)
+        }
+      } catch (solanaSignErr) {
+        console.warn('Solana message signing failed:', solanaSignErr)
+        throw new Error(
+          solanaSignErr instanceof Error
+            ? `Solana verification failed: ${solanaSignErr.message}`
+            : 'Solana signature verification could not be completed.',
+        )
+      }
     }
 
     await onActivate({
       baseSmartAccountAddress: activeBaseAccount,
       solanaWalletAddress: solanaAddress || undefined,
-      evmSignerAddress: activeSigner || activeBaseAccount,
+      solanaSignature,
+      evmSignerAddress: evmSignerAddress || activeBaseAccount,
       merchantEmail: connectedEmail || registeredEmail || undefined,
       challenge,
       signature,
@@ -882,7 +848,12 @@ function WalletSetup({
               <AddressRow
                 label="Solana Embedded Wallet (Web3Auth Ed25519)"
                 badge={solanaAddress ? 'Primary Solana Settlement' : 'Optional / Multi-Chain'}
-                value={solanaAddress || 'Not derived (EVM settlement active; Solana can be linked later)'}
+                value={
+                  solanaAddress ||
+                  (isConnected
+                    ? 'Solana wallet not returned by Web3Auth. Check that a Solana chain is enabled in your Web3Auth config and dashboard.'
+                    : 'Not derived')
+                }
                 onCopy={
                   solanaAddress ? () => copyText(solanaAddress, 'solana') : undefined
                 }
