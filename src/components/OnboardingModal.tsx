@@ -175,12 +175,12 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
             <ChevronRight className="w-3 h-3 text-slate-300" />
             <span
               className={`px-2 py-0.5 rounded font-medium text-[11px] ${
-                currentStep === 'SUMSUB'
+                currentStep === 'SUMSUB' || currentStep === 'BUSINESS_VERIFICATION'
                   ? 'bg-onion-100 text-onion-900 font-semibold'
                   : 'text-slate-400'
               }`}
             >
-              3. SumSub KYB
+              3. Business Verification
             </span>
             <ChevronRight className="w-3 h-3 text-slate-300" />
             <span
@@ -341,15 +341,15 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
             </div>
           )}
 
-          {/* STEP 3: SUMSUB IDENTITY VERIFICATION */}
-          {currentStep === 'SUMSUB' && (
+          {/* STEP 3: BUSINESS VERIFICATION */}
+          {(currentStep === 'SUMSUB' || currentStep === 'BUSINESS_VERIFICATION') && (
             <div className="space-y-4">
               <div>
                 <h3 className="text-sm font-semibold text-slate-900">
-                  Business Identity Verification (SumSub)
+                  Business Identity Verification
                 </h3>
                 <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-                  We verify your trade license and representative credentials via SumSub. A verification session will open in a secure window.
+                  We verify your corporate trade license and authorized representative credentials. A verification session will open in a secure window.
                 </p>
               </div>
 

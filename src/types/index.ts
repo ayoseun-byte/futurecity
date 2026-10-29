@@ -31,6 +31,7 @@ export type OnboardingStep =
   | 'NOTICE'
   | 'KYB_INFORMATION'
   | 'TERMS'
+  | 'BUSINESS_VERIFICATION'
   | 'SUMSUB'
   | 'PASSKEY'
   | 'COMPLETED'

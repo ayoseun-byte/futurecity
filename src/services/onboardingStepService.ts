@@ -1,12 +1,15 @@
 import type { Merchant, OnboardingStep } from '../types'
 
-export const ONBOARDING_STEP_RANKS: Record<OnboardingStep, number> = {
+export const ONBOARDING_STEP_RANKS: Record<string, number> = {
   OPT_IN: 0,
   NOTICE: 1,
   KYB_INFORMATION: 2,
   TERMS: 3,
+  BUSINESS_VERIFICATION: 4,
+  VERIFICATION: 4,
   SUMSUB: 4,
   PASSKEY: 5,
+  WALLET: 5,
   COMPLETED: 6,
 }
 
@@ -15,7 +18,7 @@ export const ONBOARDING_STEPS_BY_RANK: (OnboardingStep | null)[] = [
   'NOTICE',
   'KYB_INFORMATION',
   'TERMS',
-  'SUMSUB',
+  'BUSINESS_VERIFICATION',
   'PASSKEY',
   null, // 6 is COMPLETED
 ]

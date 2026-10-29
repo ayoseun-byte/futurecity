@@ -1137,13 +1137,13 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
               Review Terms
             </button>
           )}
-          {derivedStep === 'SUMSUB' && (
+          {(derivedStep === 'SUMSUB' || derivedStep === 'BUSINESS_VERIFICATION') && (
             <button
               onClick={handleOpenSumsubTab}
               disabled={apiBusy}
               className="mat-btn-primary px-3 py-1.5 text-xs font-medium ml-2 shadow-xs"
             >
-              SumSub KYB
+              Verify Business
             </button>
           )}
           {derivedStep === 'PASSKEY' && (
@@ -1289,7 +1289,7 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
                   <ChevronRight className="w-4 h-4" />
                 </button>
               )}
-              {derivedStep === 'SUMSUB' && (
+              {(derivedStep === 'SUMSUB' || derivedStep === 'BUSINESS_VERIFICATION') && (
                 <div className="space-y-2">
                   <button
                     onClick={handleOpenSumsubTab}
@@ -1297,7 +1297,7 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
                     className="mat-btn-primary px-5 py-2.5 text-xs font-semibold flex items-center space-x-2 shadow-sm disabled:opacity-50"
                   >
                     {apiBusy ? <RefreshCw className="w-4 h-4 animate-spin" /> : <ExternalLink className="w-4 h-4" />}
-                    <span>{apiBusy ? 'Connecting to SumSub…' : 'Open SumSub Verification (New Tab)'}</span>
+                    <span>{apiBusy ? 'Connecting to Verification Rail…' : 'Open Business Verification (New Tab)'}</span>
                   </button>
                   {sumsubUrl && (
                     <div className="flex items-center gap-2 pt-1 text-xs">
@@ -1307,7 +1307,7 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
                         rel="noopener noreferrer"
                         className="text-xs text-onion font-bold hover:underline inline-flex items-center gap-1"
                       >
-                        <ExternalLink className="w-3.5 h-3.5" /> Direct SumSub Link
+                        <ExternalLink className="w-3.5 h-3.5" /> Direct Verification Link
                       </a>
                       <button
                         type="button"
@@ -1375,14 +1375,14 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
             </div>
 
             <div className={`p-2.5 rounded-lg text-xs border ${
-              derivedStep === 'SUMSUB'
+              derivedStep === 'SUMSUB' || derivedStep === 'BUSINESS_VERIFICATION'
                 ? 'bg-white border-onion-300 shadow-xs ring-1 ring-onion-200'
                 : merchant.sumsubCompletedAt
                 ? 'bg-emerald-50/60 border-emerald-200 text-emerald-800'
                 : 'bg-slate-50 border-slate-200 text-slate-400'
             }`}>
               <p className="text-[10px] font-semibold uppercase tracking-wider">Step 4</p>
-              <p className="font-bold text-xs mt-0.5">SumSub KYB Check</p>
+              <p className="font-bold text-xs mt-0.5">Business Verification</p>
             </div>
 
             <div className={`p-2.5 rounded-lg text-xs border ${

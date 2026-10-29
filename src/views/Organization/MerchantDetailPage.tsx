@@ -626,7 +626,7 @@ export const MerchantDetailPage: React.FC<MerchantDetailPageProps> = ({
                 <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${
                   backendDetail?.offrampEligible ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
                 }`}>
-                  {backendDetail?.offrampEligible ? 'Fiat Off-Ramp Active' : 'Off-Ramp Gated (Due KYB Required)'}
+                  {backendDetail?.offrampEligible ? 'Fiat Off-Ramp Active' : 'Off-Ramp Gated (Verification Required)'}
                 </span>
               </div>
 
@@ -645,7 +645,7 @@ export const MerchantDetailPage: React.FC<MerchantDetailPageProps> = ({
 
                 <div className="p-3.5 bg-white rounded-xl border border-slate-200/80 space-y-2">
                   <div className="flex justify-between items-center">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Layer 2: Due-Verified</span>
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Layer 2: Fiat Settlement Verification</span>
                     <span className="font-mono text-[11px] font-bold text-slate-700 bg-slate-100 px-2 py-0.5 rounded">
                       {String((backendDetail?.kybLayers as Record<string, any>)?.layer2?.dueKybStatus || 'not_started')}
                     </span>
@@ -677,7 +677,7 @@ export const MerchantDetailPage: React.FC<MerchantDetailPageProps> = ({
                       className="text-indigo-600 hover:underline font-semibold flex items-center gap-1"
                     >
                       <ExternalLink className="w-3.5 h-3.5" />
-                      Due Recipient Verification Link
+                      Fiat Settlement Verification Link
                     </a>
                   )}
                 </div>
