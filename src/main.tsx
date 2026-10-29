@@ -27,7 +27,7 @@ const baseChainConfig = {
 
 const solanaChainConfig = {
   chainNamespace: 'solana' as const,
-  chainId: isMainnet ? '0x1' : '0x67', // 0x1 Mainnet or 0x67 Devnet
+  chainId: isMainnet ? '0x65' : '0x67', // 0x65 Mainnet or 0x67 Devnet
   rpcTarget: isMainnet ? 'https://api.mainnet-beta.solana.com' : 'https://api.devnet.solana.com',
   displayName: isMainnet ? 'Solana' : 'Solana Devnet',
   blockExplorerUrl: isMainnet

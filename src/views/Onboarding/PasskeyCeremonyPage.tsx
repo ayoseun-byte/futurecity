@@ -14,13 +14,16 @@ import {
   ShieldCheck,
   Wallet,
 } from 'lucide-react'
-import { AUTH_CONNECTION, WALLET_CONNECTORS } from '@web3auth/modal'
+import { AUTH_CONNECTION, WALLET_CONNECTORS, getED25519Key } from '@web3auth/modal'
 import {
+  useWeb3Auth,
   useWeb3AuthConnect,
   useWeb3AuthDisconnect,
   useWeb3AuthUser,
 } from '@web3auth/modal/react'
 import { useSolanaWallet } from '@web3auth/modal/react/solana'
+import { getEd25519 } from '@toruslabs/metadata-helpers'
+import { getBase58Decoder } from '@solana/kit'
 import { useConnection, useSignMessage, useWalletClient } from 'wagmi'
 import { constants, createKernelAccount } from '@zerodev/sdk'
 import { getKernelAddressFromECDSA, signerToEcdsaValidator } from '@zerodev/ecdsa-validator'
@@ -472,6 +475,7 @@ function WalletSetup({
     signature: string
   }) => Promise<void>
 }) {
+  const { web3Auth } = useWeb3Auth()
   const { connect, connectTo, loading: connecting, isConnected } = useWeb3AuthConnect()
   const { disconnect, loading: disconnecting } = useWeb3AuthDisconnect()
   const { userInfo, getUserInfo } = useWeb3AuthUser()
@@ -488,6 +492,10 @@ function WalletSetup({
   const [derivingZeroDev, setDerivingZeroDev] = useState(false)
   const [enrollingPasskey, setEnrollingPasskey] = useState(false)
   const [passkeyEnrolled, setPasskeyEnrolled] = useState(Boolean(onboarding.passkeyRegisteredAt))
+  const [nativeSolanaKey, setNativeSolanaKey] = useState<{
+    address: string
+    privateKeyBytes: Uint8Array
+  } | null>(null)
   const [zeroDevError, setZeroDevError] = useState<string | null>(null)
   const [copiedKey, setCopiedKey] = useState<string | null>(null)
 
@@ -519,7 +527,45 @@ function WalletSetup({
     }
   }
 
-  const solanaAddress = solanaAccounts?.[0] || undefined
+  useEffect(() => {
+    if (!isConnected || !web3Auth?.provider) {
+      setNativeSolanaKey(null)
+      return
+    }
+
+    let active = true
+
+    const deriveNativeSolana = async () => {
+      try {
+        const rawKey =
+          ((await web3Auth.provider.request({ method: 'solana_privateKey' })) as string) ||
+          ((await web3Auth.provider.request({ method: 'private_key' })) as string)
+        if (!rawKey) return
+
+        const cleanHex = rawKey.replace(/^0x/, '').padStart(64, '0').slice(0, 64)
+        const { sk, pk } = getED25519Key(cleanHex)
+        const decoder = getBase58Decoder()
+        const address = decoder.decode(pk)
+
+        if (active && address) {
+          setNativeSolanaKey({
+            address,
+            privateKeyBytes: sk.slice(0, 32),
+          })
+        }
+      } catch (err) {
+        console.warn('Native Solana derivation via Web3Auth failed:', err)
+      }
+    }
+
+    void deriveNativeSolana()
+
+    return () => {
+      active = false
+    }
+  }, [isConnected, web3Auth?.provider])
+
+  const solanaAddress = solanaAccounts?.[0] || nativeSolanaKey?.address || undefined
   const connectedEmail = (userInfo?.email || '').trim()
 
   useEffect(() => {
@@ -635,34 +681,47 @@ function WalletSetup({
 
     let solanaSignature: string | undefined
     if (solanaAddress) {
-      if (!solanaWallet) {
-        throw new Error('Solana wallet is not ready. Please wait a moment and retry.')
-      }
       try {
         let sig: unknown
-        if (typeof (solanaWallet as any)?.signMessage === 'function') {
+        if (solanaWallet && typeof (solanaWallet as any)?.signMessage === 'function') {
           sig = await (solanaWallet as any).signMessage(new TextEncoder().encode(challenge))
-        } else if ((solanaWallet as any)?.features?.['solana:signMessage']) {
+        } else if (solanaWallet && (solanaWallet as any)?.features?.['solana:signMessage']) {
           const feature = (solanaWallet as any).features['solana:signMessage']
           const account =
             solanaWallet.accounts?.find((a: any) => a.address === solanaAddress) ||
             solanaWallet.accounts?.[0]
-          const [output] = await feature.signMessage({
-            account,
-            message: new TextEncoder().encode(challenge),
-          })
-          sig = output.signature
+          if (account) {
+            const [output] = await feature.signMessage({
+              account,
+              message: new TextEncoder().encode(challenge),
+            })
+            sig = output.signature
+          }
         }
+
+        if (!sig && nativeSolanaKey?.privateKeyBytes) {
+          const ed = getEd25519()
+          const msgBytes = new TextEncoder().encode(challenge)
+          sig = ed.sign(msgBytes, nativeSolanaKey.privateKeyBytes)
+        }
+
         if (sig) {
           solanaSignature = typeof sig === 'string' ? sig : toBase64(sig as Uint8Array)
         }
       } catch (solanaSignErr) {
-        console.warn('Solana message signing failed:', solanaSignErr)
-        throw new Error(
-          solanaSignErr instanceof Error
-            ? `Solana verification failed: ${solanaSignErr.message}`
-            : 'Solana signature verification could not be completed.',
-        )
+        console.warn('Solana message signing failed, falling back to native ed25519:', solanaSignErr)
+        if (nativeSolanaKey?.privateKeyBytes) {
+          const ed = getEd25519()
+          const msgBytes = new TextEncoder().encode(challenge)
+          const sigBytes = ed.sign(msgBytes, nativeSolanaKey.privateKeyBytes)
+          solanaSignature = toBase64(sigBytes)
+        } else {
+          throw new Error(
+            solanaSignErr instanceof Error
+              ? `Solana verification failed: ${solanaSignErr.message}`
+              : 'Solana signature verification could not be completed.',
+          )
+        }
       }
     }
 
@@ -851,7 +910,7 @@ function WalletSetup({
                 value={
                   solanaAddress ||
                   (isConnected
-                    ? 'Solana wallet not returned by Web3Auth. Check that a Solana chain is enabled in your Web3Auth config and dashboard.'
+                    ? 'Deriving Solana wallet from Web3Auth…'
                     : 'Not derived')
                 }
                 onCopy={
