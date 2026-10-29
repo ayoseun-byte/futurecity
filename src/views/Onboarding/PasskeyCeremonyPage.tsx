@@ -68,7 +68,7 @@ type WalletActivationResponse = {
   activatedAt?: string
   wallets: {
     base: string
-    solana: string
+    solana?: string | null
     evmSigner?: string
   }
   message?: string
@@ -434,7 +434,7 @@ export const PasskeyCeremonyPage: React.FC = () => {
                     status: 'active',
                     nextStep: null,
                     baseWalletAddress: result.wallets.base,
-                    solanaWalletAddress: result.wallets.solana,
+                    solanaWalletAddress: result.wallets.solana ?? prev.solanaWalletAddress,
                     activatedAt: result.activatedAt || new Date().toISOString(),
                   }
                 : prev,
@@ -465,7 +465,7 @@ function WalletSetup({
   onClearError: () => void
   onActivate: (params: {
     baseSmartAccountAddress: string
-    solanaWalletAddress: string
+    solanaWalletAddress?: string
     evmSignerAddress: string
     merchantEmail?: string
     challenge: string
@@ -635,7 +635,7 @@ function WalletSetup({
   }
 
   const handleSignAndActivate = async () => {
-    if (!evmSignerAddress || !zeroDevSmartAccount || !solanaAddress || !web3Auth?.provider) {
+    if (!evmSignerAddress || !zeroDevSmartAccount || !web3Auth?.provider) {
       return
     }
 
@@ -673,7 +673,7 @@ function WalletSetup({
 
     await onActivate({
       baseSmartAccountAddress: activeBaseAccount,
-      solanaWalletAddress: solanaAddress,
+      solanaWalletAddress: solanaAddress || undefined,
       evmSignerAddress,
       merchantEmail: connectedEmail || registeredEmail || undefined,
       challenge,
@@ -689,7 +689,7 @@ function WalletSetup({
 
   const canActivate =
     isConnected &&
-    Boolean(zeroDevSmartAccount && solanaAddress && evmSignerAddress) &&
+    Boolean(zeroDevSmartAccount && evmSignerAddress) &&
     !derivingZeroDev &&
     !emailMismatch
 
@@ -851,8 +851,8 @@ function WalletSetup({
             <div className="border-t border-slate-800/80 pt-3">
               <AddressRow
                 label="Solana Embedded Wallet (Web3Auth Ed25519)"
-                badge="Primary Solana Settlement"
-                value={solanaAddress || 'No Solana address returned'}
+                badge={solanaAddress ? 'Primary Solana Settlement' : 'Optional / Multi-Chain'}
+                value={solanaAddress || 'Not derived (EVM settlement active; Solana can be linked later)'}
                 onCopy={
                   solanaAddress ? () => copyText(solanaAddress, 'solana') : undefined
                 }
@@ -900,7 +900,7 @@ function WalletSetup({
             <span>Merchant Wallets & Passkey Verified — Account Active</span>
           </div>
           <p className="text-xs leading-5 text-emerald-100/80">
-            Your ZeroDev Base Smart Account and Solana wallet are now bound to your merchant profile
+            Your ZeroDev Base Smart Account {solanaAddress ? 'and Solana wallet are' : 'is'} now bound to your merchant profile
             and ready for atomic split settlements. Your PSP has been notified via signed webhook
             that your Orki rail is active.
           </p>
