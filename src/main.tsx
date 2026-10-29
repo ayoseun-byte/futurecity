@@ -1,7 +1,7 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { MFA_FACTOR, MFA_LEVELS, WEB3AUTH_NETWORK } from '@web3auth/modal'
+import { WEB3AUTH_NETWORK } from '@web3auth/modal'
 import { Web3AuthProvider, type Web3AuthContextConfig } from '@web3auth/modal/react'
 import { SolanaProvider } from '@web3auth/modal/react/solana'
 import { WagmiProvider } from '@web3auth/modal/react/wagmi'
@@ -16,11 +16,6 @@ const web3AuthConfig: Web3AuthContextConfig = {
     web3AuthNetwork: isMainnet
       ? WEB3AUTH_NETWORK.SAPPHIRE_MAINNET
       : WEB3AUTH_NETWORK.SAPPHIRE_DEVNET,
-    mfaLevel: MFA_LEVELS.MANDATORY,
-    mfaSettings: {
-      [MFA_FACTOR.DEVICE]: { enable: true, priority: 1, mandatory: true },
-      [MFA_FACTOR.PASSKEYS]: { enable: true, priority: 2, mandatory: true },
-    },
   },
 }
 const queryClient = new QueryClient()

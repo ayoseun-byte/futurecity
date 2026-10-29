@@ -16,8 +16,6 @@ import {
 } from 'lucide-react'
 import { AUTH_CONNECTION, WALLET_CONNECTORS } from '@web3auth/modal'
 import {
-  useEnableMFA,
-  useManageMFA,
   useWeb3Auth,
   useWeb3AuthConnect,
   useWeb3AuthDisconnect,
@@ -27,6 +25,12 @@ import { useSolanaWallet } from '@web3auth/modal/react/solana'
 import { useConnection } from 'wagmi'
 import { constants, createKernelAccount } from '@zerodev/sdk'
 import { getKernelAddressFromECDSA, signerToEcdsaValidator } from '@zerodev/ecdsa-validator'
+import {
+  toPasskeyValidator,
+  toWebAuthnKey,
+  WebAuthnMode,
+  PasskeyValidatorContractVersion,
+} from '@zerodev/passkey-validator'
 import {
   createPublicClient,
   createWalletClient,
@@ -156,6 +160,46 @@ async function deriveZeroDevKernelSmartAccount(
       initCodeHash,
     })
   }
+}
+
+async function createZeroDevPasskeyAccount({
+  passkeyName,
+  projectId,
+}: {
+  passkeyName: string
+  projectId: string
+}): Promise<Address> {
+  const chain = resolveBaseChain()
+  const rpcUrl = resolveZeroDevOrBaseRpcUrl(chain.id)
+  const publicClient = createPublicClient({
+    chain,
+    transport: http(rpcUrl),
+  })
+
+  const webAuthnKey = await toWebAuthnKey({
+    passkeyName,
+    passkeyServerUrl: `https://passkeys.zerodev.app/api/v3/${projectId}`,
+    mode: WebAuthnMode.Register,
+    passkeyServerHeaders: {},
+  })
+
+  const passkeyValidator = await toPasskeyValidator(publicClient, {
+    webAuthnKey,
+    entryPoint: ENTRY_POINT,
+    kernelVersion: KERNEL_VERSION,
+    validatorContractVersion: PasskeyValidatorContractVersion.V0_0_3_PATCHED,
+  })
+
+  const kernelAccount = await createKernelAccount(publicClient, {
+    plugins: {
+      sudo: passkeyValidator,
+    },
+    entryPoint: ENTRY_POINT,
+    kernelVersion: KERNEL_VERSION,
+    index: 0n,
+  })
+
+  return kernelAccount.address
 }
 
 async function apiRequest<T>(apiBaseUrl: string, path: string, session: string, init?: RequestInit): Promise<T> {
@@ -405,9 +449,7 @@ function WalletSetup({
   const { web3Auth } = useWeb3Auth()
   const { connect, connectTo, loading: connecting, isConnected } = useWeb3AuthConnect()
   const { disconnect, loading: disconnecting } = useWeb3AuthDisconnect()
-  const { userInfo, isMFAEnabled, getUserInfo } = useWeb3AuthUser()
-  const { enableMFA, loading: enablingMfa } = useEnableMFA()
-  const { manageMFA, loading: managingMfa } = useManageMFA()
+  const { userInfo, getUserInfo } = useWeb3AuthUser()
   const { address: evmSignerAddress } = useConnection()
   const { accounts } = useSolanaWallet()
 
@@ -417,8 +459,38 @@ function WalletSetup({
     onboarding.baseWalletAddress || null,
   )
   const [derivingZeroDev, setDerivingZeroDev] = useState(false)
+  const [enrollingPasskey, setEnrollingPasskey] = useState(false)
+  const [passkeyEnrolled, setPasskeyEnrolled] = useState(Boolean(onboarding.passkeyRegisteredAt))
   const [zeroDevError, setZeroDevError] = useState<string | null>(null)
   const [copiedKey, setCopiedKey] = useState<string | null>(null)
+
+  const zeroDevProjectId = (import.meta.env.VITE_ZERODEV_PROJECT_ID || '').trim()
+
+  const handleEnrollZeroDevPasskey = async () => {
+    if (!zeroDevProjectId) {
+      setZeroDevError(
+        'VITE_ZERODEV_PROJECT_ID is not configured in your environment. Using deterministic smart account derivation instead.',
+      )
+      return
+    }
+    setEnrollingPasskey(true)
+    setZeroDevError(null)
+    try {
+      const passkeyName = (registeredEmail || connectedEmail || onboarding.legalBusinessName || 'Orki Merchant Passkey').trim()
+      const smartAccountAddress = await createZeroDevPasskeyAccount({
+        passkeyName,
+        projectId: zeroDevProjectId,
+      })
+      setZeroDevSmartAccount(smartAccountAddress)
+      setPasskeyEnrolled(true)
+    } catch (reason: unknown) {
+      setZeroDevError(
+        reason instanceof Error ? reason.message : 'Failed to register biometric passkey with ZeroDev.',
+      )
+    } finally {
+      setEnrollingPasskey(false)
+    }
+  }
 
   const solanaAddress = accounts?.[0] || onboarding.solanaWalletAddress || undefined
   const connectedEmail = (userInfo?.email || '').trim()
@@ -624,12 +696,12 @@ function WalletSetup({
               </span>
               <span
                 className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                  isMFAEnabled || userInfo?.isMfaEnabled
+                  passkeyEnrolled
                     ? 'bg-emerald-950 text-emerald-300 border border-emerald-800/60'
-                    : 'bg-amber-950 text-amber-300 border border-amber-800/60'
+                    : 'bg-indigo-950 text-indigo-300 border border-indigo-800/60'
                 }`}
               >
-                {isMFAEnabled || userInfo?.isMfaEnabled ? 'Passkey MFA Active' : 'MFA Enforced'}
+                {passkeyEnrolled ? 'Hardware Passkey Active' : 'Signer Authenticated'}
               </span>
             </div>
             <button
@@ -799,31 +871,45 @@ function WalletSetup({
         )
       )}
 
-      {/* Passkey & Device MFA Management Section */}
+      {/* ZeroDev Biometric Passkey Enrollment Section */}
       <div className="border-t border-slate-800 pt-5">
-        <div className="flex items-start justify-between gap-3">
+        <div className="flex flex-col gap-3 rounded-2xl border border-slate-800 bg-slate-950/60 p-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-start gap-3">
             <Fingerprint className="mt-0.5 h-5 w-5 shrink-0 text-onion-300" />
             <div>
               <h2 className="text-sm font-semibold text-white">
-                Passkey & Device Recovery Factors
+                ZeroDev Native Hardware Passkey (Base ERC-4337)
               </h2>
               <p className="mt-1 text-xs leading-5 text-slate-400">
-                Web3Auth enforces mandatory Device + Passkey MFA on your merchant email account, while
-                ZeroDev secures your Base smart contract wallet for gas-sponsored USDC settlements.
+                Register a biometric passkey (Face ID, Touch ID, or Windows Hello) to serve as the
+                sudo validator for your Base smart contract wallet, powered by ZeroDev Kernel v3.1.
               </p>
             </div>
           </div>
           {isConnected && (
             <button
               type="button"
-              onClick={() =>
-                void (isMFAEnabled || userInfo?.isMfaEnabled ? manageMFA() : enableMFA())
-              }
-              disabled={enablingMfa || managingMfa}
-              className="shrink-0 rounded-lg border border-slate-700 px-3 py-1.5 text-xs font-medium text-slate-200 transition hover:bg-slate-800 disabled:opacity-50"
+              onClick={() => void handleEnrollZeroDevPasskey()}
+              disabled={enrollingPasskey || passkeyEnrolled}
+              className={`shrink-0 rounded-xl px-4 py-2.5 text-xs font-semibold transition ${
+                passkeyEnrolled
+                  ? 'border border-emerald-800/80 bg-emerald-950/40 text-emerald-300 cursor-default'
+                  : 'bg-onion-700 text-white hover:bg-onion-600 disabled:opacity-50'
+              }`}
             >
-              {isMFAEnabled || userInfo?.isMfaEnabled ? 'Manage Passkey MFA' : 'Enable Passkey MFA'}
+              {enrollingPasskey ? (
+                <span className="flex items-center gap-1.5">
+                  <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> Registering passkey…
+                </span>
+              ) : passkeyEnrolled ? (
+                <span className="flex items-center gap-1.5">
+                  <Check className="h-3.5 w-3.5 text-emerald-400" /> Hardware Passkey Enrolled
+                </span>
+              ) : (
+                <span className="flex items-center gap-1.5">
+                  <Fingerprint className="h-3.5 w-3.5" /> Enroll Hardware Passkey
+                </span>
+              )}
             </button>
           )}
         </div>
