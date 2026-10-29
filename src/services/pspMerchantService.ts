@@ -197,96 +197,209 @@ function mapMerchant(record: PspMerchantRecord, organizationId: string): Merchan
   }
 }
 
-export async function fetchPspMerchants(organizationId: string): Promise<Merchant[] | null> {
+export async function fetchAllMerchantsFromBackend(): Promise<Merchant[]> {
   const config = getApiConfig()
-  if (!config.pspKey) return null
-
-  const merchants: PspMerchantRecord[] = []
-  let lastPage = 1
-
-  for (let pageNumber = 1; pageNumber <= lastPage; pageNumber += 1) {
-    const page = await requestApi<PspMerchantPage>(
+  if (!config.adminKey) return []
+  try {
+    const res = await requestApi<{ data: PspMerchantRecord[] }>(
       config,
       'GET',
-      `/api/v1/psp/merchants?page=${pageNumber}`,
+      '/api/v1/admin/merchants?perPage=100',
       undefined,
-      'psp'
+      'admin'
     )
-    merchants.push(...page.data)
-    lastPage = Math.max(1, page.last_page ?? 1)
+    if (res && Array.isArray(res.data)) {
+      return res.data.map((m) => mapMerchant(m, (m.organization_id || m.organizationId || '') as string))
+    }
+  } catch (err) {
+    console.warn('Failed to fetch all merchants from backend:', err)
+  }
+  return []
+}
+
+export async function fetchPspMerchants(organizationId: string): Promise<Merchant[] | null> {
+  const config = getApiConfig()
+  
+  if (config.pspKey) {
+    try {
+      const merchants: PspMerchantRecord[] = []
+      let lastPage = 1
+
+      for (let pageNumber = 1; pageNumber <= lastPage; pageNumber += 1) {
+        const page = await requestApi<PspMerchantPage>(
+          config,
+          'GET',
+          `/api/v1/psp/merchants?page=${pageNumber}`,
+          undefined,
+          'psp'
+        )
+        merchants.push(...page.data)
+        lastPage = Math.max(1, page.last_page ?? 1)
+      }
+
+      return merchants.map((merchant) => mapMerchant(merchant, organizationId))
+    } catch (err) {
+      console.warn('Failed to fetch via PSP key, attempting admin fallback:', err)
+    }
   }
 
-  return merchants.map((merchant) => mapMerchant(merchant, organizationId))
+  if (config.adminKey) {
+    try {
+      const page = await requestApi<{ data: PspMerchantRecord[] }>(
+        config,
+        'GET',
+        `/api/v1/admin/merchants?organizationId=${encodeURIComponent(organizationId)}&perPage=100`,
+        undefined,
+        'admin'
+      )
+      if (page && Array.isArray(page.data)) {
+        return page.data.map((merchant) => mapMerchant(merchant, organizationId))
+      }
+    } catch (err) {
+      console.warn('Failed to fetch via admin key fallback:', err)
+    }
+  }
+
+  return null
 }
 
 export async function fetchPspDashboard(organizationId: string): Promise<PspDashboardData | null> {
   const config = getApiConfig()
-  if (!config.pspKey) return null
 
-  const [merchants, metricsResponse, profile, transactionsPage] = await Promise.all([
-    fetchPspMerchants(organizationId),
-    requestApi<{ metrics: Record<keyof PspDashboardMetrics, number | string> }>(
-      config, 'GET', '/api/v1/psp/metrics', undefined, 'psp'
-    ),
-    requestApi<{
-      feeSchedule?: {
-        paymentRateBps?: number
-        pspMarkupBps?: number
-        combinedCapBps?: number
-        lockedUntil?: string | null
-        offrampSpreadBps?: number
-        pendingChangeRequest?: {
-          id: string
-          requestedMarkupBps: number
-          requestedAt: string
-          effectiveAt: string
-          status: 'pending_approval'
-        } | null
+  if (config.pspKey) {
+    try {
+      const [merchants, metricsResponse, profile, transactionsPage] = await Promise.all([
+        fetchPspMerchants(organizationId),
+        requestApi<{ metrics: Record<keyof PspDashboardMetrics, number | string> }>(
+          config, 'GET', '/api/v1/psp/metrics', undefined, 'psp'
+        ),
+        requestApi<{
+          feeSchedule?: {
+            paymentRateBps?: number
+            pspMarkupBps?: number
+            combinedCapBps?: number
+            lockedUntil?: string | null
+            offrampSpreadBps?: number
+            pendingChangeRequest?: {
+              id: string
+              requestedMarkupBps: number
+              requestedAt: string
+              effectiveAt: string
+              status: 'pending_approval'
+            } | null
+          }
+        }>(config, 'GET', '/api/v1/psp/profile', undefined, 'psp'),
+        fetchAllPspPages<PspTransactionRecord>('/api/v1/psp/transactions'),
+      ])
+
+      if (merchants !== null) {
+        return {
+          merchants,
+          transactions: transactionsPage.map((record) => ({
+            id: record.id,
+            organizationId: record.organizationId ?? organizationId,
+            merchantId: record.merchantId,
+            type: record.type,
+            grossAmount: number(record.grossAmount),
+            currency: record.currency,
+            orkiFeeBps: number(record.orkiFeeBps),
+            orkiFeeAmount: number(record.orkiFeeAmount),
+            pspMarkupBps: number(record.pspMarkupBps),
+            pspMarkupAmount: number(record.pspMarkupAmount),
+            netAmount: number(record.netAmount),
+            chain: record.chain,
+            txHash: text(record.txHash),
+            payerAddress: text(record.payerAddress),
+            status: record.status,
+            createdAt: record.createdAt,
+          })),
+          metrics: {
+            totalVolumeUsdc: number(metricsResponse.metrics.totalVolumeUsdc),
+            accruedMarkupUsdc: number(metricsResponse.metrics.accruedMarkupUsdc),
+            totalOfframpedAed: number(metricsResponse.metrics.totalOfframpedAed),
+            totalMerchants: number(metricsResponse.metrics.totalMerchants),
+            activeMerchants: number(metricsResponse.metrics.activeMerchants),
+            verifyingMerchants: number(metricsResponse.metrics.verifyingMerchants),
+            actionRequiredMerchants: number(metricsResponse.metrics.actionRequiredMerchants),
+          },
+          feeSchedule: profile.feeSchedule ? {
+            orkiFeeBps: profile.feeSchedule.paymentRateBps,
+            pspMarkupBps: profile.feeSchedule.pspMarkupBps ?? 0,
+            combinedCapBps: profile.feeSchedule.combinedCapBps,
+            lockedUntil: profile.feeSchedule.lockedUntil ?? undefined,
+            offrampSpreadBps: profile.feeSchedule.offrampSpreadBps ?? 0,
+            pendingChangeRequest: profile.feeSchedule.pendingChangeRequest ?? undefined,
+          } : undefined,
+        }
       }
-    }>(config, 'GET', '/api/v1/psp/profile', undefined, 'psp'),
-    fetchAllPspPages<PspTransactionRecord>('/api/v1/psp/transactions'),
-  ])
-
-  if (merchants === null) return null
-
-  return {
-    merchants,
-    transactions: transactionsPage.map((record) => ({
-      id: record.id,
-      organizationId: record.organizationId ?? organizationId,
-      merchantId: record.merchantId,
-      type: record.type,
-      grossAmount: number(record.grossAmount),
-      currency: record.currency,
-      orkiFeeBps: number(record.orkiFeeBps),
-      orkiFeeAmount: number(record.orkiFeeAmount),
-      pspMarkupBps: number(record.pspMarkupBps),
-      pspMarkupAmount: number(record.pspMarkupAmount),
-      netAmount: number(record.netAmount),
-      chain: record.chain,
-      txHash: text(record.txHash),
-      payerAddress: text(record.payerAddress),
-      status: record.status,
-      createdAt: record.createdAt,
-    })),
-    metrics: {
-      totalVolumeUsdc: number(metricsResponse.metrics.totalVolumeUsdc),
-      accruedMarkupUsdc: number(metricsResponse.metrics.accruedMarkupUsdc),
-      totalOfframpedAed: number(metricsResponse.metrics.totalOfframpedAed),
-      totalMerchants: number(metricsResponse.metrics.totalMerchants),
-      activeMerchants: number(metricsResponse.metrics.activeMerchants),
-      verifyingMerchants: number(metricsResponse.metrics.verifyingMerchants),
-      actionRequiredMerchants: number(metricsResponse.metrics.actionRequiredMerchants),
-    },
-    feeSchedule: profile.feeSchedule ? {
-      orkiFeeBps: profile.feeSchedule.paymentRateBps,
-      pspMarkupBps: profile.feeSchedule.pspMarkupBps ?? 0,
-      combinedCapBps: profile.feeSchedule.combinedCapBps,
-      lockedUntil: profile.feeSchedule.lockedUntil ?? undefined,
-      offrampSpreadBps: profile.feeSchedule.offrampSpreadBps ?? 0,
-      pendingChangeRequest: profile.feeSchedule.pendingChangeRequest ?? undefined,
-    } : undefined,
+    } catch (err) {
+      console.warn('PSP key dashboard fetch failed, attempting admin fallback:', err)
+    }
   }
+
+  // Fallback using Admin API
+  if (config.adminKey) {
+    try {
+      const [merchantsRes, transactionsRes] = await Promise.all([
+        requestApi<{ data: PspMerchantRecord[] }>(
+          config,
+          'GET',
+          `/api/v1/admin/merchants?organizationId=${encodeURIComponent(organizationId)}&perPage=100`,
+          undefined,
+          'admin'
+        ),
+        requestApi<{ data: PspTransactionRecord[] }>(
+          config,
+          'GET',
+          `/api/v1/admin/transactions?organizationId=${encodeURIComponent(organizationId)}&perPage=100`,
+          undefined,
+          'admin'
+        ),
+      ])
+
+      const rawMerchants = Array.isArray(merchantsRes.data) ? merchantsRes.data : []
+      const rawTxs = Array.isArray(transactionsRes.data) ? transactionsRes.data : []
+      const mappedMerchants = rawMerchants.map((m) => mapMerchant(m, organizationId))
+
+      const totalVolume = rawTxs.reduce((sum, tx) => sum + number(tx.grossAmount), 0)
+      const totalMarkup = rawTxs.reduce((sum, tx) => sum + number(tx.pspMarkupAmount), 0)
+
+      return {
+        merchants: mappedMerchants,
+        transactions: rawTxs.map((record) => ({
+          id: record.id,
+          organizationId: record.organizationId ?? organizationId,
+          merchantId: record.merchantId,
+          type: record.type,
+          grossAmount: number(record.grossAmount),
+          currency: record.currency,
+          orkiFeeBps: number(record.orkiFeeBps),
+          orkiFeeAmount: number(record.orkiFeeAmount),
+          pspMarkupBps: number(record.pspMarkupBps),
+          pspMarkupAmount: number(record.pspMarkupAmount),
+          netAmount: number(record.netAmount),
+          chain: record.chain,
+          txHash: text(record.txHash),
+          payerAddress: text(record.payerAddress),
+          status: record.status,
+          createdAt: record.createdAt,
+        })),
+        metrics: {
+          totalVolumeUsdc: totalVolume,
+          accruedMarkupUsdc: totalMarkup,
+          totalOfframpedAed: 0,
+          totalMerchants: mappedMerchants.length,
+          activeMerchants: mappedMerchants.filter((m) => m.status === 'active').length,
+          verifyingMerchants: mappedMerchants.filter((m) => ['invited', 'under_review', 'pending_approval', 'kyb_approved'].includes(m.status)).length,
+          actionRequiredMerchants: mappedMerchants.filter((m) => ['rejected', 'suspended'].includes(m.status)).length,
+        },
+      }
+    } catch (err) {
+      console.warn('Admin fallback dashboard fetch failed:', err)
+    }
+  }
+
+  return null
 }
 
 async function fetchAllPspPages<T>(path: string): Promise<T[]> {

@@ -92,6 +92,50 @@ function MainRoutes() {
     saveStoredTransactions(transactions)
   }, [transactions])
 
+  const loadPspData = useCallback(async () => {
+    if (user?.role !== 'org') return
+
+    const storedOrganizations = getStoredOrganizations()
+    const activeOrganization = storedOrganizations.find((organization) => organization.id === user.organizationId)
+    if (!activeOrganization) return
+
+    setPspDashboardLoading(true)
+    setPspDashboardError(null)
+
+    try {
+      const dashboard = await fetchPspDashboard(activeOrganization.id)
+      if (dashboard === null) {
+        setPspMetrics(null)
+        setTransactions([])
+        setPspDashboardError('Configure Orki Admin or PSP API key to sync live backend data.')
+        return
+      }
+
+      setPspMetrics(dashboard.metrics)
+      setTransactions(dashboard.transactions)
+      if (dashboard.feeSchedule) {
+        setOrganizations((current) => current.map((organization) =>
+          organization.id === activeOrganization.id
+            ? { ...organization, feeSchedule: dashboard.feeSchedule }
+            : organization
+        ))
+      }
+
+      if (dashboard.merchants.length > 0) {
+        setMerchants((current) => [
+          ...current.filter((merchant) => merchant.organizationId !== activeOrganization.id),
+          ...dashboard.merchants,
+        ])
+      }
+    } catch (error: unknown) {
+      setPspDashboardError(error instanceof Error ? error.message : 'Failed to load PSP dashboard data.')
+      setTransactions([])
+      setPspMetrics(null)
+    } finally {
+      setPspDashboardLoading(false)
+    }
+  }, [user?.role, user?.organizationId])
+
   useEffect(() => {
     if (user?.role !== 'org') return
 
@@ -104,76 +148,9 @@ function MainRoutes() {
     setMerchants(getStoredMerchants())
     setPaylinks(getStoredPaylinks())
     setTransactions(getStoredTransactions().filter((transaction) => !transaction.id.startsWith('tx_demo_')))
-    const demoMerchantIdsByExternalId = new Map(
-      getStoredMerchants()
-        .filter((merchant) =>
-          merchant.organizationId === activeOrganization.id
-        )
-        .map((merchant) => [merchant.externalId, merchant.id])
-    )
 
-    let active = true
-    setPspDashboardLoading(true)
-    setPspDashboardError(null)
-    void fetchPspDashboard(activeOrganization.id)
-      .then((dashboard) => {
-        if (!active) return
-        if (dashboard === null) {
-          setPspMetrics(null)
-          setTransactions([])
-          setPspDashboardError('Set the PSP API key in the Backend API workbench to load live dashboard data.')
-          return
-        }
-        setPspMetrics(dashboard.metrics)
-        setTransactions(dashboard.transactions)
-        setOrganizations((current) => current.map((organization) =>
-          organization.id === activeOrganization.id && dashboard.feeSchedule
-            ? { ...organization, feeSchedule: dashboard.feeSchedule }
-            : organization
-        ))
-        const merchantIdReplacements = new Map(
-          dashboard.merchants.flatMap((merchant) => {
-            const demoId = demoMerchantIdsByExternalId.get(merchant.externalId)
-            return demoId && demoId !== merchant.id ? [[demoId, merchant.id] as const] : []
-          })
-        )
-        const savedExternalIds = new Set(
-          dashboard.merchants.map((merchant) => merchant.externalId).filter(Boolean)
-        )
-        setMerchants((current) => [
-          ...current.filter((merchant) =>
-            merchant.organizationId !== activeOrganization.id ||
-            !savedExternalIds.has(merchant.externalId)
-          ),
-          ...dashboard.merchants,
-        ])
-        if (merchantIdReplacements.size > 0) {
-          setPaylinks((current) => current.map((paylink) => ({
-            ...paylink,
-            merchantId: paylink.merchantId
-              ? merchantIdReplacements.get(paylink.merchantId) ?? paylink.merchantId
-              : undefined,
-          })))
-          setTransactions((current) => current.map((transaction) => ({
-            ...transaction,
-            merchantId: merchantIdReplacements.get(transaction.merchantId) ?? transaction.merchantId,
-          })))
-        }
-      })
-      .catch((error: unknown) => {
-        if (!active) return
-        setPspDashboardError(error instanceof Error ? error.message : 'Failed to load PSP dashboard data.')
-        setTransactions([])
-        setPspMetrics(null)
-      })
-      .finally(() => {
-        if (active) setPspDashboardLoading(false)
-      })
-
-    return () => {
-      active = false
-    }
-  }, [user?.role, user?.organizationId])
+    void loadPspData()
+  }, [user?.role, user?.organizationId, loadPspData])
 
   // Derive active organization for org view based on auth user
   const activeOrg = organizations.find((o) => o.id === user?.organizationId)
@@ -346,6 +323,7 @@ function MainRoutes() {
                     navigate('/merchant')
                   }}
                   onRequestFeeChange={handleRequestFeeChange}
+                  onRefreshDashboard={loadPspData}
                 />
               ) : (
                 <div className="mat-card p-8 text-center max-w-md mx-auto space-y-4">

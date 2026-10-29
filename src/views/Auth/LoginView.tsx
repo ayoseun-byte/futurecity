@@ -2,12 +2,14 @@ import React, { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import type { UserRole } from '../../context/AuthContext'
-import type { Organization } from '../../types'
+import type { Organization, Merchant } from '../../types'
 import {
   getStoredMerchants,
+  saveStoredMerchants,
   saveStoredOrganizations,
 } from '../../services/storageService'
 import { getApiConfig, requestApi } from '../../services/apiConfig'
+import { fetchAllMerchantsFromBackend } from '../../services/pspMerchantService'
 import {
   Building2,
   Store,
@@ -25,7 +27,7 @@ export const LoginView: React.FC = () => {
   const navigate = useNavigate()
 
   const [organizations, setOrganizations] = useState<Organization[]>([])
-  const merchants = getStoredMerchants()
+  const [merchants, setMerchants] = useState<Merchant[]>(() => getStoredMerchants())
 
   const [activeTab, setActiveTab] = useState<UserRole>('org')
   const [organizationsLoading, setOrganizationsLoading] = useState(false)
@@ -58,6 +60,8 @@ export const LoginView: React.FC = () => {
     let active = true
     setOrganizationsLoading(true)
     setOrganizationsError('')
+
+    // 1. Fetch live PSP organizations
     requestApi<{
       data: {
         pspId: string
@@ -98,6 +102,25 @@ export const LoginView: React.FC = () => {
         if (active) setOrganizationsLoading(false)
       })
 
+    // 2. Fetch live merchants directly from MySQL database!
+    fetchAllMerchantsFromBackend()
+      .then((liveMerchants) => {
+        if (!active || liveMerchants.length === 0) return
+        setMerchants(liveMerchants)
+        saveStoredMerchants(liveMerchants)
+        setSelectedMerchantId((current) => {
+          const match = liveMerchants.find((m) => m.id === current) || liveMerchants[0]
+          if (match) {
+            setMerchantEmail(match.representativeEmail || '')
+            return match.id
+          }
+          return current
+        })
+      })
+      .catch((err) => {
+        console.warn('Failed to fetch merchants from DB on login page:', err)
+      })
+
     return () => {
       active = false
     }
@@ -119,7 +142,7 @@ export const LoginView: React.FC = () => {
     e.preventDefault()
     const merch = merchants.find((merchant) =>
       merchant.id === selectedMerchantId &&
-      merchant.representativeEmail.toLowerCase() === merchantEmail.toLowerCase()
+      merchant.representativeEmail.trim().toLowerCase() === merchantEmail.trim().toLowerCase()
     )
     if (!merch) {
       setLoginError('Select a merchant and enter its registered email.')

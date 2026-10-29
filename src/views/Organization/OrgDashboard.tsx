@@ -78,6 +78,7 @@ interface OrgDashboardProps {
   dashboardMetrics?: PspDashboardMetrics | null
   dashboardLoading?: boolean
   dashboardError?: string | null
+  onRefreshDashboard?: () => Promise<void> | void
 }
 
 export const OrgDashboard: React.FC<OrgDashboardProps> = ({
@@ -91,6 +92,7 @@ export const OrgDashboard: React.FC<OrgDashboardProps> = ({
   onBatchCreated,
   onSelectMerchantForDashboard,
   onRequestFeeChange,
+  onRefreshDashboard,
 }) => {
   const navigate = useNavigate()
   const [activeTab, setActiveTab] = useState<'merchants' | 'webhooks' | 'logs' | 'transactions' | 'config'>('merchants')
@@ -341,6 +343,17 @@ export const OrgDashboard: React.FC<OrgDashboardProps> = ({
 
         {/* Quick Config Actions */}
         <div className="flex items-center space-x-2.5">
+          {onRefreshDashboard && (
+            <button
+              onClick={() => void onRefreshDashboard()}
+              disabled={dashboardLoading}
+              className="inline-flex items-center space-x-1.5 px-3.5 py-2 rounded-lg border border-slate-200 hover:border-slate-300 text-slate-700 text-xs font-medium transition bg-white hover:bg-slate-50 shadow-xs disabled:opacity-50"
+              title="Sync live data directly from MySQL database"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 text-onion-800 ${dashboardLoading ? 'animate-spin' : ''}`} />
+              <span>{dashboardLoading ? 'Syncing...' : 'Sync from DB'}</span>
+            </button>
+          )}
           <button
             onClick={() => setIsFeeModalOpen(true)}
             disabled={!!organization.feeSchedule?.pendingChangeRequest}
@@ -509,6 +522,18 @@ export const OrgDashboard: React.FC<OrgDashboardProps> = ({
             </div>
 
             <div className="flex items-center space-x-2">
+              {onRefreshDashboard && (
+                <button
+                  onClick={() => void onRefreshDashboard()}
+                  disabled={dashboardLoading}
+                  className="px-3 py-1.5 rounded-lg border border-slate-200 hover:border-slate-300 text-slate-700 text-xs font-medium flex items-center space-x-1.5 bg-white hover:bg-slate-50 transition disabled:opacity-50"
+                  title="Reload merchants directly from database"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 text-slate-500 ${dashboardLoading ? 'animate-spin' : ''}`} />
+                  <span>{dashboardLoading ? 'Syncing...' : 'Sync DB'}</span>
+                </button>
+              )}
+
               <button
                 onClick={() => setIsBulkModalOpen(true)}
                 className="px-3 py-1.5 rounded-lg border border-slate-200 hover:border-slate-300 text-slate-700 text-xs font-medium flex items-center space-x-1.5 bg-white hover:bg-slate-50 transition"
