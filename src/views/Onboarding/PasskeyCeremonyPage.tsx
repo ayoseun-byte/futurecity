@@ -38,6 +38,7 @@ type OnboardingState = {
   representativeName?: string | null
   representativeEmail?: string | null
   status: string
+  statusReason?: string | null
   nextStep?: string | null
   baseWalletAddress?: string | null
   solanaWalletAddress?: string | null
@@ -321,11 +322,16 @@ export const PasskeyCeremonyPage: React.FC = () => {
   }
   const onboardingStatusLower = (onboarding.status || '').toLowerCase()
   if (onboardingStatusLower !== 'verified' && onboardingStatusLower !== 'active') {
+    const isActionRequired = onboardingStatusLower === 'verification_action_required'
     return (
       <SetupShell>
         <MessagePanel
-          title="KYB approval is still pending"
-          message={`Wallet and passkey setup becomes available after Sumsub KYB verification is approved (current status: ${onboarding.status}).`}
+          title={isActionRequired ? 'Action Required: Verification Pending' : 'KYB approval is still pending'}
+          message={
+            isActionRequired
+              ? `Compliance has requested additional document verification before wallet setup can continue${onboarding.statusReason ? `: "${onboarding.statusReason}"` : ''}. Please complete business verification first.`
+              : `Wallet and passkey setup becomes available after Sumsub KYB verification is approved (current status: ${onboarding.status}).`
+          }
         />
       </SetupShell>
     )

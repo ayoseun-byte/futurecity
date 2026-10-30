@@ -37,6 +37,11 @@ export const ONBOARDING_STEPS_BY_RANK: (OnboardingStep | null)[] = [
 export function getMerchantMilestoneRank(merchant: Partial<Merchant>): number {
   const statusUpper = merchant.status?.toUpperCase()
 
+  // Compliance action required overrides subsequent milestones
+  if (statusUpper === 'VERIFICATION_ACTION_REQUIRED') {
+    return 4
+  }
+
   // Rank 6: COMPLETED (Active or Passkey ceremony fully finished)
   if (statusUpper === 'ACTIVE' || merchant.activatedAt || merchant.passkeyRegisteredAt) {
     return 6
@@ -82,6 +87,11 @@ export function resolveMonotonicStep(
   if (isEnforcedByAdmin) {
     if (!proposedStep || proposedStep.toUpperCase() === 'COMPLETED') return null
     return proposedStep as OnboardingStep
+  }
+
+  const statusUpper = merchant.status?.toUpperCase()
+  if (statusUpper === 'VERIFICATION_ACTION_REQUIRED') {
+    return 'BUSINESS_VERIFICATION'
   }
 
   const milestoneRank = getMerchantMilestoneRank(merchant)
