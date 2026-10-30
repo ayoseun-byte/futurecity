@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   AlertTriangle,
@@ -16,29 +16,20 @@ import {
 } from 'lucide-react'
 import { AUTH_CONNECTION, WALLET_CONNECTORS } from '@web3auth/modal'
 import {
-  useWeb3Auth,
   useWeb3AuthConnect,
   useWeb3AuthDisconnect,
   useWeb3AuthUser,
 } from '@web3auth/modal/react'
-import { useSolanaWallet } from '@web3auth/modal/react/solana'
-import { getBase58Decoder } from '@solana/kit'
-import { useConnection, useSignMessage, useWalletClient } from 'wagmi'
-import { constants, createKernelAccount } from '@zerodev/sdk'
-import { getKernelAddressFromECDSA, signerToEcdsaValidator } from '@zerodev/ecdsa-validator'
+import { useConnection, usePublicClient, useSignMessage } from 'wagmi'
+import type { PublicClient as ViemPublicClient } from 'viem'
 import {
   toPasskeyValidator,
   toWebAuthnKey,
   WebAuthnMode,
   PasskeyValidatorContractVersion,
 } from '@zerodev/passkey-validator'
-import {
-  createPublicClient,
-  http,
-  type Address,
-  type WalletClient,
-} from 'viem'
-import { base, baseSepolia } from 'viem/chains'
+import { createKernelAccount } from '@zerodev/sdk'
+import { KERNEL_V3_3, getEntryPoint } from '@zerodev/sdk/constants'
 import { getApiConfig } from '../../services/apiConfig'
 
 type OnboardingState = {
@@ -71,46 +62,16 @@ type WalletActivationResponse = {
 
 type ApiError = { message?: string; error?: string }
 
-const KERNEL_VERSION = constants.KERNEL_V3_1
-const ENTRY_POINT = constants.getEntryPoint('0.7')
-
-function errorMessage(reason: unknown, fallback: string): string {
-  if (reason instanceof Error && reason.message) return reason.message
-  if (typeof reason === 'string' && reason) return reason
-  return fallback
-}
-
-/**
- * Sign a UTF-8 message with Web3Auth's wallet-standard Solana wallet.
- * Mirrors the SDK's internal walletSignMessage (used by useSignMessage), but throws
- * instead of swallowing errors. Returns a Base58 Ed25519 detached signature.
- */
-async function walletSignMessage(wallet: unknown, message: string, from: string): Promise<string> {
-  const w = wallet as {
-    accounts?: ReadonlyArray<{ address: string }>
-    features?: Record<string, any>
-  }
-  const feature = w.features?.['solana:signMessage']
-  if (!feature) throw new Error('Web3Auth Solana wallet does not support signMessage.')
-  const account = w.accounts?.find((a) => a.address === from)
-  if (!account) throw new Error('Solana account not found in Web3Auth wallet.')
-  const [output] = await feature.signMessage({
-    account,
-    message: new TextEncoder().encode(message),
-  })
-  return getBase58Decoder().decode(new Uint8Array(output.signature))
-}
-
-function stripApiSuffix(url: string): string {
-  return url.replace(/\/api\/v1\/?$/, '').replace(/\/v1\/?$/, '').replace(/\/$/, '')
-}
+const KERNEL_VERSION = KERNEL_V3_3
+const ENTRY_POINT = getEntryPoint('0.7')
 
 function resolveApiBaseUrl(): string {
   const configured = getApiConfig().baseUrl
-  if (configured) return stripApiSuffix(configured)
-  const pspUrl = import.meta.env.VITE_PSP_API_URL || ''
-  if (pspUrl) return stripApiSuffix(pspUrl)
-  return stripApiSuffix(import.meta.env.VITE_API_BASE_URL || '')
+  if (configured) return configured.replace(/\/api\/v1\/?$/, '').replace(/\/v1\/?$/, '').replace(/\/$/, '')
+  const pspUrl = (import.meta.env.VITE_PSP_API_URL || '').replace(/\/api\/v1\/?$/, '').replace(/\/v1\/?$/, '').replace(/\/$/, '')
+  if (pspUrl) return pspUrl
+  const legacyUrl = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/api\/v1\/?$/, '').replace(/\/v1\/?$/, '').replace(/\/$/, '')
+  return legacyUrl
 }
 
 function readSessionFromFragmentOrConfig(): string {
@@ -139,84 +100,44 @@ function readSessionFromFragmentOrConfig(): string {
   return getApiConfig().merchantSession || ''
 }
 
-function resolveBaseChain() {
-  const chainIdEnv = Number(import.meta.env.VITE_BASE_CHAIN_ID || 8453)
-  return chainIdEnv === 84532 ? baseSepolia : base
-}
-
-function resolveZeroDevOrBaseRpcUrl(chainId: number): string {
-  const zeroDevRpc = (import.meta.env.VITE_ZERODEV_RPC_URL || '').trim()
-  if (zeroDevRpc) return zeroDevRpc
-
-  const zeroDevProjectId = (import.meta.env.VITE_ZERODEV_PROJECT_ID || '').trim()
-  if (zeroDevProjectId) {
-    return `https://rpc.zerodev.app/api/v3/${zeroDevProjectId}/chain/${chainId}`
-  }
-
-  const baseRpc = (import.meta.env.VITE_BASE_RPC_URL || '').trim()
-  if (baseRpc) return baseRpc
-
-  return chainId === 84532 ? 'https://sepolia.base.org' : 'https://mainnet.base.org'
-}
-
-async function deriveZeroDevKernelSmartAccount(
-  walletClient: WalletClient,
-  eoaAddress: Address,
-): Promise<Address> {
-  const chain = resolveBaseChain()
-  const rpcUrl = resolveZeroDevOrBaseRpcUrl(chain.id)
-  const publicClient = createPublicClient({
-    chain,
-    transport: http(rpcUrl),
-  })
-
+function decodeJwtPayload(token?: string): Record<string, unknown> | null {
   try {
-    const ecdsaValidator = await signerToEcdsaValidator(publicClient, {
-      signer: walletClient as any,
-      entryPoint: ENTRY_POINT,
-      kernelVersion: KERNEL_VERSION,
-    })
-
-    const kernelAccount = await createKernelAccount(publicClient, {
-      plugins: {
-        sudo: ecdsaValidator,
-      },
-      entryPoint: ENTRY_POINT,
-      kernelVersion: KERNEL_VERSION,
-      index: 0n,
-    })
-
-    return kernelAccount.address
-  } catch (err) {
-    console.warn('[ZeroDev] Smart Account creation via validator failed, falling back to deterministic derivation:', err)
-    const initCodeHash = constants.KernelVersionToAddressesMap[KERNEL_VERSION]?.initCodeHash
-    if (!initCodeHash) {
-      throw new Error('Unable to resolve ZeroDev Kernel v3.1 initCodeHash.')
-    }
-    return getKernelAddressFromECDSA({
-      entryPoint: ENTRY_POINT,
-      kernelVersion: KERNEL_VERSION,
-      eoaAddress,
-      index: 0n,
-      initCodeHash,
-    })
+    const part = token?.split('.')[1]
+    if (!part) return null
+    const b64 = part.replace(/-/g, '+').replace(/_/g, '/')
+    return JSON.parse(atob(b64.padEnd(Math.ceil(b64.length / 4) * 4, '=')))
+  } catch {
+    return null
   }
 }
 
-async function createZeroDevPasskeyAccount({
-  passkeyName,
-  projectId,
-}: {
-  passkeyName: string
-  projectId: string
-}): Promise<Address> {
-  const chain = resolveBaseChain()
-  const rpcUrl = resolveZeroDevOrBaseRpcUrl(chain.id)
-  const publicClient = createPublicClient({
-    chain,
-    transport: http(rpcUrl),
-  })
+// userInfo.linkedAccounts only lists the currently connected chain (EVM here), so the
+// Solana address is read from there when present, otherwise from the idToken payload
+// (display only: the token signature is NOT verified in the browser; the backend must verify it).
+function getSolanaAddressFromUserInfo(userInfo: unknown): string | undefined {
+  const info = userInfo as {
+    idToken?: string
+    linkedAccounts?: Array<{ chainNamespace?: string; eoaAddress?: string }>
+  } | null
 
+  const fromInfo = info?.linkedAccounts?.find(
+    (a) => a.chainNamespace === 'solana' && a.eoaAddress,
+  )?.eoaAddress
+  if (fromInfo) return fromInfo
+
+  const payload = decodeJwtPayload(info?.idToken)
+  const linked = payload?.linkedAccounts as
+    | Array<{ chainNamespace?: string; address?: string }>
+    | undefined
+  return linked?.find((a) => a.chainNamespace === 'solana' && a.address)?.address
+}
+
+// Passkey-only Kernel smart account (mirrors useSmartWallet.createSmartWallet)
+async function createPasskeySmartAccount(
+  publicClient: ViemPublicClient,
+  passkeyName: string,
+  projectId: string,
+): Promise<string> {
   const webAuthnKey = await toWebAuthnKey({
     passkeyName,
     passkeyServerUrl: `https://passkeys.zerodev.app/api/v3/${projectId}`,
@@ -232,33 +153,28 @@ async function createZeroDevPasskeyAccount({
   })
 
   const kernelAccount = await createKernelAccount(publicClient, {
-    plugins: {
-      sudo: passkeyValidator,
-    },
+    plugins: { sudo: passkeyValidator },
     entryPoint: ENTRY_POINT,
     kernelVersion: KERNEL_VERSION,
-    index: 0n,
   })
 
   return kernelAccount.address
 }
 
 async function apiRequest<T>(apiBaseUrl: string, path: string, session: string, init?: RequestInit): Promise<T> {
-  const cleanBaseUrl = stripApiSuffix(apiBaseUrl)
+  const cleanBaseUrl = apiBaseUrl.replace(/\/api\/v1\/?$/, '').replace(/\/v1\/?$/, '').replace(/\/$/, '')
   const method = (init?.method || 'GET').toUpperCase()
   const targetUrl = `${cleanBaseUrl}/api/v1/merchant${path.startsWith('/') ? path : `/${path}`}`
 
-  const headers: Record<string, string> = {
-    Accept: 'application/json',
-    Authorization: `Bearer ${session}`,
-    ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
-    ...(method !== 'GET' && method !== 'HEAD' ? { 'Idempotency-Key': `setup-${crypto.randomUUID()}` } : {}),
-    ...(init?.headers as Record<string, string>),
-  }
-
   const response = await fetch(targetUrl, {
     ...init,
-    headers,
+    headers: {
+      Accept: 'application/json',
+      Authorization: `Bearer ${session}`,
+      ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
+      ...(method !== 'GET' && method !== 'HEAD' ? { 'Idempotency-Key': `setup-${crypto.randomUUID()}` } : {}),
+      ...init?.headers,
+    },
   })
 
   if (!response.ok) {
@@ -280,7 +196,7 @@ function SetupShell({ children }: { children: React.ReactNode }) {
             </div>
             <div>
               <p className="text-sm font-semibold text-white">Orki Non-Custodial Wallet & Passkey Setup</p>
-              <p className="text-xs text-slate-400">Web3Auth MPC + ZeroDev Kernel v3.1 Smart Account (Base & Solana)</p>
+              <p className="text-xs text-slate-400">Web3Auth MPC + ZeroDev Kernel v3.3 Smart Account (Base & Solana)</p>
             </div>
           </div>
           <Link
@@ -309,6 +225,7 @@ export const PasskeyCeremonyPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null)
   const clientId = import.meta.env.VITE_WEB3AUTH_CLIENT_ID
 
+  // Preserve session fragment so browser reloads stay bound to the exact merchant session
   useEffect(() => {
     const fragment = new URLSearchParams(window.location.hash.slice(1))
     const fromHash = fragment.get('session')
@@ -327,7 +244,7 @@ export const PasskeyCeremonyPage: React.FC = () => {
       .then((state) => {
         if (!cancelled) {
           setOnboarding(state)
-          if (state.status?.toLowerCase() === 'active' && state.baseWalletAddress) {
+          if ((state.status?.toLowerCase() === 'active') && state.baseWalletAddress) {
             setActivationResult({
               status: 'active',
               merchantStatus: 'active',
@@ -342,7 +259,7 @@ export const PasskeyCeremonyPage: React.FC = () => {
         }
       })
       .catch((reason: unknown) => {
-        if (!cancelled) setError(errorMessage(reason, 'Unable to load onboarding.'))
+        if (!cancelled) setError(reason instanceof Error ? reason.message : 'Unable to load onboarding.')
       })
       .finally(() => {
         if (!cancelled) setLoadingState(false)
@@ -428,6 +345,7 @@ export const PasskeyCeremonyPage: React.FC = () => {
           solanaSignature,
           evmSignerAddress,
           merchantEmail,
+          // idToken,
           challenge,
           signature,
         }) => {
@@ -446,6 +364,13 @@ export const PasskeyCeremonyPage: React.FC = () => {
                   solanaSignature,
                   evmSignerAddress,
                   merchantEmail,
+                  // TODO(later): add idToken to this request once the backend supports it.
+                  // Why: solanaWalletAddress is client-supplied, so the backend cannot tell it
+                  // belongs to this merchant. The Web3Auth idToken is signed by Web3Auth; the
+                  // backend can verify it (JWKS, iss, aud, exp), read the Solana address from its
+                  // linkedAccounts claim instead of trusting the body, and check that its email
+                  // matches the merchant's representativeEmail.
+                  // idToken,
                   challenge,
                   signature,
                   kernelVersion: KERNEL_VERSION,
@@ -466,7 +391,7 @@ export const PasskeyCeremonyPage: React.FC = () => {
                 : prev,
             )
           } catch (reason) {
-            setError(errorMessage(reason, 'Wallet activation could not be completed.'))
+            setError(reason instanceof Error ? reason.message : 'Wallet activation could not be completed.')
           } finally {
             setSaving(false)
           }
@@ -492,111 +417,37 @@ function WalletSetup({
   onActivate: (params: {
     baseSmartAccountAddress: string
     solanaWalletAddress?: string
-    solanaSignature?: string
+    solanaSignature?: string // not sent for now: Solana signing was removed
     evmSignerAddress: string
     merchantEmail?: string
+    // idToken?: string // later: see TODO in the /passkey/register request
     challenge: string
     signature: string
   }) => Promise<void>
 }) {
-  const { web3Auth } = useWeb3Auth()
   const { connect, connectTo, loading: connecting, isConnected } = useWeb3AuthConnect()
   const { disconnect, loading: disconnecting } = useWeb3AuthDisconnect()
   const { userInfo, getUserInfo } = useWeb3AuthUser()
   const { address: evmSignerAddress } = useConnection()
-  const { data: walletClient } = useWalletClient()
+  const publicClient = usePublicClient()
   const { signMessageAsync } = useSignMessage()
-
-  // Native Web3Auth Solana hooks. `accounts` is only populated while the active
-  // Web3Auth chain is a Solana chain, so we switch chains (as in the official
-  // react-solana quick start's SwitchChain) to load / sign, then switch back to Base.
-  const { accounts: solanaAccounts, solanaWallet } = useSolanaWallet()
-  const solanaWalletRef = useRef(solanaWallet)
-  solanaWalletRef.current = solanaWallet
 
   const registeredEmail = (onboarding.representativeEmail || '').trim()
   const [emailInput, setEmailInput] = useState(registeredEmail)
   const [zeroDevSmartAccount, setZeroDevSmartAccount] = useState<string | null>(
     onboarding.baseWalletAddress || null,
   )
-  const [derivingZeroDev, setDerivingZeroDev] = useState(false)
   const [enrollingPasskey, setEnrollingPasskey] = useState(false)
-  const [signing, setSigning] = useState(false)
   const [passkeyEnrolled, setPasskeyEnrolled] = useState(Boolean(onboarding.passkeyRegisteredAt))
   const [zeroDevError, setZeroDevError] = useState<string | null>(null)
-  const [activationError, setActivationError] = useState<string | null>(null)
   const [copiedKey, setCopiedKey] = useState<string | null>(null)
-  const [liveSolanaAddress, setLiveSolanaAddress] = useState<string | null>(null)
-  const [switchingChain, setSwitchingChain] = useState(false)
-  const [solanaLoadError, setSolanaLoadError] = useState<string | null>(null)
-  const solanaProbeStarted = useRef(false)
 
   const zeroDevProjectId = (import.meta.env.VITE_ZERODEV_PROJECT_ID || '').trim()
   const connectedEmail = (userInfo?.email || '').trim()
-
-  // Only the live Web3Auth account is ever submitted; the stored value is display-only.
-  const solanaAddress = liveSolanaAddress || solanaAccounts?.[0] || undefined
-  const displaySolanaAddress = solanaAddress || onboarding.solanaWalletAddress || undefined
-
-  const findChainId = (namespace: 'solana' | 'eip155'): string | undefined =>
-    web3Auth?.coreOptions?.chains?.find((c) => c.chainNamespace === namespace)?.chainId
-
-  /** Switch Web3Auth's active chain to the given namespace and wait until it is applied. */
-  const ensureNamespace = async (namespace: 'solana' | 'eip155') => {
-    if (!web3Auth) throw new Error('Web3Auth is not initialised.')
-    if (web3Auth.currentChain?.chainNamespace === namespace) return
-    const chainId = findChainId(namespace)
-    if (!chainId) {
-      throw new Error(
-        namespace === 'solana'
-          ? 'No Solana chain is configured in Web3Auth (expected chainId 0x65 / 0x67).'
-          : 'No EVM chain is configured in Web3Auth.',
-      )
-    }
-    await web3Auth.switchChain({ chainId })
-    const deadline = Date.now() + 10_000
-    while (web3Auth.currentChain?.chainNamespace !== namespace) {
-      if (Date.now() > deadline) throw new Error(`Timed out switching Web3Auth to ${namespace}.`)
-      await new Promise((r) => setTimeout(r, 150))
-    }
-  }
-
-  /** On a Solana chain, wait for the wallet-standard wallet to expose its account. */
-  const waitForSolanaAccount = async (): Promise<string> => {
-    const deadline = Date.now() + 10_000
-    for (;;) {
-      const addr = solanaWalletRef.current?.accounts?.[0]?.address
-      if (addr) return addr
-      if (Date.now() > deadline) throw new Error('Web3Auth did not return a Solana account.')
-      await new Promise((r) => setTimeout(r, 150))
-    }
-  }
-
-  const passkeyDisplayName = () =>
-    (registeredEmail || connectedEmail || onboarding.legalBusinessName || 'Orki Merchant Passkey').trim()
-
-  const handleEnrollZeroDevPasskey = async () => {
-    if (!zeroDevProjectId) {
-      setZeroDevError(
-        'VITE_ZERODEV_PROJECT_ID is not configured in your environment. Using deterministic smart account derivation instead.',
-      )
-      return
-    }
-    setEnrollingPasskey(true)
-    setZeroDevError(null)
-    try {
-      const smartAccountAddress = await createZeroDevPasskeyAccount({
-        passkeyName: passkeyDisplayName(),
-        projectId: zeroDevProjectId,
-      })
-      setZeroDevSmartAccount(smartAccountAddress)
-      setPasskeyEnrolled(true)
-    } catch (reason: unknown) {
-      setZeroDevError(errorMessage(reason, 'Failed to register biometric passkey with ZeroDev.'))
-    } finally {
-      setEnrollingPasskey(false)
-    }
-  }
+  const solanaAddress =
+    getSolanaAddressFromUserInfo(userInfo) ||
+    onboarding.solanaWalletAddress ||
+    undefined
 
   useEffect(() => {
     if (isConnected && !userInfo) {
@@ -604,75 +455,46 @@ function WalletSetup({
     }
   }, [isConnected, userInfo, getUserInfo])
 
-  // Load the Solana address once per connection: switch to Solana, read the
-  // wallet-standard account, then switch back to Base for wagmi / ZeroDev.
+  // Debug: log userInfo whenever it changes (contains idToken, so remove before production)
   useEffect(() => {
-    if (!isConnected) {
-      solanaProbeStarted.current = false
-      setLiveSolanaAddress(null)
-      setSolanaLoadError(null)
-      return
+    if (userInfo) console.log('userInfo', userInfo)
+  }, [userInfo])
+
+  // EVM: passkey-only Kernel smart account (same as useSmartWallet.createSmartWallet)
+  const enrollPasskeyAccount = async (): Promise<string | null> => {
+    if (!zeroDevProjectId) {
+      setZeroDevError('VITE_ZERODEV_PROJECT_ID is not configured in your environment.')
+      return null
     }
-    if (!web3Auth || solanaProbeStarted.current) return
-    solanaProbeStarted.current = true
-
-    const probe = async () => {
-      setSwitchingChain(true)
-      setSolanaLoadError(null)
-      try {
-        await ensureNamespace('solana')
-        const addr = await waitForSolanaAccount()
-        console.log('[wallet-setup] Solana address from Web3Auth:', addr)
-        setLiveSolanaAddress(addr)
-      } catch (e) {
-        console.warn('[wallet-setup] Solana address load failed:', e)
-        setSolanaLoadError(errorMessage(e, 'Could not load the Solana wallet.'))
-      } finally {
-        try {
-          await ensureNamespace('eip155')
-        } catch (e) {
-          console.warn('[wallet-setup] switch back to Base failed:', e)
-        }
-        setSwitchingChain(false)
-      }
+    if (!publicClient) {
+      setZeroDevError('Public client not found')
+      return null
     }
-    void probe()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isConnected, web3Auth])
-
-  useEffect(() => {
-    if (!isConnected || !walletClient || !evmSignerAddress || switchingChain) {
-      return
+    setEnrollingPasskey(true)
+    setZeroDevError(null)
+    try {
+      const passkeyName = (
+        registeredEmail || connectedEmail || onboarding.legalBusinessName || 'Orki Merchant Passkey'
+      ).trim()
+      const address = await createPasskeySmartAccount(
+        publicClient as ViemPublicClient,
+        passkeyName,
+        zeroDevProjectId,
+      )
+      setZeroDevSmartAccount(address)
+      setPasskeyEnrolled(true)
+      return address
+    } catch (reason: unknown) {
+      setZeroDevError(reason instanceof Error ? reason.message : 'Failed to create smart wallet')
+      return null
+    } finally {
+      setEnrollingPasskey(false)
     }
+  }
 
-    let cancelled = false
-
-    const runDerivation = async () => {
-      setDerivingZeroDev(true)
-      setZeroDevError(null)
-      try {
-        const smartAccountAddress = await deriveZeroDevKernelSmartAccount(
-          walletClient,
-          evmSignerAddress as Address,
-        )
-        if (!cancelled) {
-          setZeroDevSmartAccount(smartAccountAddress)
-        }
-      } catch (reason: unknown) {
-        if (!cancelled) {
-          setZeroDevError(errorMessage(reason, 'Failed to derive ZeroDev Kernel Smart Account on Base.'))
-        }
-      } finally {
-        setDerivingZeroDev(false)
-      }
-    }
-
-    void runDerivation()
-
-    return () => {
-      cancelled = true
-    }
-  }, [isConnected, walletClient, evmSignerAddress, switchingChain])
+  const handleEnrollZeroDevPasskey = async () => {
+    await enrollPasskeyAccount()
+  }
 
   const emailMismatch =
     Boolean(registeredEmail) &&
@@ -680,109 +502,58 @@ function WalletSetup({
     registeredEmail.toLowerCase() !== connectedEmail.toLowerCase()
 
   const handleConnectWithEmail = async () => {
-    if (connecting || (web3Auth as any)?.status === 'connecting') return
     onClearError()
     const targetEmail = (registeredEmail || emailInput).trim()
-    try {
-      if (!targetEmail) {
-        await connect()
-        return
-      }
-      await connectTo(WALLET_CONNECTORS.AUTH, {
-        authConnection: AUTH_CONNECTION.EMAIL_PASSWORDLESS,
-        extraLoginOptions: {
-          login_hint: targetEmail,
-        },
-      })
-    } catch (err: unknown) {
-      console.warn('Connect error:', err)
-      const msg = errorMessage(err, 'Failed to connect with email.')
-      if (!msg.includes('Already connecting')) {
-        setActivationError(msg)
-      }
+    if (!targetEmail) {
+      await connect()
+      return
     }
+    await connectTo(WALLET_CONNECTORS.AUTH, {
+      authConnection: AUTH_CONNECTION.EMAIL_PASSWORDLESS,
+      extraLoginOptions: {
+        login_hint: targetEmail,
+      },
+    })
   }
 
   const handleSignAndActivate = async () => {
-    setActivationError(null)
-    setZeroDevError(null)
     onClearError()
+    setZeroDevError(null)
 
     try {
-      const activeSmartAccount = zeroDevSmartAccount || onboarding.baseWalletAddress || ''
-
-      if (!evmSignerAddress) {
-        throw new Error('No EVM signer is connected. Use "Switch account" and sign in again.')
-      }
-      if (!activeSmartAccount) {
-        throw new Error('Base Smart Account has not been derived yet. Please ensure Web3Auth is connected.')
-      }
-
-      let activeBaseAccount = activeSmartAccount
-      if (zeroDevProjectId && !passkeyEnrolled) {
-        setEnrollingPasskey(true)
-        try {
-          activeBaseAccount = await createZeroDevPasskeyAccount({
-            passkeyName: passkeyDisplayName(),
-            projectId: zeroDevProjectId,
-          })
-          setZeroDevSmartAccount(activeBaseAccount)
-          setPasskeyEnrolled(true)
-        } finally {
-          setEnrollingPasskey(false)
-        }
+      // 1. EVM passkey smart account (create it if not done yet)
+      let baseAccount = zeroDevSmartAccount || onboarding.baseWalletAddress || ''
+      if (!passkeyEnrolled || !baseAccount) {
+        const created = await enrollPasskeyAccount()
+        if (!created) return
+        baseAccount = created
       }
 
+      // 2. Solana address must be derived
+      if (!solanaAddress) {
+        setZeroDevError('Solana address is not available yet. Please wait a moment and retry.')
+        return
+      }
+
+      // 3. Attestation signatures
       const challenge =
         onboarding.walletSetupChallenge || `orki_wallet_setup:${onboarding.merchantId}`
 
-      setSigning(true)
-      let signature: string
-      let solanaSignature: string | undefined
-      try {
-        // 1) EVM signature while Base is the active chain.
-        await ensureNamespace('eip155')
-        signature = await signMessageAsync({ message: challenge })
-        if (!signature || !signature.startsWith('0x')) {
-          throw new Error('Received an invalid EVM signature from the wallet. Please retry.')
-        }
-
-        // 2) Solana ownership proof: switch to Solana, sign the same challenge, switch back.
-        if (solanaAddress) {
-          setSwitchingChain(true)
-          try {
-            await ensureNamespace('solana')
-            const wallet = solanaWalletRef.current
-            const signerAddress = await waitForSolanaAccount()
-            if (signerAddress !== solanaAddress) {
-              throw new Error('Solana account changed during signing. Please retry.')
-            }
-            if (!wallet) throw new Error('Web3Auth Solana wallet is not ready.')
-            // walletSignMessage returns a Base58 Ed25519 signature (accepted by the backend).
-            solanaSignature = await walletSignMessage(wallet, challenge, signerAddress)
-          } finally {
-            await ensureNamespace('eip155').catch((e) =>
-              console.warn('[wallet-setup] switch back to Base failed:', e),
-            )
-            setSwitchingChain(false)
-          }
-        }
-      } finally {
-        setSigning(false)
-      }
+      const signature = await signMessageAsync({ message: challenge })
 
       await onActivate({
-        baseSmartAccountAddress: activeBaseAccount,
+        baseSmartAccountAddress: baseAccount,
         solanaWalletAddress: solanaAddress,
-        solanaSignature,
-        evmSignerAddress,
+        evmSignerAddress: evmSignerAddress || baseAccount,
         merchantEmail: connectedEmail || registeredEmail || undefined,
+        // idToken: userInfo?.idToken, // later: see TODO in the /passkey/register request
         challenge,
         signature,
       })
     } catch (reason) {
-      console.error('[wallet-setup] activation failed', reason)
-      setActivationError(errorMessage(reason, 'Signing or passkey step failed.'))
+      setZeroDevError(
+        reason instanceof Error ? reason.message : 'Wallet activation could not be completed.',
+      )
     }
   }
 
@@ -792,24 +563,7 @@ function WalletSetup({
     window.setTimeout(() => setCopiedKey(null), 2000)
   }
 
-  const canActivate =
-    isConnected &&
-    Boolean(zeroDevSmartAccount || onboarding.baseWalletAddress) &&
-    Boolean(evmSignerAddress) &&
-    !derivingZeroDev &&
-    !switchingChain &&
-    !emailMismatch
-
-  const busy = saving || signing || enrollingPasskey
-  const visibleError = activationError || error
-
-  const solanaRowValue =
-    displaySolanaAddress ||
-    (!isConnected
-      ? 'Not derived'
-      : solanaLoadError
-        ? `Solana unavailable: ${solanaLoadError}`
-        : 'Loading Solana wallet from Web3Auth…')
+  const canActivate = isConnected && Boolean(solanaAddress) && !enrollingPasskey && !emailMismatch
 
   const recoveryVaultUrl = zeroDevSmartAccount
     ? `https://orki-organisation.github.io/orki-evm-emergency-recovery/?account=${zeroDevSmartAccount}`
@@ -832,6 +586,7 @@ function WalletSetup({
         </p>
       </div>
 
+      {/* Merchant Email Ownership Banner */}
       <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
         <div className="flex items-start gap-3">
           <Mail className="mt-0.5 h-4 w-4 shrink-0 text-onion-300" />
@@ -867,15 +622,15 @@ function WalletSetup({
           <button
             type="button"
             onClick={() => void handleConnectWithEmail()}
-            disabled={connecting || (web3Auth as any)?.status === 'connecting'}
+            disabled={connecting}
             className="flex w-full items-center justify-center gap-2 rounded-xl bg-onion-700 px-4 py-3 text-sm font-semibold text-white transition hover:bg-onion-600 disabled:opacity-60"
           >
-            {connecting || (web3Auth as any)?.status === 'connecting' ? (
+            {connecting ? (
               <LoaderCircle className="h-4 w-4 animate-spin" />
             ) : (
               <Fingerprint className="h-4 w-4" />
             )}
-            {connecting || (web3Auth as any)?.status === 'connecting'
+            {connecting
               ? 'Authenticating with Web3Auth…'
               : registeredEmail
                 ? `Continue with ${registeredEmail} + Passkey`
@@ -885,11 +640,10 @@ function WalletSetup({
           <button
             type="button"
             onClick={() => {
-              if (connecting || (web3Auth as any)?.status === 'connecting') return
               onClearError()
-              void connect().catch((e) => console.warn(e))
+              void connect()
             }}
-            disabled={connecting || (web3Auth as any)?.status === 'connecting'}
+            disabled={connecting}
             className="flex w-full items-center justify-center gap-2 rounded-xl border border-slate-800 bg-slate-950/60 px-4 py-2.5 text-xs font-medium text-slate-300 transition hover:border-slate-700 hover:text-white disabled:opacity-50"
           >
             <Wallet className="h-3.5 w-3.5" />
@@ -898,6 +652,7 @@ function WalletSetup({
         </div>
       ) : (
         <div className="space-y-4">
+          {/* Connected Identity & MFA Status Bar */}
           <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-800 bg-slate-950/80 px-3.5 py-2.5 text-xs">
             <div className="flex items-center gap-2">
               <ShieldCheck className="h-4 w-4 text-emerald-400" />
@@ -946,37 +701,49 @@ function WalletSetup({
             </div>
           )}
 
+          {/* Derived Multi-Chain Wallet Addresses */}
           <div className="space-y-3 rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
             <AddressRow
-              label="Base Smart Account (ZeroDev Kernel v3.1 · ERC-4337)"
+              label="Base Smart Account (ZeroDev Kernel v3.3 · ERC-4337)"
               badge="Primary EVM Settlement"
               value={
-                derivingZeroDev
-                  ? 'Deriving ZeroDev Kernel v3.1 Smart Account on Base…'
-                  : zeroDevSmartAccount || 'Unable to derive Base Smart Account'
+                enrollingPasskey
+                  ? 'Registering passkey and creating Kernel Smart Account…'
+                  : zeroDevSmartAccount || 'Created when you enroll your passkey'
               }
-              loading={derivingZeroDev}
-              onCopy={zeroDevSmartAccount ? () => copyText(zeroDevSmartAccount, 'base') : undefined}
+              loading={enrollingPasskey}
+              onCopy={
+                zeroDevSmartAccount
+                  ? () => copyText(zeroDevSmartAccount, 'base')
+                  : undefined
+              }
               copied={copiedKey === 'base'}
             />
 
             <div className="border-t border-slate-800/80 pt-3">
               <AddressRow
                 label="Solana Embedded Wallet (Web3Auth Ed25519)"
-                badge={displaySolanaAddress ? 'Primary Solana Settlement' : 'Optional / Multi-Chain'}
-                value={solanaRowValue}
-                loading={!displaySolanaAddress && !solanaLoadError}
-                onCopy={displaySolanaAddress ? () => copyText(displaySolanaAddress, 'solana') : undefined}
+                badge={solanaAddress ? 'Primary Solana Settlement' : 'Required / Multi-Chain'}
+                value={
+                  solanaAddress ||
+                  (isConnected ? 'Loading Solana address…' : 'Not derived')
+                }
+                loading={isConnected && !solanaAddress}
+                onCopy={
+                  solanaAddress ? () => copyText(solanaAddress, 'solana') : undefined
+                }
                 copied={copiedKey === 'solana'}
               />
             </div>
 
             <div className="border-t border-slate-800/80 pt-3">
               <AddressRow
-                label="Web3Auth Passkey Root Signer (EVM EOA)"
-                badge="Kernel ECDSA Validator"
+                label="Web3Auth Signer (attestation)"
+                badge="Attestation Signer"
                 value={evmSignerAddress || 'No EVM signer returned'}
-                onCopy={evmSignerAddress ? () => copyText(evmSignerAddress, 'eoa') : undefined}
+                onCopy={
+                  evmSignerAddress ? () => copyText(evmSignerAddress, 'eoa') : undefined
+                }
                 copied={copiedKey === 'eoa'}
               />
             </div>
@@ -993,12 +760,12 @@ function WalletSetup({
         </div>
       )}
 
-      {visibleError && (
+      {error && (
         <p
           role="alert"
           className="rounded-xl border border-rose-900/70 bg-rose-950/40 p-3 text-sm text-rose-200"
         >
-          {visibleError}
+          {error}
         </p>
       )}
 
@@ -1056,45 +823,27 @@ function WalletSetup({
         </div>
       ) : (
         isConnected && (
-          <div className="space-y-2">
-            <button
-              type="button"
-              onClick={() => void handleSignAndActivate()}
-              disabled={!canActivate || busy}
-              className="flex w-full items-center justify-center gap-2 rounded-xl bg-onion-700 px-4 py-3 text-sm font-semibold text-white transition hover:bg-onion-600 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              {busy ? (
-                <LoaderCircle className="h-4 w-4 animate-spin" />
-              ) : (
-                <Fingerprint className="h-4 w-4" />
-              )}
-              <span>
-                {enrollingPasskey
-                  ? 'Registering passkey…'
-                  : signing
-                    ? 'Waiting for signature…'
-                    : saving
-                      ? 'Verifying signature & activating merchant…'
-                      : 'Sign Attestation & Activate Merchant Wallets'}
-              </span>
-            </button>
-            {!canActivate && !busy && (
-              <p className="text-center text-[11px] text-slate-500">
-                {emailMismatch
-                  ? 'Sign in with the registered merchant email to continue.'
-                  : derivingZeroDev
-                    ? 'Deriving your Base smart account…'
-                    : !evmSignerAddress
-                      ? 'Waiting for an EVM signer from Web3Auth…'
-                      : !zeroDevSmartAccount
-                        ? 'Base smart account not available yet.'
-                        : null}
-              </p>
+          <button
+            type="button"
+            onClick={() => void handleSignAndActivate()}
+            disabled={!canActivate || saving}
+            className="flex w-full items-center justify-center gap-2 rounded-xl bg-onion-700 px-4 py-3 text-sm font-semibold text-white transition hover:bg-onion-600 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {saving ? (
+              <LoaderCircle className="h-4 w-4 animate-spin" />
+            ) : (
+              <Fingerprint className="h-4 w-4" />
             )}
-          </div>
+            <span>
+              {saving
+                ? 'Verifying signature & activating merchant…'
+                : 'Sign Attestation & Activate Merchant Wallets'}
+            </span>
+          </button>
         )
       )}
 
+      {/* ZeroDev Biometric Passkey Enrollment Section */}
       <div className="border-t border-slate-800 pt-5">
         <div className="flex flex-col gap-3 rounded-2xl border border-slate-800 bg-slate-950/60 p-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-start gap-3">
@@ -1105,7 +854,7 @@ function WalletSetup({
               </h2>
               <p className="mt-1 text-xs leading-5 text-slate-400">
                 Register a biometric passkey (Face ID, Touch ID, or Windows Hello) to serve as the
-                sudo validator for your Base smart contract wallet, powered by ZeroDev Kernel v3.1.
+                sudo validator for your Base smart contract wallet, powered by ZeroDev Kernel v3.3.
               </p>
             </div>
           </div>
@@ -1172,7 +921,7 @@ function AddressRow({
         )}
       </div>
       <div className="mt-1.5 flex items-center justify-between gap-2">
-        <p className="flex items-center gap-2 break-all font-mono text-xs text-slate-100">
+        <p className=" flex items-center gap-2 break-all font-mono text-xs text-slate-100">
           {loading && <LoaderCircle className="h-3.5 w-3.5 shrink-0 animate-spin text-onion-300" />}
           <span>{value}</span>
         </p>
@@ -1182,7 +931,7 @@ function AddressRow({
             onClick={onCopy}
             className="inline-flex shrink-0 items-center gap-1 rounded-md border border-slate-800 bg-slate-900 px-2 py-1 text-[10px] font-medium text-slate-300 transition hover:border-slate-700 hover:text-white"
           >
-            {copied ? <Check className="h-3 w-3 text-emerald-400" /> : <Copy className="h-3 w-3 text-slate-400" />}
+            {copied ? <Check className="h-3 w-3 text-emerald-400" /> : <Copy className="h-3 w-3" />}
             <span>{copied ? 'Copied' : 'Copy'}</span>
           </button>
         )}
