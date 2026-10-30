@@ -11,7 +11,7 @@ const endpoints: Endpoint[] = [
   { group: 'Public', method: 'GET', path: '/api/v1/public/chains', auth: 'none' },
   { group: 'Public', method: 'GET', path: '/api/v1/public/tokens', auth: 'none' },
   { group: 'Public', method: 'GET', path: '/api/v1/tos/{token}', auth: 'none' },
-  { group: 'Public', method: 'POST', path: '/api/v1/tos/{token}', auth: 'none', body: '{}', note: 'Use the single-use terms token returned by GET /merchant/terms.' },
+  { group: 'Public', method: 'POST', path: '/api/v1/tos/{token}', auth: 'none', body: JSON.stringify({ signerName: 'Ada Example', signerEmail: 'ada@example.com', signerTitle: 'Director' }, null, 2), note: 'Use the single-use terms token returned by GET /merchant/terms. signerName, signerEmail and signerTitle are required.' },
   { group: 'Public', method: 'GET', path: '/api/v1/admin/secrets/claim/{token}', auth: 'none', note: 'Single-use credential claim: a successful request permanently burns the token.' },
   { group: 'Admin', method: 'GET', path: '/api/v1/admin/psps', auth: 'admin' },
   { group: 'Admin', method: 'GET', path: '/api/v1/admin/fee-change-requests', auth: 'admin' },
@@ -40,7 +40,7 @@ const endpoints: Endpoint[] = [
     ['POST', '/api/v1/merchant/kyb-information', JSON.stringify({ companyInfo: { companyName: 'Example Trading Ltd', registrationNumber: 'RC-001', country: 'NGA', incorporatedOn: '2020-01-01', type: 'Private company', legalAddress: 'Example address' } }, null, 2)],
     ['GET', '/api/v1/merchant/terms', undefined], ['POST', '/api/v1/merchant/sumsub/token', '{}'], ['GET', '/api/v1/merchant/kyc/start', undefined],
     ['POST', '/api/v1/merchant/sumsub/complete', '{}'], ['POST', '/api/v1/merchant/wallets', JSON.stringify({ baseWalletAddress: '0x0000000000000000000000000000000000000000', solanaWalletAddress: '11111111111111111111111111111111' }, null, 2)],
-    ['POST', '/api/v1/merchant/passkey/register', '{}'], ['GET', '/api/v1/merchant/metrics', undefined], ['GET', '/api/v1/merchant/balances', undefined],
+    ['POST', '/api/v1/merchant/passkey/register', JSON.stringify({ baseWalletAddress: '0x49e645983918275f0d071946d7df4d05beb004f6', solanaWalletAddress: 'replace-with-base58-solana-address', solanaSignature: 'replace-with-base58-ed25519-signature-over-challenge', evmSignerAddress: '0xfc9e228336e94ce3338a23bc8e9c70e4e5eec58e', merchantEmail: 'ada@example.com', challenge: 'orki_wallet_setup:mrch_replace-with-merchant-id:replace-with-nonce', signature: '0xreplace-with-65-byte-hex-evm-signature-over-challenge', kernelVersion: '0.3.1' }, null, 2)], ['GET', '/api/v1/merchant/metrics', undefined], ['GET', '/api/v1/merchant/balances', undefined],
     ['PATCH', '/api/v1/merchant/settlement-mode', '{\n  "mode": "hold_as_received"\n}'], ['GET', '/api/v1/merchant/paylinks', undefined],
     ['POST', '/api/v1/merchant/paylinks', JSON.stringify({ title: 'Test payment', description: 'API workbench sample', amountType: 'fixed', amount: '10.00', currency: 'USDC', settlementMode: 'hold_as_received', allowedChains: ['base', 'solana'] }, null, 2)], ['GET', '/api/v1/merchant/paylinks/{id}', undefined],
     ['GET', '/api/v1/merchant/transfers', undefined], ['POST', '/api/v1/merchant/transfers', JSON.stringify({ destinationAddress: '0x0000000000000000000000000000000000000000', chain: 'base', currency: 'USDC', amount: '10.00', passkeySignature: 'workbench-test-only' }, null, 2)], ['POST', '/api/v1/merchant/conversions/quote', '{\n  "amount": "10.00",\n  "sourceCurrency": "USDC",\n  "targetCurrency": "AED"\n}'],
@@ -49,9 +49,21 @@ const endpoints: Endpoint[] = [
   { group: 'Checkout', method: 'GET', path: '/api/v1/checkout/paylinks/{idOrSlug}', auth: 'none' },
   { group: 'Checkout', method: 'POST', path: '/api/v1/checkout/sessions', auth: 'none', body: '{\n  "paylinkId": "replace-with-paylink-id",\n  "amount": "10.00",\n  "chain": "base",\n  "currency": "USDC"\n}', note: 'Checkout session creation requires an active merchant and wallet for the selected chain.' },
   { group: 'Checkout', method: 'GET', path: '/api/v1/checkout/sessions/{id}/status', auth: 'none' },
-  { group: 'Checkout', method: 'POST', path: '/api/v1/checkout/sessions/{id}/simulate-deposit', auth: 'none', body: '{}' },
-  { group: 'Webhook', method: 'POST', path: '/api/v1/webhooks/sumsub', auth: 'none', body: '{}', note: 'Provider callback; requires a valid Sumsub signature. Do not call as a normal UI operation.' },
+  { group: 'Checkout', method: 'POST', path: '/api/v1/checkout/sessions/{id}/simulate-deposit', auth: 'none', body: '{}', note: 'No request body required. Only available in explicitly enabled local/test environments.' },
+  { group: 'Webhook', method: 'POST', path: '/api/v1/webhooks/sumsub', auth: 'none', body: JSON.stringify({ type: 'applicantReviewed', applicantId: 'replace-with-sumsub-applicant-id', externalUserId: 'mrch_replace-with-merchant-id', levelName: 'orki_money_kyb', reviewStatus: 'completed', reviewResult: { reviewAnswer: 'GREEN', rejectLabels: [], reviewRejectType: null, moderationComment: null }, createdAtMs: '2026-10-29 12:58:00.000' }, null, 2), note: 'Sample Sumsub payload shape. Provider callback; requires a valid Sumsub signature. Do not call as a normal UI operation.' },
 ] as Endpoint[]
+
+// Endpoints that accept no request body: shown with `{}` plus an explanatory note.
+const NO_BODY_NOTE = 'No request body required; send {} as shown.'
+for (const endpoint of endpoints) {
+  if (
+    endpoint.group === 'Merchant' &&
+    endpoint.body === '{}' &&
+    ['/api/v1/merchant/accept-usdc', '/api/v1/merchant/sumsub/token', '/api/v1/merchant/sumsub/complete', '/api/v1/merchant/conversions'].includes(endpoint.path)
+  ) {
+    endpoint.note = NO_BODY_NOTE
+  }
+}
 
 export function ApiWorkbench() {
   const [config, setConfig] = useState<ApiConfig>(getApiConfig)
@@ -435,6 +447,7 @@ export function ApiWorkbench() {
                 <textarea
                   value={body}
                   onChange={(e) => setBody(e.target.value)}
+                  placeholder={selectedEndpoint.body || '{}'}
                   rows={10}
                   className="mt-1 w-full rounded-lg border p-3 font-mono text-xs font-normal"
                   spellCheck={false}
