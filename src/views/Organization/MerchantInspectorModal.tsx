@@ -112,7 +112,7 @@ export const MerchantInspectorModal: React.FC<MerchantInspectorModalProps> = ({
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
               <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg flex items-center justify-between">
                 <div>
-                  <span className="text-[10px] text-slate-400 font-bold uppercase">Base Smart Account (EVM)</span>
+                  <span className="text-[10px] text-slate-400 font-bold uppercase">EVM Smart Account</span>
                   <p className="font-mono font-medium text-slate-800 text-xs mt-0.5">
                     {merchant.baseWalletAddress || 'Pending verification'}
                   </p>

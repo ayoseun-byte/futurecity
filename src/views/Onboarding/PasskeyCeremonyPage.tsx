@@ -704,7 +704,7 @@ function WalletSetup({
           {/* Derived Multi-Chain Wallet Addresses */}
           <div className="space-y-3 rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
             <AddressRow
-              label="Base Smart Account (ZeroDev Kernel v3.3 · ERC-4337)"
+              label="EVM Smart Account (ZeroDev Kernel v3.3 · ERC-4337)"
               badge="Primary EVM Settlement"
               value={
                 enrollingPasskey
@@ -776,7 +776,7 @@ function WalletSetup({
             <span>Merchant Wallets & Passkey Verified — Account Active</span>
           </div>
           <p className="text-xs leading-5 text-emerald-100/80">
-            Your ZeroDev Base Smart Account {solanaAddress ? 'and Solana wallet are' : 'is'} now bound to your merchant profile
+            Your ZeroDev EVM Smart Account {solanaAddress ? 'and Solana wallet are' : 'is'} now bound to your merchant profile
             and ready for atomic split settlements. Your PSP has been notified via signed webhook
             that your Orki rail is active.
           </p>
@@ -785,7 +785,7 @@ function WalletSetup({
             <div className="rounded-xl border border-emerald-800/50 bg-slate-950/60 p-3 text-xs">
               <p className="font-semibold text-emerald-200">Sovereign Recovery Vault Link</p>
               <p className="mt-1 text-slate-400">
-                Save this link outside Orki. Because your Base wallet is a ZeroDev on-chain smart
+                Save this link outside Orki. Because your EVM wallet is a ZeroDev on-chain smart
                 account, you always retain sovereign recovery access:
               </p>
               <div className="mt-2 flex items-center justify-between gap-2 rounded-lg bg-slate-900 px-2.5 py-1.5 font-mono text-[11px] text-slate-200">

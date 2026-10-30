@@ -675,13 +675,13 @@ export const OrgDashboard: React.FC<OrgDashboardProps> = ({
                           {merchant.baseWalletAddress ? (
                             <div className="space-y-1">
                               <div className="flex items-center gap-1 text-slate-800">
-                                <span className="text-[10px] font-bold text-onion-800 font-sans">Base:</span>
+                                <span className="text-[10px] font-bold text-onion-800 font-sans">EVM:</span>
                                 <span>{merchant.baseWalletAddress.slice(0, 6)}…{merchant.baseWalletAddress.slice(-4)}</span>
                                 <button
                                   type="button"
                                   onClick={() => copyText(merchant.baseWalletAddress!, `base_${merchant.id}`)}
                                   className="text-slate-400 hover:text-slate-800"
-                                  title="Copy Base Smart Account"
+                                  title="Copy EVM Smart Account"
                                 >
                                   {copiedKey === `base_${merchant.id}` ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
                                 </button>

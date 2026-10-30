@@ -725,7 +725,7 @@ export const MerchantDetailPage: React.FC<MerchantDetailPageProps> = ({
               </h3>
               <div className="space-y-3 text-xs">
                 <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-1">
-                  <span className="text-[10px] uppercase font-bold text-slate-500 block">Base EVM Smart Account (ZeroDev)</span>
+                  <span className="text-[10px] uppercase font-bold text-slate-500 block">EVM Smart Account (ZeroDev)</span>
                   <div className="flex items-center justify-between font-mono text-xs">
                     <span className="truncate">{merchant.baseWalletAddress || 'Not registered'}</span>
                     {merchant.baseWalletAddress && (

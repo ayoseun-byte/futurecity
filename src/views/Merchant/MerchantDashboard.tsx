@@ -1019,7 +1019,15 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
   const settlementBreakdown = dashboardMetrics?.settlementBreakdown30d
   const checkoutMetrics = dashboardMetrics?.checkoutPerformance
   const transferMetrics = dashboardMetrics?.transfersSummary
-  const walletAddress = (balances as { usdcBase?: { walletAddress?: string } } | null)?.usdcBase?.walletAddress
+  const evmWalletAddress =
+    (balances as { usdcBase?: { walletAddress?: string } } | null)?.usdcBase?.walletAddress ||
+    merchant.baseWalletAddress ||
+    merchant.merchantWallet ||
+    null
+  const solanaWalletAddress =
+    (balances as { usdtSolana?: { walletAddress?: string } } | null)?.usdtSolana?.walletAddress ||
+    merchant.solanaWalletAddress ||
+    null
   const activePaylinkCount = visiblePaylinks.filter((link) => (link.status || '').toLowerCase() === 'active').length
   const metricValue = (value: string | number | undefined, suffix = '') =>
     dashboardDataLoaded && value !== undefined ? `${value}${suffix}` : '—'
@@ -1457,8 +1465,53 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
                   </span>
                 </div>
 
-                <div className="pt-2 text-[10px] font-mono text-slate-400 truncate border-t border-slate-200">
-                  Base wallet: {walletAddress || 'Not registered'}
+                <div className="pt-2.5 mt-1 border-t border-slate-200 space-y-2 text-[11px] font-mono">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[10px] uppercase font-semibold text-slate-500">EVM Address</span>
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <span className="truncate text-slate-700" title={evmWalletAddress || undefined}>
+                        {evmWalletAddress
+                          ? `${evmWalletAddress.slice(0, 8)}...${evmWalletAddress.slice(-6)}`
+                          : 'Not registered'}
+                      </span>
+                      {evmWalletAddress && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            navigator.clipboard.writeText(evmWalletAddress)
+                            setCopiedField('evm_addr')
+                            setTimeout(() => setCopiedField(null), 2000)
+                          }}
+                          className="text-[10px] font-sans text-onion hover:text-onion-800 underline shrink-0"
+                        >
+                          {copiedField === 'evm_addr' ? 'Copied' : 'Copy'}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[10px] uppercase font-semibold text-slate-500">Solana Address</span>
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <span className="truncate text-slate-700" title={solanaWalletAddress || undefined}>
+                        {solanaWalletAddress
+                          ? `${solanaWalletAddress.slice(0, 6)}...${solanaWalletAddress.slice(-6)}`
+                          : 'Not registered'}
+                      </span>
+                      {solanaWalletAddress && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            navigator.clipboard.writeText(solanaWalletAddress)
+                            setCopiedField('sol_addr')
+                            setTimeout(() => setCopiedField(null), 2000)
+                          }}
+                          className="text-[10px] font-sans text-onion hover:text-onion-800 underline shrink-0"
+                        >
+                          {copiedField === 'sol_addr' ? 'Copied' : 'Copy'}
+                        </button>
+                      )}
+                    </div>
+                  </div>
                 </div>
               </div>
             )}
