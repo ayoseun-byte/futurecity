@@ -288,7 +288,7 @@ export const MerchantDetailPage: React.FC<MerchantDetailPageProps> = ({
                 <h1 className="text-2xl font-black text-slate-900 tracking-tight">
                   {merchant.legalBusinessName}
                 </h1>
-                <StatusBadge status={merchant.status} />
+                <StatusBadge status={merchant.status} nextStep={merchant.nextStep} />
                 <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-slate-100 text-slate-700 font-mono">
                   {merchant.jurisdiction}
                 </span>

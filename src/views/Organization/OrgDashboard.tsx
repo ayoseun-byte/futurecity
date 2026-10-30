@@ -645,14 +645,14 @@ export const OrgDashboard: React.FC<OrgDashboardProps> = ({
                         {/* Onboarding & KYB */}
                         <td className="px-5 py-3.5">
                           <div className="flex flex-col space-y-1">
-                            <StatusBadge status={merchant.status} />
-                            {merchant.nextStep && (
+                            <StatusBadge status={merchant.status} nextStep={merchant.nextStep} />
+                            {merchant.nextStep && merchant.status !== 'active' && (
                               <span className="text-[10px] font-mono text-onion-800 font-semibold">
                                 Next: {merchant.nextStep}
                               </span>
                             )}
                             <div className="flex flex-wrap items-center gap-1 pt-0.5">
-                              {merchant.verifiedAt ? (
+                              {merchant.verifiedAt || merchant.status === 'verified' || merchant.status === 'active' ? (
                                 <span className="inline-flex items-center gap-1 rounded bg-emerald-50 px-1.5 py-0.5 text-[9px] font-medium text-emerald-700 border border-emerald-200">
                                   <ShieldCheck className="w-2.5 h-2.5" /> KYB Approved
                                 </span>

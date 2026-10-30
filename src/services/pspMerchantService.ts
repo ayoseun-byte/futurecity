@@ -128,6 +128,7 @@ const onboardingSteps: OnboardingStep[] = [
   'KYB_INFORMATION',
   'TERMS',
   'SUMSUB',
+  'BUSINESS_VERIFICATION',
   'PASSKEY',
   'COMPLETED',
 ]
@@ -142,11 +143,13 @@ function number(value: number | string | null | undefined): number {
 }
 
 function mapMerchant(record: PspMerchantRecord, organizationId: string): Merchant {
-  const status = merchantStatuses.includes(record.status as MerchantStatus)
-    ? record.status as MerchantStatus
-    : 'invited'
-  const rawStep = onboardingSteps.includes((record.next_step ?? record.nextStep) as OnboardingStep)
-    ? (record.next_step ?? record.nextStep) as OnboardingStep
+  const rawStatus = String(record.status || '').toLowerCase()
+  const status = (merchantStatuses.includes(rawStatus as MerchantStatus)
+    ? rawStatus
+    : 'invited') as MerchantStatus
+  const candidateStep = String(record.next_step ?? record.nextStep ?? '').toUpperCase()
+  const rawStep = onboardingSteps.includes(candidateStep as OnboardingStep)
+    ? (candidateStep as OnboardingStep)
     : null
   const nextStep = resolveMonotonicStep(
     {

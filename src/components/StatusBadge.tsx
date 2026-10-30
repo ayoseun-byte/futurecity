@@ -1,13 +1,24 @@
 import React from 'react'
 import type { MerchantStatus } from '../types'
-import { CheckCircle2, Clock, AlertTriangle, XCircle, ShieldAlert, PauseCircle } from 'lucide-react'
+import {
+  CheckCircle2,
+  Clock,
+  AlertTriangle,
+  XCircle,
+  ShieldAlert,
+  PauseCircle,
+  Mail,
+  FileCheck,
+} from 'lucide-react'
 
 interface StatusBadgeProps {
-  status: MerchantStatus
+  status: MerchantStatus | string
+  nextStep?: string | null
 }
 
-export const StatusBadge: React.FC<StatusBadgeProps> = ({ status }) => {
+export const StatusBadge: React.FC<StatusBadgeProps> = ({ status, nextStep }) => {
   const normalized = String(status || '').toLowerCase()
+  const stepUpper = String(nextStep || '').toUpperCase()
 
   switch (normalized) {
     case 'active':
@@ -38,14 +49,28 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({ status }) => {
           Verified · Passkey Pending
         </span>
       )
-    case 'invited':
     case 'terms_accepted':
       return (
-        <span className="inline-flex items-center px-2.5 py-0.5 rounded-md text-[11px] font-medium bg-slate-100 text-slate-700 border border-slate-200">
-          <Clock className="w-3 h-3 mr-1 text-slate-500" />
-          Setup Required
+        <span className="inline-flex items-center px-2.5 py-0.5 rounded-md text-[11px] font-medium bg-indigo-50 text-indigo-700 border border-indigo-200/80">
+          <FileCheck className="w-3 h-3 mr-1 text-indigo-500" />
+          Terms Accepted
         </span>
       )
+    case 'invited': {
+      let label = 'Invited'
+      if (stepUpper === 'KYB_INFORMATION') {
+        label = 'Notice Signed'
+      } else if (stepUpper === 'TERMS') {
+        label = 'KYB Submitted'
+      }
+
+      return (
+        <span className="inline-flex items-center px-2.5 py-0.5 rounded-md text-[11px] font-medium bg-slate-100 text-slate-700 border border-slate-200">
+          <Mail className="w-3 h-3 mr-1 text-slate-500" />
+          {label}
+        </span>
+      )
+    }
     case 'on_hold':
       return (
         <span className="inline-flex items-center px-2.5 py-0.5 rounded-md text-[11px] font-medium bg-slate-100 text-slate-600 border border-slate-200">
@@ -69,6 +94,11 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({ status }) => {
         </span>
       )
     default:
-      return null
+      return (
+        <span className="inline-flex items-center px-2.5 py-0.5 rounded-md text-[11px] font-medium bg-slate-100 text-slate-700 border border-slate-200 capitalize">
+          <Clock className="w-3 h-3 mr-1 text-slate-500" />
+          {normalized.replace(/_/g, ' ') || 'Unknown'}
+        </span>
+      )
   }
 }

@@ -1046,7 +1046,7 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
               <h1 className="text-xl font-bold tracking-tight text-slate-900">
                 {merchant.legalBusinessName}
               </h1>
-              <StatusBadge status={merchant.status} />
+              <StatusBadge status={merchant.status} nextStep={merchant.nextStep} />
             </div>
             <p className="text-xs text-slate-500 mt-1">
               License: <span className="font-semibold text-slate-700">{merchant.tradeLicenseNumber}</span> · {merchant.jurisdiction} · Rep: {merchant.representativeName}
