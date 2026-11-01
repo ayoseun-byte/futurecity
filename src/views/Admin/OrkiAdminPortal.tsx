@@ -85,6 +85,7 @@ export const OrkiAdminPortal: React.FC<OrkiAdminPortalProps> = ({
 
   // Rate Governance State
   const [feeRequests, setFeeRequests] = useState<FeeChangeRequest[]>([])
+  const [feePreparerEmail, setFeePreparerEmail] = useState('')
   const [feeApproverEmail, setFeeApproverEmail] = useState('')
   const [feeRejectionReason, setFeeRejectionReason] = useState('')
 
@@ -298,8 +299,12 @@ export const OrkiAdminPortal: React.FC<OrkiAdminPortalProps> = ({
       setApiError('Set the separate fee approver key in the Backend API workbench.')
       return
     }
-    if (!feeApproverEmail.trim()) {
-      setApiError('Enter the second approver email before reviewing fee requests.')
+    if (!feePreparerEmail.trim() || !feeApproverEmail.trim()) {
+      setApiError('Enter both Orki preparer and approver emails (two-person rule) before reviewing fee requests.')
+      return
+    }
+    if (feePreparerEmail.trim().toLowerCase() === feeApproverEmail.trim().toLowerCase()) {
+      setApiError('Two-person rule violation: Orki preparer and approver emails must be distinct.')
       return
     }
     if (action === 'reject' && feeRejectionReason.trim().length < 10) {
@@ -310,7 +315,7 @@ export const OrkiAdminPortal: React.FC<OrkiAdminPortalProps> = ({
     setApiBusy(true)
     setApiError(null)
     try {
-      await reviewAdminFeeChangeRequest(request.id, action, feeApproverEmail, feeRejectionReason)
+      await reviewAdminFeeChangeRequest(request.id, action, feeApproverEmail, feeRejectionReason, feePreparerEmail)
       setApiSuccess(`Rate change request ${action === 'approve' ? 'approved' : 'rejected'}.`)
       const refreshed = await fetchAdminFeeChangeRequests()
       setFeeRequests(refreshed as unknown as FeeChangeRequest[])
@@ -1029,17 +1034,24 @@ export const OrkiAdminPortal: React.FC<OrkiAdminPortalProps> = ({
             <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
               <input
                 type="email"
+                value={feePreparerEmail}
+                onChange={(e) => setFeePreparerEmail(e.target.value)}
+                placeholder="First Orki reviewer (preparedBy)"
+                className="rounded-xl border border-slate-300 bg-slate-50/50 px-3 py-2 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-onion/20 focus:border-onion sm:w-56"
+              />
+              <input
+                type="email"
                 value={feeApproverEmail}
                 onChange={(e) => setFeeApproverEmail(e.target.value)}
-                placeholder="Second approver email"
-                className="rounded-xl border border-slate-300 bg-slate-50/50 px-3 py-2 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-onion/20 focus:border-onion sm:w-60"
+                placeholder="Second Orki approver (approvedBy)"
+                className="rounded-xl border border-slate-300 bg-slate-50/50 px-3 py-2 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-onion/20 focus:border-onion sm:w-56"
               />
               <input
                 type="text"
                 value={feeRejectionReason}
                 onChange={(e) => setFeeRejectionReason(e.target.value)}
                 placeholder="Rejection reason (if rejecting)"
-                className="rounded-xl border border-slate-300 bg-slate-50/50 px-3 py-2 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-rose-200 sm:w-72"
+                className="rounded-xl border border-slate-300 bg-slate-50/50 px-3 py-2 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-rose-200 sm:w-64"
               />
             </div>
           </div>

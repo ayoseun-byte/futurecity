@@ -297,7 +297,7 @@ export async function approvePspProduction(
     agreement: { signedAt: string; version: string; documentHash?: string }
     kyb: { caseReference: string; riskRating: string; nextReviewDue: string }
     pspRegulatoryStatus?: { isRegulatedEntity?: boolean; regulator?: string; licenseReference?: string }
-    feeSchedule: { paymentRateBps: 100; pspMarkupBps: number; combinedCapBps: number; lockedUntil: string }
+    feeSchedule: { paymentRateBps: number; pspMarkupBps: number; combinedCapBps: number; lockedUntil: string }
     goLiveChecklist: {
       signedAt: string
       signedBy: string
@@ -337,6 +337,8 @@ export interface AdminFeeSchedulePayload {
   pspOfframpSharePercent: number
   maxTotalMerchantCostBps: number
   payoutCurrency: string
+  preparedBy?: string
+  approvedBy?: string
 }
 
 export async function fetchAdminPspFeeSchedule(pspId: string): Promise<{
@@ -423,14 +425,18 @@ export async function reviewAdminFeeChangeRequest(
   requestId: string,
   action: 'approve' | 'reject',
   approverEmail: string,
-  reason?: string
+  reason?: string,
+  preparerEmail?: string
 ): Promise<void> {
   const config = getApiConfig()
+  const preparedBy = (preparerEmail || 'compliance.preparer@orki.money').trim()
   await requestApi(
     config,
     'POST',
     `/api/v1/admin/fee-change-requests/${encodeURIComponent(requestId)}/${action}`,
-    action === 'approve' ? { approvedBy: approverEmail.trim() } : { rejectedBy: approverEmail.trim(), reason: reason?.trim() },
+    action === 'approve'
+      ? { preparedBy, approvedBy: approverEmail.trim() }
+      : { preparedBy, rejectedBy: approverEmail.trim(), reason: reason?.trim() },
     'admin'
   )
 }

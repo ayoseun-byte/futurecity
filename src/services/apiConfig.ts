@@ -88,7 +88,9 @@ export async function apiRequest(config: ApiConfig, method: string, path: string
   const headers: Record<string, string> = { Accept: 'application/json' }
   if (body && method !== 'GET') headers['Content-Type'] = 'application/json'
   if (auth === 'admin' && config.adminKey) headers['X-Admin-Key'] = config.adminKey
-  if (cleanPath.includes('/fee-change-requests/') && config.feeApproverKey) headers['X-Fee-Approver-Key'] = config.feeApproverKey
+  if ((cleanPath.includes('/fee-change-requests/') || cleanPath.includes('/fee-schedule')) && config.feeApproverKey) {
+    headers['X-Fee-Approver-Key'] = config.feeApproverKey
+  }
 
   // Handle Merchant vs PSP Authentication
   if (auth === 'merchant' || isMerchantOnboardingRoute) {

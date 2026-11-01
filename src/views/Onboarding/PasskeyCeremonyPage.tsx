@@ -351,7 +351,7 @@ export const PasskeyCeremonyPage: React.FC = () => {
           solanaSignature,
           evmSignerAddress,
           merchantEmail,
-          // idToken,
+          idToken,
           challenge,
           signature,
         }) => {
@@ -370,13 +370,7 @@ export const PasskeyCeremonyPage: React.FC = () => {
                   solanaSignature,
                   evmSignerAddress,
                   merchantEmail,
-                  // TODO(later): add idToken to this request once the backend supports it.
-                  // Why: solanaWalletAddress is client-supplied, so the backend cannot tell it
-                  // belongs to this merchant. The Web3Auth idToken is signed by Web3Auth; the
-                  // backend can verify it (JWKS, iss, aud, exp), read the Solana address from its
-                  // linkedAccounts claim instead of trusting the body, and check that its email
-                  // matches the merchant's representativeEmail.
-                  // idToken,
+                  idToken,
                   challenge,
                   signature,
                   kernelVersion: KERNEL_VERSION,
@@ -423,10 +417,10 @@ function WalletSetup({
   onActivate: (params: {
     baseSmartAccountAddress: string
     solanaWalletAddress?: string
-    solanaSignature?: string // not sent for now: Solana signing was removed
+    solanaSignature?: string
     evmSignerAddress: string
     merchantEmail?: string
-    // idToken?: string // later: see TODO in the /passkey/register request
+    idToken?: string
     challenge: string
     signature: string
   }) => Promise<void>
@@ -552,7 +546,7 @@ function WalletSetup({
         solanaWalletAddress: solanaAddress,
         evmSignerAddress: evmSignerAddress || baseAccount,
         merchantEmail: connectedEmail || registeredEmail || undefined,
-        // idToken: userInfo?.idToken, // later: see TODO in the /passkey/register request
+        idToken: userInfo?.idToken,
         challenge,
         signature,
       })
