@@ -63,7 +63,15 @@ const AVAILABLE_WEBHOOK_EVENTS = [
   { id: 'send.processing', label: 'send.processing', group: 'Transfers' },
   { id: 'send.completed', label: 'send.completed', group: 'Transfers' },
   { id: 'deposit.received', label: 'deposit.received', group: 'Transfers' },
+  { id: 'merchant.notice.acknowledged', label: 'merchant.notice.acknowledged', group: 'Merchants' },
+  { id: 'merchant.kyb.submitted', label: 'merchant.kyb.submitted', group: 'Merchants' },
+  { id: 'merchant.terms.accepted', label: 'merchant.terms.accepted', group: 'Merchants' },
+  { id: 'merchant.verified', label: 'merchant.verified', group: 'Merchants' },
   { id: 'merchant.wallets.created', label: 'merchant.wallets.created', group: 'Merchants' },
+  { id: 'merchant.wallet_ready', label: 'merchant.wallet_ready', group: 'Merchants' },
+  { id: 'merchant.active', label: 'merchant.active', group: 'Merchants' },
+  { id: 'merchant.disabled', label: 'merchant.disabled', group: 'Merchants' },
+  { id: 'merchant.onboarding.step_failed', label: 'merchant.onboarding.step_failed', group: 'Merchants' },
 ]
 
 interface OrgDashboardProps {
@@ -813,7 +821,12 @@ export const OrgDashboard: React.FC<OrgDashboardProps> = ({
                 >
                   <option value="charge.payment_received">charge.payment_received</option>
                   <option value="charge.paid">charge.paid (AED Fiat Settled)</option>
+                  <option value="merchant.notice.acknowledged">merchant.notice.acknowledged</option>
+                  <option value="merchant.kyb.submitted">merchant.kyb.submitted</option>
+                  <option value="merchant.terms.accepted">merchant.terms.accepted</option>
                   <option value="merchant.wallets.created">merchant.wallets.created</option>
+                  <option value="merchant.wallet_ready">merchant.wallet_ready</option>
+                  <option value="merchant.active">merchant.active</option>
                   <option value="ping">ping (Verification Test)</option>
                 </select>
 

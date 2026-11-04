@@ -5,6 +5,7 @@ import {
   updateAdminMerchantStatus,
   enforceAdminMerchantStep,
   reassignAdminMerchant,
+  resetAdminMerchantSessions,
   fetchAdminPsps,
   type AdminMerchantDetailResponse,
 } from '../../services/adminService'
@@ -50,6 +51,7 @@ export const AdminMerchantDetailPage: React.FC = () => {
   const [enforceSuccess, setEnforceSuccess] = useState<string | null>(null)
   const [enforceError, setEnforceError] = useState<string | null>(null)
   const [showEnforceForm, setShowEnforceForm] = useState(false)
+  const [resettingSessions, setResettingSessions] = useState(false)
 
   // Reassign PSP State
   const [showReassignModal, setShowReassignModal] = useState(false)
@@ -131,6 +133,23 @@ export const AdminMerchantDetailPage: React.FC = () => {
       setEnforceError(err instanceof Error ? err.message : 'Failed to enforce step.')
     } finally {
       setIsEnforcingStep(false)
+    }
+  }
+
+  const handleResetSessions = async () => {
+    if (!merchant) return
+    setResettingSessions(true)
+    setStatusSuccess(null)
+    setError(null)
+    try {
+      const res = await resetAdminMerchantSessions(merchant.id)
+      setStatusSuccess(`${res.message} (${res.sessionsCleared} sessions cleared)`)
+      void loadMerchant()
+      setTimeout(() => setStatusSuccess(null), 4000)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to reset sessions.')
+    } finally {
+      setResettingSessions(false)
     }
   }
 
@@ -373,12 +392,24 @@ export const AdminMerchantDetailPage: React.FC = () => {
               </div>
             </div>
 
-            <button
-              onClick={() => setShowEnforceForm(!showEnforceForm)}
-              className="px-3.5 py-1.5 bg-onion text-white rounded-xl text-xs font-bold hover:bg-onion-700 transition shadow-2xs shrink-0"
-            >
-              {showEnforceForm ? 'Close Override Form' : 'Enforce Step Override'}
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleResetSessions}
+                disabled={resettingSessions}
+                className="px-3.5 py-1.5 bg-white border border-slate-300 text-slate-700 rounded-xl text-xs font-bold hover:bg-slate-50 transition shadow-2xs shrink-0 flex items-center gap-1.5 disabled:opacity-50"
+                title="Clears all active/expired onboarding sessions and resets the 20-reissue cap"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${resettingSessions ? 'animate-spin' : ''}`} />
+                <span>{resettingSessions ? 'Resetting…' : 'Reset Session Cap'}</span>
+              </button>
+
+              <button
+                onClick={() => setShowEnforceForm(!showEnforceForm)}
+                className="px-3.5 py-1.5 bg-onion text-white rounded-xl text-xs font-bold hover:bg-onion-700 transition shadow-2xs shrink-0"
+              >
+                {showEnforceForm ? 'Close Override Form' : 'Enforce Step Override'}
+              </button>
+            </div>
           </div>
 
           {enforceSuccess && (
