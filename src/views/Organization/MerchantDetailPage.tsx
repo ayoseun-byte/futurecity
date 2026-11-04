@@ -5,6 +5,8 @@ import { StatusBadge } from '../../components/StatusBadge'
 import {
   ArrowLeft,
   Building,
+  Building2,
+  AlertTriangle,
   Wallet,
   ShieldAlert,
   ShieldCheck,
@@ -22,6 +24,7 @@ import {
   UserCheck,
 } from 'lucide-react'
 import { getApiConfig, requestApi, saveApiConfig } from '../../services/apiConfig'
+import { resubmitMerchantKybParticulars } from '../../services/pspMerchantService'
 
 type PspMerchantTab = 'overview' | 'compliance' | 'wallets' | 'paylinks' | 'transactions' | 'sessions' | 'raw'
 
@@ -74,6 +77,16 @@ export const MerchantDetailPage: React.FC<MerchantDetailPageProps> = ({
   // Search filters
   const [paylinkSearch, setPaylinkSearch] = useState('')
   const [txSearch, setTxSearch] = useState('')
+
+  // KYB Particulars Resubmission Modal & Action State
+  const [showResubmitModal, setShowResubmitModal] = useState(false)
+  const [resubmitCompanyName, setResubmitCompanyName] = useState(merchant?.legalBusinessName || '')
+  const [resubmitRegNumber, setResubmitRegNumber] = useState(merchant?.tradeLicenseNumber || '')
+  const [resubmitJurisdiction, setResubmitJurisdiction] = useState(merchant?.jurisdiction || 'ARE')
+  const [resubmitComments, setResubmitComments] = useState('')
+  const [resubmitBusy, setResubmitBusy] = useState(false)
+  const [resubmitError, setResubmitError] = useState<string | null>(null)
+  const [resubmitSuccess, setResubmitSuccess] = useState<string | null>(null)
 
   useEffect(() => {
     if (!merchant) return
@@ -206,6 +219,42 @@ export const MerchantDetailPage: React.FC<MerchantDetailPageProps> = ({
     }
   }
 
+  const handleResubmitKybParticulars = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!merchant) return
+    setResubmitBusy(true)
+    setResubmitError(null)
+    setResubmitSuccess(null)
+
+    try {
+      const res = await resubmitMerchantKybParticulars(merchant.id, {
+        companyName: resubmitCompanyName,
+        registrationNumber: resubmitRegNumber,
+        jurisdiction: resubmitJurisdiction,
+        comments: resubmitComments,
+      })
+      setResubmitSuccess(res.message || 'KYB particulars resubmitted and verified successfully.')
+      if (backendDetail) {
+        setBackendDetail({
+          ...backendDetail,
+          status: res.merchantStatus,
+          next_step: res.nextStep,
+          legal_business_name: resubmitCompanyName,
+          trade_license_number: resubmitRegNumber,
+          status_reason: null,
+        })
+      }
+      setTimeout(() => {
+        setShowResubmitModal(false)
+        setResubmitSuccess(null)
+      }, 1500)
+    } catch (err) {
+      setResubmitError(err instanceof Error ? err.message : 'Failed to resubmit KYB particulars.')
+    } finally {
+      setResubmitBusy(false)
+    }
+  }
+
   const merchantPaylinks = (
     (backendDetail?.paylinks as Array<Record<string, unknown>> | undefined) ||
     propPaylinks.filter((p) => p.merchantId === merchant.id)
@@ -331,6 +380,20 @@ export const MerchantDetailPage: React.FC<MerchantDetailPageProps> = ({
             </button>
 
             <button
+              type="button"
+              onClick={() => {
+                setResubmitCompanyName(String(backendDetail?.legal_business_name || merchant.legalBusinessName || ''))
+                setResubmitRegNumber(String(backendDetail?.trade_license_number || merchant.tradeLicenseNumber || ''))
+                setResubmitJurisdiction(String(backendDetail?.jurisdiction || merchant.jurisdiction || 'ARE'))
+                setShowResubmitModal(true)
+              }}
+              className="px-3.5 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold flex items-center space-x-1.5 transition shadow-2xs"
+            >
+              <Building2 className="w-3.5 h-3.5 text-slate-500" />
+              <span>KYB Particulars</span>
+            </button>
+
+            <button
               onClick={async () => {
                 setStatusBusy(true)
                 setStatusError(null)
@@ -397,6 +460,41 @@ export const MerchantDetailPage: React.FC<MerchantDetailPageProps> = ({
         <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs font-semibold text-rose-800 flex items-center space-x-2">
           <ShieldAlert className="w-4 h-4 text-rose-600" />
           <span>{sessionError}</span>
+        </div>
+      )}
+
+      {Boolean(
+        (merchant.status as string) === 'verification_flagged' ||
+        String(backendDetail?.status || '') === 'verification_flagged' ||
+        (typeof backendDetail?.status_reason === 'string' && (
+          backendDetail.status_reason.toLowerCase().includes('discrepancy') ||
+          backendDetail.status_reason.toLowerCase().includes('sumsub') ||
+          backendDetail.status_reason.toLowerCase().includes('mismatch')
+        ))
+      ) && (
+        <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-amber-900 shadow-2xs">
+          <div className="flex items-start space-x-3">
+            <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+            <div>
+              <div className="font-bold text-slate-900">KYB Registry Mismatch Flagged</div>
+              <p className="text-slate-600 mt-0.5">
+                {String(backendDetail?.status_reason || 'The merchant details do not match Sumsub verified registry records.')}
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setResubmitCompanyName(String(backendDetail?.legal_business_name || merchant.legalBusinessName || ''))
+              setResubmitRegNumber(String(backendDetail?.trade_license_number || merchant.tradeLicenseNumber || ''))
+              setResubmitJurisdiction(String(backendDetail?.jurisdiction || merchant.jurisdiction || 'ARE'))
+              setShowResubmitModal(true)
+            }}
+            className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-semibold transition shrink-0 flex items-center justify-center space-x-1.5 shadow-xs"
+          >
+            <Building2 className="w-4 h-4" />
+            <span>Resubmit Particulars</span>
+          </button>
         </div>
       )}
 
@@ -977,6 +1075,128 @@ export const MerchantDetailPage: React.FC<MerchantDetailPageProps> = ({
           </div>
         )}
       </div>
+
+      {/* Resubmit KYB Particulars Modal */}
+      {showResubmitModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-8 shadow-2xl border border-slate-100 space-y-6">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 rounded-xl bg-onion-50 text-onion-800 border border-onion-200 flex items-center justify-center">
+                  <Building2 className="w-5 h-5 text-onion" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">Resubmit KYB Particulars</h3>
+                  <p className="text-xs text-slate-500">Update legal merchant identity and re-trigger matching</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowResubmitModal(false)}
+                className="text-slate-400 hover:text-slate-600 rounded-lg p-1"
+              >
+                ✕
+              </button>
+            </div>
+
+            {resubmitError && (
+              <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800 flex items-center space-x-2">
+                <ShieldAlert className="w-4 h-4 text-rose-600 shrink-0" />
+                <span>{resubmitError}</span>
+              </div>
+            )}
+
+            {resubmitSuccess && (
+              <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-800 flex items-center space-x-2">
+                <Check className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>{resubmitSuccess}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleResubmitKybParticulars} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Legal Business Name *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={resubmitCompanyName}
+                  onChange={(e) => setResubmitCompanyName(e.target.value)}
+                  placeholder="Official Registered Company Name"
+                  className="w-full rounded-xl border border-slate-200 px-3.5 py-2 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-onion focus:border-transparent font-medium"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Trade License / Registration Number *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={resubmitRegNumber}
+                  onChange={(e) => setResubmitRegNumber(e.target.value)}
+                  placeholder="e.g. 1234567 or CN-123456"
+                  className="w-full rounded-xl border border-slate-200 px-3.5 py-2 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-onion focus:border-transparent font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Jurisdiction (ISO-3)
+                </label>
+                <input
+                  type="text"
+                  value={resubmitJurisdiction}
+                  onChange={(e) => setResubmitJurisdiction(e.target.value.toUpperCase())}
+                  maxLength={3}
+                  placeholder="ARE"
+                  className="w-full rounded-xl border border-slate-200 px-3.5 py-2 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-onion focus:border-transparent font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  PSP Resubmission Comments / Reason
+                </label>
+                <textarea
+                  value={resubmitComments}
+                  onChange={(e) => setResubmitComments(e.target.value)}
+                  rows={2}
+                  placeholder="Reason for discrepancy correction, e.g. updated legal trade name per renewed commercial register."
+                  className="w-full rounded-xl border border-slate-200 px-3.5 py-2 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-onion focus:border-transparent"
+                />
+              </div>
+
+              <div className="flex items-center justify-end space-x-3 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setShowResubmitModal(false)}
+                  disabled={resubmitBusy}
+                  className="px-4 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={resubmitBusy}
+                  className="px-5 py-2 rounded-xl bg-onion hover:bg-onion-700 text-white text-xs font-bold flex items-center space-x-1.5 shadow-sm transition disabled:opacity-50"
+                >
+                  {resubmitBusy ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      <span>Re-evaluating Sumsub...</span>
+                    </>
+                  ) : (
+                    <span>Resubmit & Verify</span>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

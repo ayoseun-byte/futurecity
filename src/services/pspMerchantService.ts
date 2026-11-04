@@ -523,3 +523,32 @@ export async function updatePspMarkupSettings(defaultPaymentMarkupBps: number): 
   const config = getApiConfig()
   return requestApi(config, 'POST', '/api/v1/psp/settings/markup', { defaultPaymentMarkupBps }, 'psp')
 }
+
+export interface ResubmitKybParticularsParams {
+  companyName: string
+  registrationNumber: string
+  jurisdiction?: string
+  comments?: string
+}
+
+export interface ResubmitKybParticularsResult {
+  resolved: boolean
+  merchantStatus: string
+  nextStep: string | null
+  revision: number
+  message: string
+}
+
+export async function resubmitMerchantKybParticulars(
+  merchantId: string,
+  params: ResubmitKybParticularsParams,
+): Promise<ResubmitKybParticularsResult> {
+  const config = getApiConfig()
+  return requestApi<ResubmitKybParticularsResult>(
+    config,
+    'POST',
+    `/api/v1/psp/merchants/${encodeURIComponent(merchantId)}/kyb-particulars`,
+    params,
+    'psp',
+  )
+}
