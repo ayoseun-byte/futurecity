@@ -340,6 +340,8 @@ export const PasskeyCeremonyPage: React.FC = () => {
   return (
     <SetupShell>
       <WalletSetup
+        session={session}
+        apiBaseUrl={apiBaseUrl}
         onboarding={onboarding}
         activationResult={activationResult}
         saving={saving}
@@ -402,6 +404,8 @@ export const PasskeyCeremonyPage: React.FC = () => {
 }
 
 function WalletSetup({
+  session,
+  apiBaseUrl,
   onboarding,
   activationResult,
   saving,
@@ -409,6 +413,8 @@ function WalletSetup({
   onClearError,
   onActivate,
 }: {
+  session: string
+  apiBaseUrl: string
   onboarding: OnboardingState
   activationResult: WalletActivationResponse | null
   saving: boolean
@@ -535,9 +541,29 @@ function WalletSetup({
         return
       }
 
-      // 3. Attestation signatures
-      const challenge =
+      // 3. Attestation signatures (fresh, timestamped, bound to addresses)
+      let challenge =
         onboarding.walletSetupChallenge || `orki_wallet_setup:${onboarding.merchantId}`
+
+      try {
+        const challengeRes = await apiRequest<{ challenge: string }>(
+          apiBaseUrl,
+          '/wallets/challenge',
+          session,
+          {
+            method: 'POST',
+            body: JSON.stringify({
+              baseWalletAddress: baseAccount,
+              solanaWalletAddress: solanaAddress,
+            }),
+          },
+        )
+        if (challengeRes?.challenge) {
+          challenge = challengeRes.challenge
+        }
+      } catch (err) {
+        console.warn('Could not fetch server-issued address-bound challenge, using fallback', err)
+      }
 
       const signature = await signMessageAsync({ message: challenge })
 
