@@ -13,11 +13,18 @@ import {
   fetchAdminFeeChangeRequests,
   reviewAdminFeeChangeRequest,
   fetchAdminAuditLogs,
+  fetchAdminUsers,
+  createAdminUser,
+  generateAdminUserKey,
+  fetchAdminSessions,
+  revokeAdminSession,
   type AdminMetrics,
   type AdminMerchantRow,
   type AdminTransactionRow,
   type AdminAuditLogRow,
   type FeeChangeRequest,
+  type AdminUser,
+  type AdminSession,
 } from '../../services/adminService'
 import {
   ShieldCheck,
@@ -36,6 +43,10 @@ import {
   ExternalLink,
   Lock,
   Layers,
+  Key,
+  Users,
+  Copy,
+  AlertTriangle,
 } from 'lucide-react'
 
 interface OrkiAdminPortalProps {
@@ -44,7 +55,7 @@ interface OrkiAdminPortalProps {
   onAddOrganization: (newOrg: Organization) => void
 }
 
-type AdminPortalTab = 'psps' | 'merchants' | 'transactions' | 'fees' | 'audit' | 'vaults'
+type AdminPortalTab = 'psps' | 'merchants' | 'transactions' | 'fees' | 'audit' | 'vaults' | 'users'
 
 export const OrkiAdminPortal: React.FC<OrkiAdminPortalProps> = ({
   organizations,
@@ -93,6 +104,34 @@ export const OrkiAdminPortal: React.FC<OrkiAdminPortalProps> = ({
   const [auditLogs, setAuditLogs] = useState<AdminAuditLogRow[]>([])
   const [auditLoading, setAuditLoading] = useState(false)
   const [auditCategoryFilter, setAuditCategoryFilter] = useState('all')
+
+  // Platform Admin Users & Sessions State
+  const [adminUsers, setAdminUsers] = useState<AdminUser[]>([])
+  const [adminUsersLoading, setAdminUsersLoading] = useState(false)
+  const [adminSessions, setAdminSessions] = useState<AdminSession[]>([])
+  const [isAddAdminModalOpen, setIsAddAdminModalOpen] = useState(false)
+  const [newAdminForm, setNewAdminForm] = useState<{
+    name: string
+    email: string
+    role: 'SUPER_ADMIN' | 'ADMIN' | 'PREPARER' | 'APPROVER'
+    password: string
+    generateKey: boolean
+  }>({
+    name: '',
+    email: '',
+    role: 'ADMIN',
+    password: '',
+    generateKey: true,
+  })
+  const [keyDisplayModal, setKeyDisplayModal] = useState<{
+    isOpen: boolean
+    title: string
+    adminName: string
+    apiKey?: string
+    keyPrefix?: string
+    initialPassword?: string
+    warning?: string
+  }>({ isOpen: false, title: '', adminName: '' })
 
   // New PSP Registration Form
   const [newPspForm, setNewPspForm] = useState({
@@ -155,8 +194,96 @@ export const OrkiAdminPortal: React.FC<OrkiAdminPortalProps> = ({
         .then((res) => setAuditLogs(res.data))
         .catch((err) => setApiError(err instanceof Error ? err.message : 'Failed to load audit logs.'))
         .finally(() => setAuditLoading(false))
+    } else if (activeTab === 'users') {
+      setAdminUsersLoading(true)
+      Promise.all([fetchAdminUsers(), fetchAdminSessions()])
+        .then(([users, sessions]) => {
+          setAdminUsers(users)
+          setAdminSessions(sessions)
+        })
+        .catch((err) => setApiError(err instanceof Error ? err.message : 'Failed to load platform admin users.'))
+        .finally(() => setAdminUsersLoading(false))
     }
   }, [activeTab, merchantSearch, merchantStatusFilter, txChainFilter, txSearch, auditCategoryFilter])
+
+  const loadAdminUsersData = async () => {
+    setAdminUsersLoading(true)
+    try {
+      const [users, sessions] = await Promise.all([fetchAdminUsers(), fetchAdminSessions()])
+      setAdminUsers(users)
+      setAdminSessions(sessions)
+    } catch (err) {
+      setApiError(err instanceof Error ? err.message : 'Failed to reload platform admin users.')
+    } finally {
+      setAdminUsersLoading(false)
+    }
+  }
+
+  const handleCreateAdminUser = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setApiBusy(true)
+    setApiError(null)
+    try {
+      const result = await createAdminUser({
+        name: newAdminForm.name.trim(),
+        email: newAdminForm.email.trim(),
+        role: newAdminForm.role,
+        password: newAdminForm.password.trim() || undefined,
+        generateKey: newAdminForm.generateKey,
+      })
+      setIsAddAdminModalOpen(false)
+      setNewAdminForm({ name: '', email: '', role: 'ADMIN', password: '', generateKey: true })
+      setKeyDisplayModal({
+        isOpen: true,
+        title: 'Platform Officer Created',
+        adminName: result.name,
+        apiKey: result.apiKey,
+        keyPrefix: result.keyPrefix,
+        initialPassword: result.initialPassword,
+        warning: result.warning,
+      })
+      await loadAdminUsersData()
+    } catch (err) {
+      setApiError(err instanceof Error ? err.message : 'Failed to create platform admin user.')
+    } finally {
+      setApiBusy(false)
+    }
+  }
+
+  const handleGenerateAdminKey = async (admin: AdminUser) => {
+    if (!window.confirm(`Generate a fresh API key for ${admin.name}? This will rotate any existing key.`)) return
+    setApiBusy(true)
+    setApiError(null)
+    try {
+      const result = await generateAdminUserKey(admin.id)
+      setKeyDisplayModal({
+        isOpen: true,
+        title: 'Fresh Admin API Key Issued',
+        adminName: result.name,
+        apiKey: result.apiKey,
+        keyPrefix: result.keyPrefix,
+        warning: result.warning,
+      })
+      await loadAdminUsersData()
+    } catch (err) {
+      setApiError(err instanceof Error ? err.message : 'Failed to issue fresh API key.')
+    } finally {
+      setApiBusy(false)
+    }
+  }
+
+  const handleRevokeSession = async (sessionId: string) => {
+    if (!window.confirm('Revoke this admin session? The officer will be logged out.')) return
+    setApiBusy(true)
+    try {
+      await revokeAdminSession(sessionId)
+      await loadAdminUsersData()
+    } catch (err) {
+      setApiError(err instanceof Error ? err.message : 'Failed to revoke session.')
+    } finally {
+      setApiBusy(false)
+    }
+  }
 
   // 3. Navigate to Dedicated PSP Partner Page
   const handleOpenDossier = (org: Organization) => {
@@ -514,6 +641,18 @@ export const OrkiAdminPortal: React.FC<OrkiAdminPortalProps> = ({
         >
           <Layers className="w-4 h-4" />
           <span>Smart Contracts</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('users')}
+          className={`flex items-center space-x-2 px-4 py-2.5 rounded-xl transition ${
+            activeTab === 'users'
+              ? 'bg-slate-900 text-white shadow-xs'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+          }`}
+        >
+          <Users className="w-4 h-4" />
+          <span>Admin Users & Keys</span>
         </button>
       </div>
 
@@ -1234,6 +1373,400 @@ export const OrkiAdminPortal: React.FC<OrkiAdminPortalProps> = ({
             <p className="text-[11px] text-slate-500 leading-relaxed">
               Provides multi-party non-custodial token settlement across Solana sub-second finality rails with instantaneous merchant wallet credit.
             </p>
+          </div>
+        </div>
+      )}
+
+      {/* ─────────────────────────────────────────────────────────────
+          TAB 7: PLATFORM ADMINISTRATORS & SECURITY SESSIONS
+         ───────────────────────────────────────────────────────────── */}
+      {activeTab === 'users' && (
+        <div className="space-y-6">
+          {/* Header Action Bar */}
+          <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <h2 className="text-sm font-bold text-slate-900 flex items-center space-x-2">
+                <ShieldCheck className="w-4 h-4 text-onion" />
+                <span>Platform Administrators & Access Directory</span>
+              </h2>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Dual-control roles (PREPARER / APPROVER) and institutional API keys for platform governance.
+              </p>
+            </div>
+            <button
+              onClick={() => setIsAddAdminModalOpen(true)}
+              className="flex items-center space-x-2 px-4 py-2 bg-onion text-white rounded-xl text-xs font-bold hover:bg-onion-700 shadow-xs transition"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Add Platform Officer</span>
+            </button>
+          </div>
+
+          {/* Admin Directory Table */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
+            <div className="p-4 border-b border-slate-100 flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-700">Configured Officers ({adminUsers.length})</span>
+              <button
+                onClick={loadAdminUsersData}
+                disabled={adminUsersLoading}
+                className="text-xs text-onion hover:underline disabled:opacity-50"
+              >
+                {adminUsersLoading ? 'Refreshing...' : 'Refresh Directory'}
+              </button>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase tracking-wider text-[10px]">
+                  <tr>
+                    <th className="py-3 px-4 font-bold">Officer</th>
+                    <th className="py-3 px-4 font-bold">Assigned Role</th>
+                    <th className="py-3 px-4 font-bold">Active API Key</th>
+                    <th className="py-3 px-4 font-bold">Status</th>
+                    <th className="py-3 px-4 font-bold">Last Activity</th>
+                    <th className="py-3 px-4 font-bold text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {adminUsersLoading && adminUsers.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="py-8 text-center text-slate-400 text-xs">
+                        Loading platform administrators...
+                      </td>
+                    </tr>
+                  ) : adminUsers.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="py-8 text-center text-slate-400 text-xs">
+                        No platform administrators found. Seed admins or click "Add Platform Officer".
+                      </td>
+                    </tr>
+                  ) : (
+                    adminUsers.map((admin) => (
+                      <tr key={admin.id} className="hover:bg-slate-50/60 transition">
+                        <td className="py-3 px-4">
+                          <div className="font-bold text-slate-900">{admin.name}</div>
+                          <div className="text-[11px] text-slate-400 font-mono">{admin.email}</div>
+                        </td>
+                        <td className="py-3 px-4">
+                          <span
+                            className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${
+                              admin.role === 'SUPER_ADMIN'
+                                ? 'bg-purple-100 text-purple-800'
+                                : admin.role === 'APPROVER'
+                                ? 'bg-amber-100 text-amber-800'
+                                : admin.role === 'PREPARER'
+                                ? 'bg-blue-100 text-blue-800'
+                                : 'bg-slate-100 text-slate-700'
+                            }`}
+                          >
+                            {admin.role}
+                          </span>
+                        </td>
+                        <td className="py-3 px-4">
+                          {admin.keyPrefix ? (
+                            <span className="font-mono text-[11px] bg-slate-100 px-2 py-0.5 rounded text-slate-700 border border-slate-200">
+                              {admin.keyPrefix}
+                            </span>
+                          ) : (
+                            <span className="text-slate-400 italic">No key issued</span>
+                          )}
+                        </td>
+                        <td className="py-3 px-4">
+                          <span
+                            className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${
+                              admin.status === 'ACTIVE'
+                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                : 'bg-rose-50 text-rose-700 border border-rose-200'
+                            }`}
+                          >
+                            {admin.status}
+                          </span>
+                        </td>
+                        <td className="py-3 px-4 text-slate-500 text-[11px]">
+                          {admin.lastActiveAt ? new Date(admin.lastActiveAt).toLocaleString() : 'Never'}
+                        </td>
+                        <td className="py-3 px-4 text-right">
+                          <button
+                            onClick={() => handleGenerateAdminKey(admin)}
+                            disabled={apiBusy}
+                            className="px-2.5 py-1 bg-slate-100 text-slate-700 hover:bg-slate-200 rounded-lg text-[11px] font-bold transition flex items-center space-x-1 inline-flex disabled:opacity-50"
+                          >
+                            <Key className="w-3 h-3 text-slate-500" />
+                            <span>{admin.keyPrefix ? 'Rotate Key' : 'Generate Key'}</span>
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Active Admin Sessions */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
+            <div className="p-4 border-b border-slate-100 flex items-center justify-between">
+              <div>
+                <span className="text-xs font-bold text-slate-700">Active Administrative Sessions</span>
+                <p className="text-[11px] text-slate-400">Expiring bearer sessions issued via POST /api/v1/admin/auth/login.</p>
+              </div>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase tracking-wider text-[10px]">
+                  <tr>
+                    <th className="py-3 px-4 font-bold">IP Address</th>
+                    <th className="py-3 px-4 font-bold">Client / User Agent</th>
+                    <th className="py-3 px-4 font-bold">Last Activity</th>
+                    <th className="py-3 px-4 font-bold">Expires At</th>
+                    <th className="py-3 px-4 font-bold text-right">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {adminSessions.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="py-6 text-center text-slate-400 text-xs">
+                        No interactive sessions found. Officers authenticate via session or static hashed keys.
+                      </td>
+                    </tr>
+                  ) : (
+                    adminSessions.map((sess) => (
+                      <tr key={sess.id} className="hover:bg-slate-50/60 transition">
+                        <td className="py-3 px-4 font-mono font-bold text-slate-800">
+                          {sess.ipAddress || 'Internal'}
+                          {sess.isCurrent && (
+                            <span className="ml-2 px-1.5 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] rounded font-sans font-bold">
+                              Current
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-3 px-4 text-slate-600 truncate max-w-xs">{sess.userAgent || 'API Client'}</td>
+                        <td className="py-3 px-4 text-slate-500 text-[11px]">
+                          {new Date(sess.lastActivityAt).toLocaleTimeString()}
+                        </td>
+                        <td className="py-3 px-4 text-slate-500 text-[11px]">
+                          {new Date(sess.expiresAt).toLocaleTimeString()}
+                        </td>
+                        <td className="py-3 px-4 text-right">
+                          <button
+                            onClick={() => handleRevokeSession(sess.id)}
+                            disabled={apiBusy}
+                            className="text-red-600 hover:text-red-800 font-bold text-[11px] hover:underline"
+                          >
+                            Revoke
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─────────────────────────────────────────────────────────────
+          ADD PLATFORM OFFICER MODAL
+         ───────────────────────────────────────────────────────────── */}
+      {isAddAdminModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 overflow-y-auto">
+          <div className="w-full max-w-md bg-white rounded-3xl shadow-2xl p-6 sm:p-8 space-y-5 border border-slate-200 my-8">
+            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+              <h3 className="font-bold text-slate-900 text-base flex items-center space-x-2">
+                <Users className="w-5 h-5 text-onion" />
+                <span>Create Platform Officer</span>
+              </h3>
+              <button onClick={() => setIsAddAdminModalOpen(false)} className="p-1 text-slate-400">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateAdminUser} className="space-y-4 text-xs">
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Full Name</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Compliance Officer"
+                  value={newAdminForm.name}
+                  onChange={(e) => setNewAdminForm({ ...newAdminForm, name: e.target.value })}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-onion-500 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Institutional Email</label>
+                <input
+                  type="email"
+                  required
+                  placeholder="e.g. officer@internal.orki.io"
+                  value={newAdminForm.email}
+                  onChange={(e) => setNewAdminForm({ ...newAdminForm, email: e.target.value })}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-onion-500 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Assigned Role</label>
+                <select
+                  value={newAdminForm.role}
+                  onChange={(e) =>
+                    setNewAdminForm({
+                      ...newAdminForm,
+                      role: e.target.value as 'SUPER_ADMIN' | 'ADMIN' | 'PREPARER' | 'APPROVER',
+                    })
+                  }
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs bg-white text-slate-700"
+                >
+                  <option value="ADMIN">Platform Admin</option>
+                  <option value="PREPARER">Preparer (Dual-Control First Signer)</option>
+                  <option value="APPROVER">Approver (Dual-Control Final Signer)</option>
+                  <option value="SUPER_ADMIN">Super Administrator (Full RBAC)</option>
+                </select>
+                <p className="text-[10px] text-slate-400 mt-1">
+                  Preparer and Approver roles enforce segregation of duties during fee reviews.
+                </p>
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Custom Password (Optional)</label>
+                <input
+                  type="password"
+                  placeholder="Leave blank to auto-generate"
+                  value={newAdminForm.password}
+                  onChange={(e) => setNewAdminForm({ ...newAdminForm, password: e.target.value })}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs"
+                />
+              </div>
+
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                <label className="flex items-center space-x-2 font-bold text-slate-800">
+                  <input
+                    type="checkbox"
+                    checked={newAdminForm.generateKey}
+                    onChange={(e) => setNewAdminForm({ ...newAdminForm, generateKey: e.target.checked })}
+                    className="rounded text-onion focus:ring-onion"
+                  />
+                  <span>Generate institutional API key immediately</span>
+                </label>
+              </div>
+
+              <div className="flex space-x-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsAddAdminModalOpen(false)}
+                  className="w-1/2 py-2.5 bg-slate-100 text-slate-700 rounded-xl text-xs font-bold hover:bg-slate-200"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={apiBusy}
+                  className="w-1/2 py-2.5 bg-onion text-white rounded-xl text-xs font-bold hover:bg-onion-700 shadow-md disabled:opacity-50"
+                >
+                  {apiBusy ? 'Creating...' : 'Create Officer'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ─────────────────────────────────────────────────────────────
+          KEY DISPLAY MODAL (SINGLE-USE REVEAL)
+         ───────────────────────────────────────────────────────────── */}
+      {keyDisplayModal.isOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 overflow-y-auto">
+          <div className="w-full max-w-lg bg-white rounded-3xl shadow-2xl p-6 sm:p-8 space-y-5 border border-slate-200 my-8">
+            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+              <h3 className="font-bold text-slate-900 text-base flex items-center space-x-2">
+                <Key className="w-5 h-5 text-amber-600" />
+                <span>{keyDisplayModal.title}</span>
+              </h3>
+              <button
+                onClick={() => setKeyDisplayModal({ isOpen: false, title: '', adminName: '' })}
+                className="p-1 text-slate-400"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4 text-xs">
+              <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-xl text-amber-900 space-y-1">
+                <div className="font-bold flex items-center space-x-1.5">
+                  <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                  <span>Single-Use Security Reveal</span>
+                </div>
+                <p className="text-[11px] leading-relaxed">
+                  {keyDisplayModal.warning ||
+                    'Store this admin key securely now. The raw key is hashed on the backend with SHA-256 and will never be presented again.'}
+                </p>
+              </div>
+
+              {keyDisplayModal.apiKey && (
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Administrative API Key</label>
+                  <div className="flex items-center space-x-2">
+                    <input
+                      type="text"
+                      readOnly
+                      value={keyDisplayModal.apiKey}
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-mono text-xs text-slate-900 select-all"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (keyDisplayModal.apiKey) {
+                          navigator.clipboard.writeText(keyDisplayModal.apiKey)
+                          alert('API key copied to clipboard!')
+                        }
+                      }}
+                      className="px-3 py-2 bg-slate-900 text-white rounded-xl font-bold flex items-center space-x-1 shrink-0 hover:bg-slate-800"
+                    >
+                      <Copy className="w-3.5 h-3.5" />
+                      <span>Copy</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {keyDisplayModal.initialPassword && (
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Initial Password</label>
+                  <div className="flex items-center space-x-2">
+                    <input
+                      type="text"
+                      readOnly
+                      value={keyDisplayModal.initialPassword}
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-mono text-xs text-slate-900 select-all"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (keyDisplayModal.initialPassword) {
+                          navigator.clipboard.writeText(keyDisplayModal.initialPassword)
+                          alert('Password copied to clipboard!')
+                        }
+                      }}
+                      className="px-3 py-2 bg-slate-100 text-slate-800 rounded-xl font-bold flex items-center space-x-1 shrink-0 hover:bg-slate-200"
+                    >
+                      <Copy className="w-3.5 h-3.5" />
+                      <span>Copy</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              <button
+                type="button"
+                onClick={() => setKeyDisplayModal({ isOpen: false, title: '', adminName: '' })}
+                className="w-full py-2.5 bg-slate-900 text-white rounded-xl text-xs font-bold hover:bg-slate-800 shadow-md mt-3"
+              >
+                I have securely saved these credentials
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -502,3 +502,163 @@ export async function resetAdminMerchantSessions(
     'admin'
   )
 }
+
+// 10. Admin Authentication & Session Management
+export interface AdminUser {
+  id: string
+  name: string
+  email: string
+  role: 'SUPER_ADMIN' | 'ADMIN' | 'PREPARER' | 'APPROVER'
+  keyPrefix?: string | null
+  hasActiveKey?: boolean
+  status: string
+  lastActiveAt?: string | null
+  createdAt: string
+  updatedAt?: string | null
+}
+
+export interface AdminSession {
+  id: string
+  ipAddress?: string | null
+  userAgent?: string | null
+  lastActivityAt: string
+  expiresAt: string
+  isCurrent: boolean
+}
+
+export interface AdminAuthResponse {
+  accessToken: string
+  tokenType: string
+  expiresIn: number
+  expiresAt: string
+  admin: AdminUser
+}
+
+export async function loginAdminApi(email: string, password: string): Promise<AdminAuthResponse> {
+  const config = getApiConfig()
+  return requestApi<AdminAuthResponse>(
+    config,
+    'POST',
+    '/api/v1/admin/auth/login',
+    { email, password },
+    'none'
+  )
+}
+
+export async function logoutAdminApi(): Promise<{ status: string; message: string }> {
+  const config = getApiConfig()
+  return requestApi(config, 'POST', '/api/v1/admin/auth/logout', {}, 'admin')
+}
+
+export async function fetchAdminMe(): Promise<{
+  admin: AdminUser
+  session?: { sessionId?: string; expiresIn?: number; expiresAt?: string; ipAddress?: string }
+}> {
+  const config = getApiConfig()
+  return requestApi(config, 'GET', '/api/v1/admin/auth/me', undefined, 'admin')
+}
+
+export async function fetchAdminSessions(): Promise<AdminSession[]> {
+  const config = getApiConfig()
+  const res = await requestApi<{ sessions: AdminSession[] }>(
+    config,
+    'GET',
+    '/api/v1/admin/auth/sessions',
+    undefined,
+    'admin'
+  )
+  return res.sessions || []
+}
+
+export async function revokeAdminSession(sessionId: string): Promise<void> {
+  const config = getApiConfig()
+  await requestApi(
+    config,
+    'DELETE',
+    `/api/v1/admin/auth/sessions/${encodeURIComponent(sessionId)}`,
+    undefined,
+    'admin'
+  )
+}
+
+// 11. Platform Admin Users Management & API Key Lifecycle
+export async function fetchAdminUsers(): Promise<AdminUser[]> {
+  const config = getApiConfig()
+  if (!config.adminKey) return []
+  const res = await requestApi<{ admins: AdminUser[]; count: number }>(
+    config,
+    'GET',
+    '/api/v1/admin/users',
+    undefined,
+    'admin'
+  )
+  return res.admins || []
+}
+
+export async function createAdminUser(payload: {
+  name: string
+  email: string
+  role: 'SUPER_ADMIN' | 'ADMIN' | 'PREPARER' | 'APPROVER'
+  password?: string
+  generateKey?: boolean
+}): Promise<{
+  id: string
+  name: string
+  email: string
+  role: string
+  keyPrefix?: string
+  apiKey?: string
+  initialPassword?: string
+  warning?: string
+}> {
+  const config = getApiConfig()
+  return requestApi(config, 'POST', '/api/v1/admin/users', payload, 'admin')
+}
+
+export async function generateAdminUserKey(id: string): Promise<{
+  id: string
+  name: string
+  email: string
+  apiKey: string
+  keyPrefix: string
+  warning: string
+}> {
+  const config = getApiConfig()
+  return requestApi(
+    config,
+    'POST',
+    `/api/v1/admin/users/${encodeURIComponent(id)}/generate-key`,
+    {},
+    'admin'
+  )
+}
+
+export async function bootstrapAdminKey(email: string): Promise<{
+  id: string
+  name: string
+  email: string
+  apiKey: string
+  keyPrefix: string
+  warning: string
+}> {
+  const config = getApiConfig()
+  return requestApi(
+    config,
+    'POST',
+    '/api/v1/admin/users/bootstrap-key',
+    { email },
+    'none'
+  )
+}
+
+// 12. Transaction Detail
+export async function fetchAdminTransactionDetail(id: string): Promise<Record<string, unknown>> {
+  const config = getApiConfig()
+  return requestApi(
+    config,
+    'GET',
+    `/api/v1/admin/transactions/${encodeURIComponent(id)}`,
+    undefined,
+    'admin'
+  )
+}

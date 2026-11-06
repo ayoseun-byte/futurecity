@@ -8,8 +8,9 @@ import {
   saveStoredMerchants,
   saveStoredOrganizations,
 } from '../../services/storageService'
-import { getApiConfig, requestApi } from '../../services/apiConfig'
+import { getApiConfig, requestApi, saveAdminSessionToken } from '../../services/apiConfig'
 import { fetchAllMerchantsFromBackend } from '../../services/pspMerchantService'
+import { loginAdminApi } from '../../services/adminService'
 import {
   Building2,
   Store,
@@ -45,8 +46,10 @@ export const LoginView: React.FC = () => {
   const [selectedMerchantId, setSelectedMerchantId] = useState<string>(merchants[0]?.id || '')
 
   // Admin form state
-  const [adminEmail, setAdminEmail] = useState('admin@orki.com')
-  const [adminPassword, setAdminPassword] = useState('admin123')
+  const [adminEmail, setAdminEmail] = useState('ayoseunsolomon@internal.orki.io')
+  const [adminPassword, setAdminPassword] = useState('Ork!PxP2026Naw$')
+  const [adminLoggingIn, setAdminLoggingIn] = useState(false)
+  const [adminLoginError, setAdminLoginError] = useState('')
 
   useEffect(() => {
     const config = getApiConfig()
@@ -167,9 +170,34 @@ export const LoginView: React.FC = () => {
     navigate('/merchant')
   }
 
-  const handleAdminLogin = (e: React.FormEvent) => {
+  const handleAdminLogin = async (e: React.FormEvent) => {
     e.preventDefault()
-    login('admin')
+    setAdminLoginError('')
+    setAdminLoggingIn(true)
+    try {
+      const res = await loginAdminApi(adminEmail.trim(), adminPassword)
+      saveAdminSessionToken(res.accessToken)
+      login('admin', undefined, {
+        id: res.admin.id,
+        name: res.admin.name,
+        email: res.admin.email,
+      })
+      navigate('/admin')
+    } catch (err: unknown) {
+      console.warn('Backend admin login failed:', err)
+      const message = err instanceof Error ? err.message : 'Invalid admin credentials.'
+      setAdminLoginError(message)
+    } finally {
+      setAdminLoggingIn(false)
+    }
+  }
+
+  const handleAdminBypass = () => {
+    login('admin', undefined, {
+      id: 'local-admin',
+      name: 'Local Administrator',
+      email: adminEmail,
+    })
     navigate('/admin')
   }
 
@@ -239,13 +267,30 @@ export const LoginView: React.FC = () => {
                   <span>Protocol Headquarters Access</span>
                 </div>
                 <p className="text-[11px] text-slate-500">
-                  Manage PSP onboarding, fee caps, regulatory verification (VARA/CBUAE), and institutional key generation.
+                  Authenticate using seeded institutional Super Admin credentials (`POST /api/v1/admin/auth/login`) to manage PSP approvals, rate governance, and API keys.
                 </p>
               </div>
 
+              {adminLoginError && (
+                <div role="alert" className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700 space-y-1">
+                  <div className="font-semibold flex items-center space-x-1.5">
+                    <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
+                    <span>Authentication Failed</span>
+                  </div>
+                  <p className="text-[11px] leading-relaxed">{adminLoginError}</p>
+                  <button
+                    type="button"
+                    onClick={handleAdminBypass}
+                    className="mt-1 text-[11px] font-semibold text-red-800 underline hover:text-red-900 block"
+                  >
+                    Bypass to local demo portal →
+                  </button>
+                </div>
+              )}
+
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Compliance Email
+                  Admin Officer Email
                 </label>
                 <div className="relative">
                   <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
@@ -254,6 +299,7 @@ export const LoginView: React.FC = () => {
                     value={adminEmail}
                     onChange={(e) => setAdminEmail(e.target.value)}
                     required
+                    placeholder="ayoseunsolomon@internal.orki.io"
                     className="w-full pl-9 pr-3 py-2 text-xs border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-onion focus:border-onion bg-white"
                   />
                 </div>
@@ -261,7 +307,7 @@ export const LoginView: React.FC = () => {
 
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Master Password
+                  Officer Password
                 </label>
                 <div className="relative">
                   <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
@@ -277,9 +323,10 @@ export const LoginView: React.FC = () => {
 
               <button
                 type="submit"
-                className="w-full mat-btn-primary py-2.5 px-4 text-xs font-semibold flex items-center justify-center space-x-2 shadow-xs mt-2"
+                disabled={adminLoggingIn}
+                className="w-full mat-btn-primary py-2.5 px-4 text-xs font-semibold flex items-center justify-center space-x-2 shadow-xs mt-2 disabled:opacity-60"
               >
-                <span>Enter Orki Admin Portal</span>
+                <span>{adminLoggingIn ? 'Authenticating...' : 'Enter Orki Admin Portal'}</span>
                 <ArrowRight className="w-4 h-4" />
               </button>
             </form>

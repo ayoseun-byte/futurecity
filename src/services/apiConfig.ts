@@ -34,6 +34,24 @@ export function saveApiConfig(config: ApiConfig): void {
   }))
 }
 
+export function saveAdminSessionToken(token: string): void {
+  const current = getApiConfig()
+  saveApiConfig({ ...current, adminKey: token })
+  sessionStorage.setItem('orki_admin_session_token', token)
+}
+
+export function getAdminSessionToken(): string {
+  return sessionStorage.getItem('orki_admin_session_token') || getApiConfig().adminKey || ''
+}
+
+export function clearAdminSessionToken(): void {
+  sessionStorage.removeItem('orki_admin_session_token')
+  const current = getApiConfig()
+  if (current.adminKey.startsWith('orki_adm_sess_')) {
+    saveApiConfig({ ...current, adminKey: '' })
+  }
+}
+
 export function clearAllMerchantSessions(): void {
   sessionStorage.removeItem('orki_active_merchant_session')
   const keysToRemove: string[] = []
@@ -87,7 +105,12 @@ export async function apiRequest(config: ApiConfig, method: string, path: string
 
   const headers: Record<string, string> = { Accept: 'application/json' }
   if (body && method !== 'GET') headers['Content-Type'] = 'application/json'
-  if (auth === 'admin' && config.adminKey) headers['X-Admin-Key'] = config.adminKey
+  if (auth === 'admin' && config.adminKey) {
+    headers['X-Admin-Key'] = config.adminKey
+    if (config.adminKey.startsWith('orki_adm_sess_')) {
+      headers.Authorization = `Bearer ${config.adminKey}`
+    }
+  }
   if ((cleanPath.includes('/fee-change-requests/') || cleanPath.includes('/fee-schedule')) && config.feeApproverKey) {
     headers['X-Fee-Approver-Key'] = config.feeApproverKey
   }
