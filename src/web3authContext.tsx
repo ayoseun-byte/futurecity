@@ -1,7 +1,11 @@
 import { WEB3AUTH_NETWORK, type Web3AuthOptions } from "@web3auth/modal";
 import type { Web3AuthContextConfig } from "@web3auth/modal/react";
 
-const CLIENT_ID = process.env.VITE_WEB3AUTH_CLIENT_ID || "YOUR_CLIENT_ID"; // Get your Client ID from Web3Auth Dashboard
+// Requires vite.config.ts build-time enforcement of VITE_WEB3AUTH_CLIENT_ID.
+const CLIENT_ID = import.meta.env.VITE_WEB3AUTH_CLIENT_ID;
+if (!CLIENT_ID) {
+  throw new Error("VITE_WEB3AUTH_CLIENT_ID is required — set it in .env (see .env.example).");
+}
 
 const evmChainConfig = {
   chainNamespace: "eip155" as const,

@@ -489,10 +489,10 @@ export async function reassignAdminMerchant(
   )
 }
 
-// 9. Reset Merchant Onboarding Sessions & Reissue Budget
+// 9. Reset Merchant Onboarding Session Reissue Cap
 export async function resetAdminMerchantSessions(
   merchantId: string
-): Promise<{ id: string; sessionsCleared: number; message: string }> {
+): Promise<{ id: string; resetAt: string; message: string }> {
   const config = getApiConfig()
   return requestApi(
     config,

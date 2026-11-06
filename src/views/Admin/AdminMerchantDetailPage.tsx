@@ -143,7 +143,7 @@ export const AdminMerchantDetailPage: React.FC = () => {
     setError(null)
     try {
       const res = await resetAdminMerchantSessions(merchant.id)
-      setStatusSuccess(`${res.message} (${res.sessionsCleared} sessions cleared)`)
+      setStatusSuccess(`${res.message} (cap reset at ${new Date(res.resetAt).toLocaleString()})`)
       void loadMerchant()
       setTimeout(() => setStatusSuccess(null), 4000)
     } catch (err) {
@@ -397,7 +397,7 @@ export const AdminMerchantDetailPage: React.FC = () => {
                 onClick={handleResetSessions}
                 disabled={resettingSessions}
                 className="px-3.5 py-1.5 bg-white border border-slate-300 text-slate-700 rounded-xl text-xs font-bold hover:bg-slate-50 transition shadow-2xs shrink-0 flex items-center gap-1.5 disabled:opacity-50"
-                title="Clears all active/expired onboarding sessions and resets the 20-reissue cap"
+                title="Re-anchors the 20-reissue cap to a reset_at timestamp; existing onboarding session records are retained"
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${resettingSessions ? 'animate-spin' : ''}`} />
                 <span>{resettingSessions ? 'Resetting…' : 'Reset Session Cap'}</span>

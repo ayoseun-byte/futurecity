@@ -53,7 +53,7 @@ const endpoints: Endpoint[] = [
   { group: 'Admin', method: 'PATCH', path: '/api/v1/admin/merchants/{id}/status', auth: 'admin', body: JSON.stringify({ status: 'active', reason: 'Reviewed and unblocked.' }, null, 2) },
   { group: 'Admin', method: 'PATCH', path: '/api/v1/admin/merchants/{id}/step', auth: 'admin', body: JSON.stringify({ step: 'BUSINESS_VERIFICATION', reason: 'Admin compliance re-review.', clearSubsequentMilestones: true }, null, 2), note: 'Enforce merchant onboarding step progression or regress for compliance remediation.' },
   { group: 'Admin', method: 'POST', path: '/api/v1/admin/merchants/{id}/reassign', auth: 'admin', body: JSON.stringify({ newOrganizationId: 'replace-with-target-psp-uuid', reason: 'Corporate consolidation.' }, null, 2) },
-  { group: 'Admin', method: 'POST', path: '/api/v1/admin/merchants/{id}/reset-sessions', auth: 'admin', body: '{}', note: 'Resets all active and expired onboarding sessions for a merchant, unlocking their 20-reissue budget.' },
+  { group: 'Admin', method: 'POST', path: '/api/v1/admin/merchants/{id}/reset-sessions', auth: 'admin', body: '{}', note: 'Resets the 20-reissue session cap by re-anchoring it to a reset_at timestamp. Existing onboarding session records are retained for audit.' },
   { group: 'Admin', method: 'GET', path: '/api/v1/admin/transactions', auth: 'admin' },
   { group: 'Admin', method: 'GET', path: '/api/v1/admin/transactions/{id}', auth: 'admin' },
 
@@ -88,7 +88,6 @@ const endpoints: Endpoint[] = [
     ['GET', '/api/v1/merchant/notice', undefined],
     ['POST', '/api/v1/merchant/notice/acknowledge', JSON.stringify({ isAuthorisedSignatory: true, signatoryName: 'Ada Example', signatoryEmail: 'ada@example.com', signatoryTitle: 'Director' }, null, 2)],
     ['POST', '/api/v1/merchant/kyb-information', JSON.stringify({ companyInfo: { companyName: 'Example Trading Ltd', registrationNumber: 'RC-001', country: 'NGA', incorporatedOn: '2020-01-01', type: 'Private company', legalAddress: 'Example address' } }, null, 2)],
-    ['POST', '/api/v1/merchant/kyb/rely-on-psp', '{}'],
     ['GET', '/api/v1/merchant/terms', undefined],
     ['POST', '/api/v1/merchant/sumsub/token', '{}'],
     ['GET', '/api/v1/merchant/kyc/start', undefined],

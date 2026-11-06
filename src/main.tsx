@@ -9,6 +9,11 @@ import './index.css'
 import App from './App.tsx'
 
 const clientId = import.meta.env.VITE_WEB3AUTH_CLIENT_ID
+// vite.config.ts fails the build without a client ID; this runtime guard keeps
+// other pipelines (e.g. static deployments bypassing Vite) honest too.
+if (!clientId) {
+  throw new Error('VITE_WEB3AUTH_CLIENT_ID is required — set it in .env (see .env.example).')
+}
 const isMainnet = import.meta.env.VITE_WEB3AUTH_NETWORK === 'sapphire_mainnet'
 const isSepolia = import.meta.env.VITE_BASE_CHAIN_ID === '84532'
 
@@ -45,7 +50,7 @@ const solanaChainConfig = {
 
 const web3AuthConfig: Web3AuthContextConfig = {
   web3AuthOptions: {
-    clientId: clientId || '',
+    clientId,
     web3AuthNetwork: isMainnet
       ? WEB3AUTH_NETWORK.SAPPHIRE_MAINNET
       : WEB3AUTH_NETWORK.SAPPHIRE_DEVNET,
@@ -57,7 +62,6 @@ const queryClient = new QueryClient()
 
 function Root() {
   const app = <App />
-  if (!clientId) return app
 
   return (
     <Web3AuthProvider config={web3AuthConfig}>
