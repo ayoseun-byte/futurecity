@@ -4,7 +4,6 @@ import {
   fetchMerchantPreferences,
   updateMerchantPreferences,
   type MerchantTokenSyncResult,
-  type MerchantPreferencesResponse,
 } from '../../services/pspMerchantService'
 
 /** Chain and token catalogs mirror the backend MerchantPreferencesController whitelists. */

@@ -174,6 +174,9 @@ export interface PspDetailResponse {
   categoryType: Organization['categoryType']
   webhookUrl?: string | null
   status: Organization['status']
+  feeWallet?: string | null
+  solanaFeeWallet?: string | null
+  onChainRegistration?: { status?: string; txHash?: string | null; error?: string; [key: string]: unknown }
   contacts?: Array<{ name: string; email: string; role?: string }>
   ndaSignedAt?: string | null
   agreement?: Record<string, unknown> | null
@@ -239,6 +242,66 @@ export async function fetchAdminPsps(category?: string): Promise<Organization[]>
 export async function fetchAdminPspDetail(pspId: string): Promise<PspDetailResponse> {
   const config = getApiConfig()
   return requestApi<PspDetailResponse>(config, 'GET', `/api/v1/admin/psps/${encodeURIComponent(pspId)}`, undefined, 'admin')
+}
+
+export async function updateAdminPspFeeWallets(
+  pspId: string,
+  payload: { feeWallet?: string | null; solanaFeeWallet?: string | null },
+): Promise<PspDetailResponse> {
+  const config = getApiConfig()
+  return requestApi<PspDetailResponse>(
+    config,
+    'PATCH',
+    `/api/v1/admin/psps/${encodeURIComponent(pspId)}`,
+    payload,
+    'admin',
+  )
+}
+
+export interface AdminPspOnChainResult {
+  network: 'base' | 'solana'
+  pspWallet?: string
+  feeBps?: number
+  status?: string
+  txHash?: string
+  registered?: boolean
+  currentFeeBps?: number
+  pendingFeeBps?: number
+  rateLockExpiry?: string
+  accounts?: Record<string, string>
+  instruction?: { name: string; discriminatorHex: string | null; args: Record<string, unknown> }
+  message?: string
+}
+
+export async function registerAdminPspOnChain(
+  pspId: string,
+  network: 'base' | 'solana',
+  pspWallet?: string,
+): Promise<AdminPspOnChainResult> {
+  const config = getApiConfig()
+  return requestApi<AdminPspOnChainResult>(
+    config,
+    'POST',
+    `/api/v1/admin/psps/${encodeURIComponent(pspId)}/onchain/register`,
+    { network, ...(pspWallet ? { pspWallet } : {}) },
+    'admin',
+  )
+}
+
+export async function fetchAdminPspOnChainStatus(
+  pspId: string,
+  network: 'base' | 'solana',
+  pspWallet?: string,
+): Promise<AdminPspOnChainResult> {
+  const config = getApiConfig()
+  const walletParam = pspWallet ? `&wallet=${encodeURIComponent(pspWallet)}` : ''
+  return requestApi<AdminPspOnChainResult>(
+    config,
+    'GET',
+    `/api/v1/admin/psps/${encodeURIComponent(pspId)}/onchain?network=${network}${walletParam}`,
+    undefined,
+    'admin',
+  )
 }
 
 export async function updateAdminPsp(

@@ -9,9 +9,13 @@ import {
   addAdminPspUbo,
   deleteAdminPspUbo,
   fetchAdminMerchants,
+  updateAdminPspFeeWallets,
+  registerAdminPspOnChain,
+  fetchAdminPspOnChainStatus,
   type PspDetailResponse,
   type AdminMerchantRow,
   type AdminUbo,
+  type AdminPspOnChainResult,
 } from '../../services/adminService'
 import type { Organization } from '../../types'
 import {
@@ -56,6 +60,41 @@ export const AdminPspDetailPage: React.FC<AdminPspDetailPageProps> = ({
   const [activeTab, setActiveTab] = useState<PspTab>('profile')
   const [copiedKey, setCopiedKey] = useState<string | null>(null)
 
+  // Fee wallets (EVM + Solana) editing
+  const [feeWalletDraft, setFeeWalletDraft] = useState('')
+  const [solanaWalletDraft, setSolanaWalletDraft] = useState('')
+  const [walletBusy, setWalletBusy] = useState(false)
+  const [walletMessage, setWalletMessage] = useState<string | null>(null)
+  const [walletError, setWalletError] = useState<string | null>(null)
+
+  // On-chain registration status + actions
+  const [chainStatus, setChainStatus] = useState<Record<'base' | 'solana', AdminPspOnChainResult | undefined>>({ base: undefined, solana: undefined })
+  const [chainBusy, setChainBusy] = useState<'base' | 'solana' | null>(null)
+  const [chainMessage, setChainMessage] = useState<string | null>(null)
+
+  const refreshOnChainStatus = useCallback(async (detail: PspDetailResponse) => {
+    const wallet = detail.feeWallet || undefined
+    if (!wallet) {
+      setChainStatus({ base: undefined, solana: undefined })
+      return
+    }
+    // Only the EVM splitter exposes a read endpoint for PSP registration state;
+    // Solana B2B registration is prepared-only and has no read path yet.
+    try {
+      const base = await fetchAdminPspOnChainStatus(detail.pspId, 'base', wallet)
+      setChainStatus((current) => ({ ...current, base }))
+    } catch {
+      setChainStatus((current) => ({ ...current, base: undefined }))
+    }
+  }, [])
+
+  const applyDetail = useCallback((detail: PspDetailResponse) => {
+    setPspDetail(detail)
+    setFeeWalletDraft(detail.feeWallet ?? '')
+    setSolanaWalletDraft(detail.solanaFeeWallet ?? '')
+    void refreshOnChainStatus(detail)
+  }, [refreshOnChainStatus])
+
   // Status Action
   const [statusBusy, setStatusBusy] = useState(false)
   const [apiSuccess, setApiSuccess] = useState<string | null>(null)
@@ -90,12 +129,13 @@ export const AdminPspDetailPage: React.FC<AdminPspDetailPageProps> = ({
       ])
       setPspDetail(detailData)
       setMerchants(merchantData.data)
+      applyDetail(detailData)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load PSP details.')
     } finally {
       setLoading(false)
     }
-  }, [id])
+  }, [id, applyDetail])
 
   useEffect(() => {
     void loadData()
@@ -105,6 +145,69 @@ export const AdminPspDetailPage: React.FC<AdminPspDetailPageProps> = ({
     navigator.clipboard.writeText(text)
     setCopiedKey(key)
     setTimeout(() => setCopiedKey(null), 2000)
+  }
+
+  const evmAddressPattern = /^0x[a-fA-F0-9]{40}$/
+  const solanaAddressPattern = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/
+
+  const handleSaveWallets = async () => {
+    if (!id || !pspDetail) return
+    const trimmedEvm = feeWalletDraft.trim()
+    const trimmedSol = solanaWalletDraft.trim()
+    if (trimmedEvm && !evmAddressPattern.test(trimmedEvm)) {
+      setWalletError('EVM fee wallet must be a valid 0x address.')
+      return
+    }
+    if (trimmedSol && !solanaAddressPattern.test(trimmedSol)) {
+      setWalletError('Solana fee wallet must be a valid Base58 address.')
+      return
+    }
+    if (trimmedEvm === (pspDetail.feeWallet ?? '') && trimmedSol === (pspDetail.solanaFeeWallet ?? '')) {
+      setWalletError('No wallet changes to save.')
+      return
+    }
+    setWalletBusy(true)
+    setWalletError(null)
+    setWalletMessage(null)
+    try {
+      const detail = await updateAdminPspFeeWallets(id, {
+        feeWallet: trimmedEvm || null,
+        solanaFeeWallet: trimmedSol || null,
+      })
+      applyDetail(detail)
+      const reg = detail.onChainRegistration
+      setWalletMessage(
+        reg
+          ? `Fee wallets saved — EVM registration executed (${reg.status ?? 'unknown'}${reg.txHash ? `, tx ${String(reg.txHash).slice(0, 10)}…` : ''}).`
+          : 'Fee wallets saved.',
+      )
+    } catch (err) {
+      setWalletError(err instanceof Error ? err.message : 'Failed to save fee wallets.')
+    } finally {
+      setWalletBusy(false)
+    }
+  }
+
+  const handleRegisterOnChain = async (network: 'base') => {
+    if (!id) return
+    const wallet = feeWalletDraft.trim()
+    if (!wallet) {
+      setWalletError('A fee wallet is required before registering on Base.')
+      return
+    }
+    setChainBusy(network)
+    setWalletError(null)
+    setChainMessage(null)
+    try {
+      const result = await registerAdminPspOnChain(id, network, wallet)
+      const hashSuffix = result.txHash ? ` · tx ${result.txHash.slice(0, 10)}…` : ''
+      setChainMessage(`EVM splitter: ${result.status || 'ok'}${hashSuffix}`)
+      setChainStatus((current) => ({ ...current, [network]: result }))
+    } catch (err) {
+      setChainMessage(`Registration failed: ${err instanceof Error ? err.message : 'unknown error'}`)
+    } finally {
+      setChainBusy(null)
+    }
   }
 
   const handleUpdateStatus = async (newStatus: Organization['status']) => {
@@ -336,7 +439,7 @@ export const AdminPspDetailPage: React.FC<AdminPspDetailPageProps> = ({
               <p className="text-xs text-slate-500 font-mono flex items-center space-x-3 flex-wrap gap-1">
                 <span>Partner ID: {pspDetail.pspId}</span>
                 <span>·</span>
-                <span>Fee Vault: <code className="text-slate-800 font-bold">{((pspDetail as any).feeWallet as string | undefined) || '0x000...'}</code></span>
+                <span>Fee Vault: <code className="text-slate-800 font-bold">{pspDetail.feeWallet || '0x000...'}</code></span>
                 <span>·</span>
                 <span>Created: {new Date(((pspDetail as any).createdAt || pspDetail.ndaSignedAt || new Date().toISOString())).toLocaleDateString()}</span>
               </p>
@@ -481,6 +584,7 @@ export const AdminPspDetailPage: React.FC<AdminPspDetailPageProps> = ({
       <div className="space-y-6">
         {/* TAB 1: PROFILE */}
         {activeTab === 'profile' && (
+          <>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm space-y-4">
               <h3 className="text-sm font-bold text-slate-900 flex items-center space-x-2">
@@ -536,6 +640,107 @@ export const AdminPspDetailPage: React.FC<AdminPspDetailPageProps> = ({
               </div>
             </div>
           </div>
+
+          {/* Fee Wallets & On-Chain Registration Bridge */}
+          <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900 flex items-center space-x-2">
+                  <Wallet className="w-4 h-4 text-onion" />
+                  <span>Fee Wallets &amp; On-Chain Registration</span>
+                </h3>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  Saving an EVM fee wallet automatically triggers PSP registration on the Base splitter contract
+                  (broadcast when an operator key is configured, otherwise prepared calldata). Solana wallets are
+                  stored for provisioning only.
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="p-3 bg-slate-50 border border-slate-200/80 rounded-xl space-y-2">
+                <label className="text-[10px] uppercase font-semibold text-slate-500">EVM Fee Wallet (Base)</label>
+                <input
+                  type="text"
+                  value={feeWalletDraft}
+                  onChange={(e) => setFeeWalletDraft(e.target.value)}
+                  placeholder="0x…"
+                  className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs font-mono text-slate-800"
+                />
+                <div className="flex items-center justify-between gap-2">
+                  <span className={`text-[10px] ${chainStatus.base?.registered ? 'text-emerald-700' : 'text-amber-700'}`}>
+                    {pspDetail.feeWallet
+                      ? chainStatus.base?.registered
+                        ? '✓ Registered in splitter'
+                        : 'Not yet registered on-chain (prepared calldata only)'
+                      : 'No EVM wallet set'}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => void handleRegisterOnChain('base')}
+                    disabled={chainBusy !== null || !feeWalletDraft.trim()}
+                    className="px-2.5 py-1 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 text-[10px] font-bold text-slate-700 disabled:opacity-50"
+                  >
+                    {chainBusy === 'base' ? 'Registering…' : 'Register on Base'}
+                  </button>
+                </div>
+              </div>
+
+              <div className="p-3 bg-slate-50 border border-slate-200/80 rounded-xl space-y-2">
+                <label className="text-[10px] uppercase font-semibold text-slate-500">Solana Fee Wallet (SVM)</label>
+                <input
+                  type="text"
+                  value={solanaWalletDraft}
+                  onChange={(e) => setSolanaWalletDraft(e.target.value)}
+                  placeholder="Base58…"
+                  className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs font-mono text-slate-800"
+                />
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[10px] text-slate-500">
+                    {solanaWalletDraft.trim()
+                      ? 'Stored for provisioning — no Solana registration path'
+                      : 'No Solana wallet set'}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div className="text-[11px]">
+                {walletError && <span className="text-red-600">{walletError}</span>}
+                {chainMessage && <span className="text-slate-600">{chainMessage}</span>}
+                {!walletError && !chainMessage && walletMessage && <span className="text-emerald-700">{walletMessage}</span>}
+                {!walletError && !chainMessage && !walletMessage && (
+                  <span className="text-slate-400">
+                    {feeWalletDraft !== (pspDetail.feeWallet ?? '') || solanaWalletDraft !== (pspDetail.solanaFeeWallet ?? '')
+                      ? 'Unsaved wallet changes'
+                      : 'Wallets up to date'}
+                  </span>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => void handleSaveWallets()}
+                disabled={walletBusy}
+                className="px-4 py-2 rounded-xl bg-slate-900 text-white text-xs font-bold hover:bg-black disabled:opacity-50 shadow-xs"
+              >
+                {walletBusy ? 'Saving…' : 'Save Fee Wallets'}
+              </button>
+            </div>
+
+            {chainStatus.base && typeof chainStatus.base.currentFeeBps === 'number' && (
+              <div className="flex flex-wrap items-center gap-3 border-t border-slate-100 pt-3 text-[11px] text-slate-500">
+                <span>Current markup on-chain: <b className="text-slate-700">{(chainStatus.base.currentFeeBps / 100).toFixed(2)}%</b></span>
+                {typeof chainStatus.base.pendingFeeBps === 'number' && chainStatus.base.pendingFeeBps > 0 && (
+                  <span>Pending: <b className="text-amber-700">{(chainStatus.base.pendingFeeBps / 100).toFixed(2)}%</b> (rate lock)</span>
+                )}
+                {chainStatus.base.rateLockExpiry && chainStatus.base.rateLockExpiry !== '0' && (
+                  <span>Locks until block <b className="text-slate-600 font-mono">{chainStatus.base.rateLockExpiry}</b></span>
+                )}
+              </div>
+            )}
+          </div>
+          </>
         )}
 
         {/* TAB 2: UBOS */}
@@ -735,7 +940,7 @@ export const AdminPspDetailPage: React.FC<AdminPspDetailPageProps> = ({
                   Aggregated PSP markup is disbursed directly to this multi-chain vault address on every transaction completion.
                 </p>
                 <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 font-mono text-xs flex items-center justify-between">
-                  <span className="truncate">{((pspDetail as any).feeWallet as string | undefined) || '0xPspFeeVaultNotAssigned'}</span>
+                  <span className="truncate">{pspDetail.feeWallet || '0x000-not-assigned'}</span>
                   {((pspDetail as any).feeWallet as string | undefined) && (
                     <button
                       onClick={() => handleCopy(((pspDetail as any).feeWallet as string | undefined)!, 'fee_vault')}
