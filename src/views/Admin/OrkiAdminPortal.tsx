@@ -340,6 +340,16 @@ export const OrkiAdminPortal: React.FC<OrkiAdminPortalProps> = ({
           category: newPspForm.category,
           categoryType: newPspForm.categoryType,
           contacts: [{ name: newPspForm.techName, email: newPspForm.techEmail, role: 'technical' }],
+          // Required by CreatePspRequest: regulatory status rides along with entity registration.
+          pspRegulatoryStatus: {
+            isRegulatedEntity: newPspForm.isRegulated,
+            ...(newPspForm.isRegulated && newPspForm.regulatorName.trim()
+              ? { regulator: newPspForm.regulatorName.trim() }
+              : {}),
+            ...(newPspForm.isRegulated && newPspForm.licenseNumber.trim()
+              ? { licenseReference: newPspForm.licenseNumber.trim() }
+              : {}),
+          },
         },
         'admin'
       )
