@@ -5,6 +5,7 @@ import { resolveMonotonicStep } from '../../services/onboardingStepService'
 import { CreatePaylinkModal } from './CreatePaylinkModal'
 import { OffRampModal } from './OffRampModal'
 import { TransferModal } from './TransferModal'
+import PaymentRailsCard from './PaymentRailsCard'
 import { getApiConfig, requestApi, saveApiConfig } from '../../services/apiConfig'
 import {
   ArrowRightLeft,
@@ -1630,6 +1631,9 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
           </div>
         </div>
       </div>
+
+      {/* CARD 4: PAYMENT RAILS & CURRENCIES (Merchant-level acceptance preferences + on-chain whitelist sync) */}
+      <PaymentRailsCard disabled={!isSetupComplete} />
 
       {/* METRICS & ANALYTICS DASHBOARD (Per Chain, Per Asset, Per Paylink) */}
       <div className="mat-card p-6 space-y-5">

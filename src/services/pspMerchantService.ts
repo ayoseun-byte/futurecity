@@ -581,3 +581,64 @@ export async function resubmitMerchantKybParticulars(
     'psp',
   )
 }
+
+export interface MerchantPreferencesResponse {
+  merchantId: string
+  acceptedChains: string[]
+  acceptedTokens: string[]
+  wallets?: { base?: string | null; solana?: string | null }
+  onChain?: {
+    base?: {
+      status: string
+      registered?: boolean
+      supportedTokens?: string[]
+      error?: string
+    }
+  }
+}
+
+export interface MerchantTokenSyncResult {
+  token: string
+  address?: string | null
+  mint?: string | null
+  allowed: boolean
+  status: string
+  txHash?: string | null
+  error?: string
+  accounts?: unknown
+}
+
+export interface UpdateMerchantPreferencesResponse {
+  merchantId: string
+  acceptedChains: string[]
+  acceptedTokens: string[]
+  onChain?: {
+    base?: { status: string; wallet?: string; tokens?: MerchantTokenSyncResult[] }
+    solana?: { status: string; wallet?: string; merchantName?: string; tokens?: MerchantTokenSyncResult[] }
+  }
+}
+
+export async function fetchMerchantPreferences(): Promise<MerchantPreferencesResponse> {
+  const config = getApiConfig()
+  return requestApi<MerchantPreferencesResponse>(
+    config,
+    'GET',
+    '/api/v1/merchant/preferences',
+    undefined,
+    'merchant',
+  )
+}
+
+export async function updateMerchantPreferences(
+  acceptedChains: string[],
+  acceptedTokens: string[],
+): Promise<UpdateMerchantPreferencesResponse> {
+  const config = getApiConfig()
+  return requestApi<UpdateMerchantPreferencesResponse>(
+    config,
+    'PATCH',
+    '/api/v1/merchant/preferences',
+    { acceptedChains, acceptedTokens },
+    'merchant',
+  )
+}
