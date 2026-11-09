@@ -110,6 +110,25 @@ export const OrkiAdminPortal: React.FC<OrkiAdminPortalProps> = ({
   const [adminUsersLoading, setAdminUsersLoading] = useState(false)
   const [adminSessions, setAdminSessions] = useState<AdminSession[]>([])
   const [isAddAdminModalOpen, setIsAddAdminModalOpen] = useState(false)
+  const [contractPaused, setContractPaused] = useState(false)
+  const [circuitBreakerBusy, setCircuitBreakerBusy] = useState(false)
+
+  const handleToggleCircuitBreaker = async () => {
+    setCircuitBreakerBusy(true)
+    try {
+      const next = !contractPaused
+      await requestApi(getApiConfig(), 'POST', '/api/v1/admin/contracts/circuit-breaker', {
+        network: 'base',
+        paused: next,
+      }, 'admin')
+      setContractPaused(next)
+      setApiSuccess(`Base EVM Splitter contract successfully ${next ? 'paused' : 'resumed'}.`)
+    } catch (e) {
+      setApiError(e instanceof Error ? e.message : 'Failed to update contract circuit breaker.')
+    } finally {
+      setCircuitBreakerBusy(false)
+    }
+  }
   const [newAdminForm, setNewAdminForm] = useState<{
     name: string
     email: string
@@ -1338,6 +1357,27 @@ export const OrkiAdminPortal: React.FC<OrkiAdminPortalProps> = ({
             <p className="text-[11px] text-slate-500 leading-relaxed">
               Enforces non-custodial direct ERC20 USDC / native ETH distribution directly inside the payment transaction. Orki base fee, PSP markup, and Merchant net amounts settle atomically.
             </p>
+
+            <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
+              <div>
+                <span className="text-xs font-bold text-slate-700">Contract State:</span>
+                <span className={`ml-2 text-xs font-bold ${contractPaused ? 'text-rose-600' : 'text-emerald-600'}`}>
+                  {contractPaused ? 'EMERGENCY PAUSED' : 'ACTIVE'}
+                </span>
+              </div>
+              <button
+                type="button"
+                disabled={circuitBreakerBusy}
+                onClick={() => { void handleToggleCircuitBreaker() }}
+                className={`px-3 py-1.5 rounded-xl font-bold text-xs transition ${
+                  contractPaused
+                    ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                    : 'bg-rose-600 hover:bg-rose-700 text-white'
+                }`}
+              >
+                {circuitBreakerBusy ? 'Processing…' : contractPaused ? 'Resume Contract' : 'Emergency Pause'}
+              </button>
+            </div>
           </div>
 
           <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-2xs space-y-4">

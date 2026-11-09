@@ -460,6 +460,12 @@ function MainRoutes() {
           <CustomerCheckoutView />
         }
       />
+      <Route
+        path="/pay/:paymentId"
+        element={
+          <CustomerCheckoutView />
+        }
+      />
 
       {/* Root redirect */}
       <Route

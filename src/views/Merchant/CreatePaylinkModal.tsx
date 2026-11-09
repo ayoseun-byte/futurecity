@@ -19,9 +19,20 @@ export const CreatePaylinkModal: React.FC<CreatePaylinkModalProps> = ({
   const [description, setDescription] = useState('')
   const [amountType, setAmountType] = useState<'fixed' | 'open'>('fixed')
   const [amount, setAmount] = useState('250')
+  const [currency, setCurrency] = useState<'USDC' | 'USDT'>('USDC')
+  const [allowedChains, setAllowedChains] = useState<string[]>(['base', 'solana'])
   const [settlementMode, setSettlementMode] = useState<SettlementMode>(merchantDefaultSettlement)
 
   if (!isOpen) return null
+
+  const toggleChain = (chain: string) => {
+    if (allowedChains.includes(chain)) {
+      if (allowedChains.length === 1) return // Keep at least one chain
+      setAllowedChains(allowedChains.filter((c) => c !== chain))
+    } else {
+      setAllowedChains([...allowedChains, chain])
+    }
+  }
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -35,9 +46,9 @@ export const CreatePaylinkModal: React.FC<CreatePaylinkModalProps> = ({
       description: description || undefined,
       amountType: amountType,
       amount: amountType === 'fixed' ? parseFloat(amount) : undefined,
-      currency: 'USDC',
+      currency: currency,
       settlementMode: settlementMode,
-      allowedChains: ['base', 'solana'],
+      allowedChains: allowedChains,
       status: 'active',
       checkoutUrl: `${window.location.origin}/checkout/${slug}`,
       createdAt: new Date().toISOString(),
@@ -115,18 +126,62 @@ export const CreatePaylinkModal: React.FC<CreatePaylinkModalProps> = ({
           </div>
 
           {amountType === 'fixed' && (
-            <div>
-              <label className="font-semibold text-slate-700 block mb-1">Amount (USDC)</label>
-              <input
-                type="number"
-                required
-                min="1"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                className="w-full px-3 py-2 border border-slate-300 rounded-xl font-mono text-sm font-bold text-slate-900 focus:ring-2 focus:ring-onion-500 focus:outline-none"
-              />
+            <div className="grid grid-cols-3 gap-2">
+              <div className="col-span-2">
+                <label className="font-semibold text-slate-700 block mb-1">Amount</label>
+                <input
+                  type="number"
+                  required
+                  min="1"
+                  step="any"
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-xl font-mono text-sm font-bold text-slate-900 focus:ring-2 focus:ring-onion-500 focus:outline-none"
+                />
+              </div>
+              <div>
+                <label className="font-semibold text-slate-700 block mb-1">Token</label>
+                <select
+                  value={currency}
+                  onChange={(e) => setCurrency(e.target.value as 'USDC' | 'USDT')}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-xl font-bold text-slate-900 focus:ring-2 focus:ring-onion-500 focus:outline-none"
+                >
+                  <option value="USDC">USDC</option>
+                  <option value="USDT">USDT</option>
+                </select>
+              </div>
             </div>
           )}
+
+          <div>
+            <label className="font-semibold text-slate-700 block mb-1">Accepted Payment Chains</label>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => toggleChain('base')}
+                className={`py-2 px-3 rounded-xl border font-bold text-xs flex items-center justify-center space-x-1 transition ${
+                  allowedChains.includes('base')
+                    ? 'border-blue-500 bg-blue-50 text-blue-800 ring-2 ring-blue-400'
+                    : 'border-slate-200 text-slate-400 hover:bg-slate-50'
+                }`}
+              >
+                <span>Base (EVM)</span>
+                {allowedChains.includes('base') && <span>✓</span>}
+              </button>
+              <button
+                type="button"
+                onClick={() => toggleChain('solana')}
+                className={`py-2 px-3 rounded-xl border font-bold text-xs flex items-center justify-center space-x-1 transition ${
+                  allowedChains.includes('solana')
+                    ? 'border-purple-500 bg-purple-50 text-purple-800 ring-2 ring-purple-400'
+                    : 'border-slate-200 text-slate-400 hover:bg-slate-50'
+                }`}
+              >
+                <span>Solana (Raydium)</span>
+                {allowedChains.includes('solana') && <span>✓</span>}
+              </button>
+            </div>
+          </div>
 
           <div>
             <label className="font-semibold text-slate-700 block mb-1">Settlement Preference for this Link</label>

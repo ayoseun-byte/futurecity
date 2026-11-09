@@ -539,6 +539,35 @@ export interface ResubmitKybParticularsResult {
   message: string
 }
 
+export interface PspPaymentItem {
+  id: string
+  type: string
+  merchantId: string
+  amount: string
+  currency: string
+  status: string
+  checkoutUrl: string
+  paidAt?: string | null
+  expiresAt?: string | null
+  createdAt: string
+}
+
+export async function fetchPspPayments(filters?: Record<string, string>): Promise<{ data: PspPaymentItem[] }> {
+  const config = getApiConfig()
+  const query = filters ? '?' + new URLSearchParams(filters).toString() : ''
+  return requestApi<{ data: PspPaymentItem[] }>(config, 'GET', `/api/v1/psp/payments${query}`, undefined, 'psp')
+}
+
+export async function revokePspPayment(paymentId: string): Promise<PspPaymentItem> {
+  const config = getApiConfig()
+  return requestApi<PspPaymentItem>(config, 'DELETE', `/api/v1/psp/payments/${encodeURIComponent(paymentId)}`, undefined, 'psp')
+}
+
+export async function updatePspPaymentStatus(paymentId: string, status: 'active' | 'inactive'): Promise<PspPaymentItem> {
+  const config = getApiConfig()
+  return requestApi<PspPaymentItem>(config, 'PATCH', `/api/v1/psp/payments/${encodeURIComponent(paymentId)}`, { status }, 'psp')
+}
+
 export async function resubmitMerchantKybParticulars(
   merchantId: string,
   params: ResubmitKybParticularsParams,

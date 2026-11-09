@@ -11,6 +11,9 @@ import {
   fetchPspWebhookDeliveries,
   triggerTestWebhook,
   retryWebhookDelivery,
+  fetchPspPayments,
+  revokePspPayment,
+  type PspPaymentItem,
 } from '../../services/pspMerchantService'
 import { StatusBadge } from '../../components/StatusBadge'
 import { AddMerchantModal } from './AddMerchantModal'
@@ -144,6 +147,36 @@ export const OrgDashboard: React.FC<OrgDashboardProps> = ({
   const [testSuccessMessage, setTestSuccessMessage] = useState<string | null>(null)
   const [retryingId, setRetryingId] = useState<string | null>(null)
 
+  // B2B Payments & Revocation State
+  const [b2bPayments, setB2bPayments] = useState<PspPaymentItem[]>([])
+  const [b2bLoading, setB2bLoading] = useState(false)
+  const [revokingId, setRevokingId] = useState<string | null>(null)
+
+  const loadPayments = useCallback(async () => {
+    setB2bLoading(true)
+    try {
+      const res = await fetchPspPayments()
+      setB2bPayments(res.data || [])
+    } catch {
+      // Fallback
+    } finally {
+      setB2bLoading(false)
+    }
+  }, [])
+
+  const handleRevokePayment = async (paymentId: string) => {
+    if (!confirm(`Are you sure you want to revoke payment ${paymentId}? This immediately cancels checkout access.`)) return
+    setRevokingId(paymentId)
+    try {
+      await revokePspPayment(paymentId)
+      await loadPayments()
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'Failed to revoke payment')
+    } finally {
+      setRevokingId(null)
+    }
+  }
+
   // Fee Change Form (PSP Markup capped strictly at 1.00% / 100 bps)
   const currentMarkupBps = organization.feeSchedule?.pspMarkupBps ?? 0
   const [feeInputState, setFeeInputState] = useState<{ organizationId: string; value: string | null }>({
@@ -194,6 +227,12 @@ export const OrgDashboard: React.FC<OrgDashboardProps> = ({
     void loadWebhooks()
     void loadDeliveries()
   }, [loadWebhooks, loadDeliveries])
+
+  useEffect(() => {
+    if (activeTab === 'transactions') {
+      void loadPayments()
+    }
+  }, [activeTab, loadPayments])
 
   const copyText = (val: string, key: string) => {
     void navigator.clipboard.writeText(val)
@@ -1050,7 +1089,8 @@ export const OrgDashboard: React.FC<OrgDashboardProps> = ({
 
       {/* TAB 4: RECENT TRANSACTIONS */}
       {activeTab === 'transactions' && (
-        <div className="mat-card overflow-hidden">
+        <>
+          <div className="mat-card overflow-hidden">
           <div className="border-b border-slate-200 p-5">
             <h3 className="text-sm font-bold text-slate-900">Recent Transactions</h3>
             <p className="mt-1 text-xs text-slate-500">Live completed and pending settlement records from the PSP API.</p>
@@ -1109,6 +1149,95 @@ export const OrgDashboard: React.FC<OrgDashboardProps> = ({
             </table>
           </div>
         </div>
+
+        {/* B2B INVOICES & PAYMENT REVOCATION CONTROLS */}
+        <div className="mat-card overflow-hidden mt-6">
+          <div className="border-b border-slate-200 p-5 flex items-center justify-between">
+            <div>
+              <h3 className="text-sm font-bold text-slate-900">B2B Payments & Revocation Controls</h3>
+              <p className="mt-1 text-xs text-slate-500">
+                Active B2B checkout payments. PSPs may revoke a merchant payment to cancel checkout access and expire all pending attempts immediately.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => void loadPayments()}
+              disabled={b2bLoading}
+              className="px-3 py-1.5 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition"
+            >
+              {b2bLoading ? 'Refreshing…' : 'Refresh'}
+            </button>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-slate-200 text-xs">
+              <thead className="bg-slate-50 text-[10px] uppercase tracking-wider text-slate-500">
+                <tr>
+                  <th className="px-5 py-3 text-left">Payment ID</th>
+                  <th className="px-5 py-3 text-left">Type</th>
+                  <th className="px-5 py-3 text-right">Amount</th>
+                  <th className="px-5 py-3 text-left">Status</th>
+                  <th className="px-5 py-3 text-left">Checkout URL</th>
+                  <th className="px-5 py-3 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {b2bPayments.map((p) => (
+                  <tr key={p.id} className="hover:bg-slate-50/70 transition">
+                    <td className="px-5 py-3 font-mono font-medium text-slate-800">{p.id}</td>
+                    <td className="px-5 py-3 capitalize text-slate-600">{p.type}</td>
+                    <td className="px-5 py-3 text-right font-mono font-bold text-slate-900">
+                      {p.amount} {p.currency}
+                    </td>
+                    <td className="px-5 py-3">
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${
+                        p.status === 'paid'
+                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                          : p.status === 'canceled'
+                          ? 'bg-slate-100 text-slate-500 border-slate-300'
+                          : 'bg-amber-50 text-amber-800 border-amber-200'
+                      }`}>
+                        {p.status}
+                      </span>
+                    </td>
+                    <td className="px-5 py-3 font-mono text-slate-600">
+                      <div className="flex items-center space-x-1">
+                        <span className="truncate max-w-xs">{p.checkoutUrl}</span>
+                        <button
+                          type="button"
+                          onClick={() => copyText(p.checkoutUrl, `pay_${p.id}`)}
+                          className="p-1 hover:text-slate-900"
+                          title="Copy Link"
+                        >
+                          {copiedKey === `pay_${p.id}` ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
+                        </button>
+                      </div>
+                    </td>
+                    <td className="px-5 py-3 text-right">
+                      {p.status !== 'canceled' && p.status !== 'paid' && (
+                        <button
+                          type="button"
+                          disabled={revokingId === p.id}
+                          onClick={() => void handleRevokePayment(p.id)}
+                          className="px-2.5 py-1 text-xs font-bold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-lg transition disabled:opacity-50"
+                        >
+                          {revokingId === p.id ? 'Revoking…' : 'Revoke Payment'}
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+                {b2bPayments.length === 0 && (
+                  <tr>
+                    <td colSpan={6} className="px-5 py-8 text-center text-slate-400">
+                      {b2bLoading ? 'Loading B2B payments…' : 'No active B2B payments recorded.'}
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+        </>
       )}
 
       {/* TAB 5: PSP RATES & CONFIG */}
