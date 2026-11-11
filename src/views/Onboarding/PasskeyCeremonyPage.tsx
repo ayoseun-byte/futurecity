@@ -16,12 +16,14 @@ import {
 } from 'lucide-react'
 import { AUTH_CONNECTION, WALLET_CONNECTORS } from '@web3auth/modal'
 import {
+  useWeb3Auth,
   useWeb3AuthConnect,
   useWeb3AuthDisconnect,
   useWeb3AuthUser,
 } from '@web3auth/modal/react'
-import { useConnection, usePublicClient, useSignMessage } from 'wagmi'
+import { useConnection, usePublicClient } from 'wagmi'
 import type { PublicClient as ViemPublicClient } from 'viem'
+import { signEip191ViaWeb3Auth } from '../../services/web3auth-utils'
 import {
   toPasskeyValidator,
   toWebAuthnKey,
@@ -432,11 +434,11 @@ function WalletSetup({
   }) => Promise<void>
 }) {
   const { connect, connectTo, loading: connecting, isConnected } = useWeb3AuthConnect()
+  const { web3Auth } = useWeb3Auth()
   const { disconnect, loading: disconnecting } = useWeb3AuthDisconnect()
   const { userInfo, getUserInfo } = useWeb3AuthUser()
   const { address: evmSignerAddress } = useConnection()
   const publicClient = usePublicClient()
-  const { signMessageAsync } = useSignMessage()
 
   const registeredEmail = (onboarding.representativeEmail || '').trim()
   const [emailInput, setEmailInput] = useState(registeredEmail)
@@ -565,7 +567,12 @@ function WalletSetup({
         console.warn('Could not fetch server-issued address-bound challenge, using fallback', err)
       }
 
-      const signature = await signMessageAsync({ message: challenge })
+      const signature = await signEip191ViaWeb3Auth(
+        web3Auth,
+        null,
+        challenge,
+        evmSignerAddress || baseAccount,
+      )
 
       await onActivate({
         baseSmartAccountAddress: baseAccount,

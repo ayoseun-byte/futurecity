@@ -255,3 +255,29 @@ export const getSolanaKeypairFromWeb3Auth = async (
   const ed25519Key = getED25519Key(appKeyBuffer)
   return Keypair.fromSecretKey(ed25519Key.sk)
 }
+
+/**
+ * Signs an EIP-191 personal_sign challenge via the Web3Auth EIP-1193 provider.
+ *
+ * Merchant wallet-setup attestation uses this path instead of wagmi's useSignMessage
+ * because the Web3Auth wallet may be connected at the Web3Auth layer (status: connected)
+ * without an active wagmi connector being registered — wagmi then fails with
+ * "Connector not connected ... No EVM signer returned".
+ */
+export const signEip191ViaWeb3Auth = async (
+  web3Auth: Web3Auth | null,
+  hookProvider?: Web3AuthProvider | null,
+  message = '',
+  address = '',
+): Promise<string> => {
+  if (!web3Auth) throw new Error('Web3Auth is not initialised')
+  const provider = await waitForProvider(web3Auth, hookProvider)
+  const signature = (await provider.request({
+    method: 'personal_sign',
+    params: [message, address],
+  })) as string
+  if (!signature) {
+    throw new Error('EVM attestation signature was not returned by the wallet provider.')
+  }
+  return signature
+}
