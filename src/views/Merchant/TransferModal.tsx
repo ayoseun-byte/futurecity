@@ -33,6 +33,7 @@ export const TransferModal: React.FC<TransferModalProps> = ({ isOpen, onClose, o
       // 1. Prepare non-custodial transfer payload
       const prepareRes = await requestApi<{
         status: string
+        prepareId?: string
         preparedTransaction?: {
           transaction?: Record<string, unknown>
           rawTransaction?: string
@@ -43,6 +44,13 @@ export const TransferModal: React.FC<TransferModalProps> = ({ isOpen, onClose, o
         to: toAddress.trim(),
         amount: Number(amount),
       }, 'merchant')
+
+      // Server-issued transfer intent: required for broadcast binding (the
+      // backend rejects broadcasts that are not tied to a prepared intent).
+      const prepareId = prepareRes.prepareId
+      if (!prepareId) {
+        throw new Error('Transfer preparation did not return a prepareId intent.')
+      }
 
       // 2. Non-custodial signing: if window.ethereum available, request client sign & broadcast
       let signedTx = '0x_simulated_signed_noncustodial_tx'
@@ -66,6 +74,7 @@ export const TransferModal: React.FC<TransferModalProps> = ({ isOpen, onClose, o
         transferId: string
         txHash: string
       }>(config, 'POST', '/api/v1/merchant/transfers/broadcast', {
+        prepareId,
         network,
         currency,
         to: toAddress.trim(),
