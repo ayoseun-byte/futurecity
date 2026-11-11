@@ -215,6 +215,7 @@ export const ensureWeb3AuthConnection = async (
 
 // The provider is populated slightly after status flips to "connected", so poll for it.
 type Web3AuthProvider = NonNullable<Web3Auth['provider']>
+export type { Web3AuthProvider }
 
 const resolveProvider = (web3Auth: Web3Auth, hookProvider?: Web3AuthProvider | null) =>
   hookProvider ||
