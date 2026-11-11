@@ -106,7 +106,7 @@ const endpoints: Endpoint[] = [
     ['POST', '/api/v1/merchant/paylinks', JSON.stringify({ title: 'Test payment', description: 'API workbench sample', amountType: 'fixed', amount: '10.00', currency: 'USDC', settlementMode: 'hold_as_received', allowedChains: ['base', 'solana'] }, null, 2)],
     ['GET', '/api/v1/merchant/paylinks/{id}', undefined],
     ['GET', '/api/v1/merchant/transfers', undefined],
-    ['POST', '/api/v1/merchant/transfers', JSON.stringify({ destinationAddress: '0x0000000000000000000000000000000000000000', chain: 'base', currency: 'USDC', amount: '10.00', passkeySignature: 'workbench-test-only' }, null, 2)],
+    ['POST', '/api/v1/merchant/transfers', JSON.stringify({ prepareId: 'trp_replace-with-id-from-prepare', destinationAddress: '0x0000000000000000000000000000000000000000', chain: 'base', currency: 'USDC', amount: '10.00', signedTransaction: 'replace-with-signed-transaction-bytes' }, null, 2), 'Two-step flow: first POST the same path WITHOUT signedTransaction (or /transfers/prepare) to receive a prepareId — the server stores the exact destination/amount/currency intent for 15 minutes. The broadcast must then echo prepareId and matching details; mismatches, expired intents, or an unprepared signed tx are rejected (server-side binding, one-time use, fresh balance check).'],
     ['POST', '/api/v1/merchant/conversions/quote', '{\n  "amount": "10.00",\n  "sourceCurrency": "USDC",\n  "targetCurrency": "AED"\n}'],
     ['GET', '/api/v1/merchant/conversions', undefined],
     ['POST', '/api/v1/merchant/conversions', '{}'],
