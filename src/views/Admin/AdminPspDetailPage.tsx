@@ -200,8 +200,14 @@ export const AdminPspDetailPage: React.FC<AdminPspDetailPageProps> = ({
     setChainMessage(null)
     try {
       const result = await registerAdminPspOnChain(id, network, wallet)
+      const statusLabels: Record<string, string> = {
+        already_synced: 'already registered on-chain ✓',
+        confirmed: 'confirmed on-chain ✓',
+        prepared: 'prepared calldata (no operator broadcast)',
+        pending_retry: 'deferred — will retry on next attempt',
+      }
       const hashSuffix = result.txHash ? ` · tx ${result.txHash.slice(0, 10)}…` : ''
-      setChainMessage(`EVM splitter: ${result.status || 'ok'}${hashSuffix}`)
+      setChainMessage(`EVM splitter: ${statusLabels[result.status ?? ''] ?? result.status ?? 'ok'}${hashSuffix}`)
       setChainStatus((current) => ({ ...current, [network]: result }))
     } catch (err) {
       setChainMessage(`Registration failed: ${err instanceof Error ? err.message : 'unknown error'}`)
