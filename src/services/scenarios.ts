@@ -315,7 +315,7 @@ export const railsScenarios: RailsScenario[] = [
           },
         },
         assertions: [
-          { label: 'payment link id', path: 'paymentLinkId', exists: true },
+          { label: 'payment link id', path: 'id', exists: true },
           { label: 'link status', path: 'status', exists: true },
         ],
       },
@@ -324,7 +324,7 @@ export const railsScenarios: RailsScenario[] = [
         title: 'Read the payment link back',
         action: {
           method: 'GET',
-          path: '/api/v1/psp/payment-links/{create-link.paymentLinkId}',
+          path: '/api/v1/psp/payment-links/{create-link.id}',
           auth: 'psp',
         },
         assertions: [{ label: 'link status', path: 'status', exists: true }],
@@ -337,7 +337,7 @@ export const railsScenarios: RailsScenario[] = [
           path: '/api/v1/psp/charges',
           auth: 'psp',
           body: {
-            paymentLinkId: '{create-link.paymentLinkId}',
+            paymentLinkId: '{create-link.id}',
             merchantExternalId: '{merchantExternalId}',
             amount: '{amount}',
             currency: '{currency}',

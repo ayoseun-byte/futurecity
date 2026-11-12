@@ -6,6 +6,10 @@ import { AdminLayout } from './components/layout/AdminLayout'
 import { RailsLabView } from './views/Rails/RailsLabView'
 import { PspRailsView } from './views/Rails/PspRailsView'
 import { MerchantRailsView } from './views/Rails/MerchantRailsView'
+import { InvoicelyConsoleView } from './views/Rails/consoles/InvoicelyConsoleView'
+import { ShoplaneConsoleView } from './views/Rails/consoles/ShoplaneConsoleView'
+import { CornerShopHeadlessView } from './views/Rails/consoles/CornerShopHeadlessView'
+import { CheckoutWidgetView } from './views/Rails/consoles/CheckoutWidgetView'
 import { PspLayout } from './components/layout/PspLayout'
 import { MerchantLayout } from './components/layout/MerchantLayout'
 import { LoginView } from './views/Auth/LoginView'
@@ -425,6 +429,48 @@ function MainRoutes() {
                 onAddOrganization={handleAddOrganization}
               />
             </AdminLayout>
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Counterparty consoles: the integration styles, as the platforms that use them */}
+      <Route
+        path="/psp/console/invoicely"
+        element={
+          <ProtectedRoute allowedRoles={['org']}>
+            <PspLayout>
+              <InvoicelyConsoleView />
+            </PspLayout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/psp/console/shoplane"
+        element={
+          <ProtectedRoute allowedRoles={['org']}>
+            <PspLayout>
+              <ShoplaneConsoleView />
+            </PspLayout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/psp/console/headless"
+        element={
+          <ProtectedRoute allowedRoles={['org']}>
+            <PspLayout>
+              <CornerShopHeadlessView />
+            </PspLayout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/psp/console/widget"
+        element={
+          <ProtectedRoute allowedRoles={['org']}>
+            <PspLayout>
+              <CheckoutWidgetView />
+            </PspLayout>
           </ProtectedRoute>
         }
       />
