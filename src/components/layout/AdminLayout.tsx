@@ -2,7 +2,7 @@ import React from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import { clearAllStoredData } from '../../services/storageService'
-import { ShieldCheck, LogOut, ExternalLink } from 'lucide-react'
+import { ShieldCheck, LogOut, ExternalLink, Activity } from 'lucide-react'
 
 export const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { logout } = useAuth()
@@ -51,6 +51,14 @@ export const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children 
 
             {/* Actions & Session */}
             <div className="flex items-center space-x-2.5">
+              <Link
+                to="/admin/rails"
+                className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 transition"
+                title="Run the integration styles against the live chain-service"
+              >
+                <Activity className="w-3.5 h-3.5" />
+                <span className="hidden md:inline">Rails Lab</span>
+              </Link>
               <Link
                 to="/api-workbench"
                 className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 transition"

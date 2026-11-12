@@ -3,6 +3,9 @@ import { BrowserRouter, Routes, Route, Navigate, useNavigate, useParams } from '
 import { AuthProvider, useAuth } from './context/AuthContext'
 import type { UserRole } from './context/AuthContext'
 import { AdminLayout } from './components/layout/AdminLayout'
+import { RailsLabView } from './views/Rails/RailsLabView'
+import { PspRailsView } from './views/Rails/PspRailsView'
+import { MerchantRailsView } from './views/Rails/MerchantRailsView'
 import { PspLayout } from './components/layout/PspLayout'
 import { MerchantLayout } from './components/layout/MerchantLayout'
 import { LoginView } from './views/Auth/LoginView'
@@ -421,6 +424,42 @@ function MainRoutes() {
                 onUpdateOrganization={handleUpdateOrganization}
                 onAddOrganization={handleAddOrganization}
               />
+            </AdminLayout>
+          </ProtectedRoute>
+        }
+      />
+
+      {/* PSP integration test bench */}
+      <Route
+        path="/psp/rails"
+        element={
+          <ProtectedRoute allowedRoles={['org']}>
+            <PspLayout>
+              <PspRailsView />
+            </PspLayout>
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Merchant payment-rails test bench */}
+      <Route
+        path="/merchant/rails"
+        element={
+          <ProtectedRoute allowedRoles={['merchant']}>
+            <MerchantLayout>
+              <MerchantRailsView />
+            </MerchantLayout>
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Rails Lab: run the integration styles against the live chain-service */}
+      <Route
+        path="/admin/rails"
+        element={
+          <ProtectedRoute allowedRoles={['admin']}>
+            <AdminLayout>
+              <RailsLabView />
             </AdminLayout>
           </ProtectedRoute>
         }
