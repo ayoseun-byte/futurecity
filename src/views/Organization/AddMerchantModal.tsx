@@ -5,7 +5,7 @@ import type { Merchant } from '../../types'
 interface AddMerchantModalProps {
   isOpen: boolean
   onClose: () => void
-  onAddMerchant: (merchant: Partial<Merchant>) => void
+  onAddMerchant: (merchant: Partial<Merchant>) => Promise<void>
 }
 
 export const AddMerchantModal: React.FC<AddMerchantModalProps> = ({ isOpen, onClose, onAddMerchant }) => {
@@ -18,25 +18,30 @@ export const AddMerchantModal: React.FC<AddMerchantModalProps> = ({ isOpen, onCl
     representativeEmail: '',
     consentNoticeVersion: 'v1',
   })
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   if (!isOpen) return null
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!formData.legalBusinessName || !formData.tradeLicenseNumber) return
-
-    onAddMerchant({
-      externalId: formData.externalId,
-      legalBusinessName: formData.legalBusinessName,
-      tradeLicenseNumber: formData.tradeLicenseNumber,
-      jurisdiction: formData.jurisdiction,
-      representativeName: formData.representativeName,
-      representativeEmail: formData.representativeEmail,
-      status: 'invited',
-      settlementMode: 'hold_as_received',
-    })
-
-    onClose()
+    setBusy(true)
+    setError(null)
+    try {
+      await onAddMerchant({
+        externalId: formData.externalId,
+        legalBusinessName: formData.legalBusinessName,
+        tradeLicenseNumber: formData.tradeLicenseNumber,
+        jurisdiction: formData.jurisdiction,
+        representativeName: formData.representativeName,
+        representativeEmail: formData.representativeEmail,
+      })
+      onClose()
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Merchant registration failed.')
+    } finally {
+      setBusy(false)
+    }
   }
 
   return (
@@ -151,18 +156,21 @@ export const AddMerchantModal: React.FC<AddMerchantModalProps> = ({ isOpen, onCl
           </div>
 
           <div className="pt-2 flex items-center justify-end space-x-3">
+            {error && <p role="alert" className="mr-auto text-rose-700">{error}</p>}
             <button
               type="button"
               onClick={onClose}
+              disabled={busy}
               className="py-2 px-4 rounded-xl text-slate-600 hover:bg-slate-100 font-semibold"
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="py-2 px-5 bg-onion hover:bg-onion-700 text-white font-bold rounded-xl shadow-md transition"
+              disabled={busy}
+              className="py-2 px-5 bg-onion hover:bg-onion-700 text-white font-bold rounded-xl shadow-md transition disabled:opacity-50"
             >
-              Register Merchant
+              {busy ? 'Registering…' : 'Register Merchant'}
             </button>
           </div>
         </form>

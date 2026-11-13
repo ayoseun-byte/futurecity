@@ -1,6 +1,55 @@
 import React, { useState } from 'react'
 import { X, UploadCloud, CheckCircle2, AlertTriangle } from 'lucide-react'
 import type { Merchant } from '../../types'
+import { getApiConfig, requestApi } from '../../services/apiConfig'
+
+interface BatchRow {
+  merchantExternalId: string
+  legalBusinessName: string
+  tradeLicenseNumber: string
+  jurisdiction: string
+  representativeName: string
+  representativeEmail: string
+}
+
+function parseCsv(text: string): string[][] {
+  const rows: string[][] = []
+  let row: string[] = []
+  let cell = ''
+  let quoted = false
+
+  for (let index = 0; index < text.length; index += 1) {
+    const character = text[index]
+    if (quoted) {
+      if (character === '"' && text[index + 1] === '"') {
+        cell += '"'
+        index += 1
+      } else if (character === '"') {
+        quoted = false
+      } else {
+        cell += character
+      }
+    } else if (character === '"' && cell.length === 0) {
+      quoted = true
+    } else if (character === ',') {
+      row.push(cell)
+      cell = ''
+    } else if (character === '\n' || character === '\r') {
+      if (character === '\r' && text[index + 1] === '\n') index += 1
+      row.push(cell)
+      if (row.some((value) => value.trim() !== '')) rows.push(row)
+      row = []
+      cell = ''
+    } else {
+      cell += character
+    }
+  }
+
+  if (quoted) throw new Error('The CSV contains an unterminated quoted field.')
+  row.push(cell)
+  if (row.some((value) => value.trim() !== '')) rows.push(row)
+  return rows
+}
 
 interface BulkMerchantUploadModalProps {
   isOpen: boolean
@@ -15,56 +64,96 @@ export const BulkMerchantUploadModal: React.FC<BulkMerchantUploadModalProps> = (
 }) => {
   const [isProcessing, setIsProcessing] = useState(false)
   const [logs, setLogs] = useState<Array<{ id: string; status: 'created' | 'rejected'; text: string }>>([])
+  const [file, setFile] = useState<File | null>(null)
 
   if (!isOpen) return null
 
-  const handleRunBatch = () => {
+  const handleRunBatch = async () => {
     setIsProcessing(true)
     setLogs([])
+    try {
+      if (!file) throw new Error('Choose a CSV file first.')
+      const csvRows = parseCsv((await file.text()).replace(/^\uFEFF/, ''))
+      if (csvRows.length < 2) throw new Error('The CSV must include a header row and at least one merchant.')
 
-    const simulatedRows = [
-      { ext: 'XSQ-BATCH-201', name: 'Al-Zahra Luxury Perfumes LLC', licence: 'TL-55102', juris: 'Dubai DED' },
-      { ext: 'XSQ-BATCH-202', name: 'Emirates Drone Surveying FZCO', licence: 'FZ-9921', juris: 'IFZA Dubai' },
-      { ext: 'XSQ-BATCH-203', name: 'Incomplete Holdings Ltd', licence: '', juris: 'Abu Dhabi DED' }, // Deliberate failure
-      { ext: 'XSQ-BATCH-204', name: 'Red Sea Marine Logistics LLC', licence: 'TL-88123', juris: 'Dubai DED' },
-    ]
+      const headers = csvRows[0].map((header) => header.trim())
+      const indexes = new Map(headers.map((header, index) => [header, index] as const))
+      const requiredHeaders = ['merchantExternalId', 'legalBusinessName', 'tradeLicenseNumber', 'jurisdiction']
+      const missingHeaders = requiredHeaders.filter((header) => !indexes.has(header))
+      if (missingHeaders.length) throw new Error(`Missing CSV headers: ${missingHeaders.join(', ')}`)
 
-    const created: Merchant[] = []
+      const rows: BatchRow[] = csvRows.slice(1).map((cells, index) => {
+        const get = (name: string) => cells[indexes.get(name) ?? -1]?.trim() || ''
+        const row = {
+          merchantExternalId: get('merchantExternalId'),
+          legalBusinessName: get('legalBusinessName'),
+          tradeLicenseNumber: get('tradeLicenseNumber'),
+          jurisdiction: get('jurisdiction'),
+          representativeName: get('representativeName'),
+          representativeEmail: get('representativeEmail'),
+        }
+        const missing = requiredHeaders.filter((header) => !row[header as keyof BatchRow])
+        if (missing.length) {
+          throw new Error(`CSV row ${index + 2} is missing: ${missing.join(', ')}`)
+        }
+        return row
+      })
+      if (rows.length > 100) throw new Error('The backend accepts at most 100 merchants per batch.')
 
-    simulatedRows.forEach((row, idx) => {
-      setTimeout(() => {
-        if (!row.licence) {
-          setLogs((prev) => [
-            ...prev,
-            { id: row.ext, status: 'rejected', text: `${row.ext}: Rejected (missing_kyb_field: tradeLicenseNumber)` },
-          ])
-        } else {
-          const newMerchant: Merchant = {
-            id: 'mrch_' + Math.random().toString(36).substring(7),
-            externalId: row.ext,
-            legalBusinessName: row.name,
-            tradeLicenseNumber: row.licence,
-            jurisdiction: row.juris,
-            representativeName: 'Authorized Signer',
-            representativeEmail: `ops@${row.ext.toLowerCase()}.example`,
+      const response = await requestApi<{
+        results: Array<{
+          merchantExternalId: string
+          status: string
+          orkiMerchantId?: string
+          error?: string
+          field?: string
+          message?: string
+        }>
+      }>(getApiConfig(), 'POST', '/api/v1/psp/merchants/batch', {
+        merchants: rows.map((row) => ({
+          ...row,
+          consent: {},
+        })),
+      }, 'psp')
+
+      const rowByExternalId = new Map(rows.map((row) => [row.merchantExternalId, row]))
+      const created: Merchant[] = []
+      const newLogs = response.results.map((result) => {
+        const row = rowByExternalId.get(result.merchantExternalId)
+        if (result.status !== 'REJECTED' && row && result.orkiMerchantId) {
+          created.push({
+            id: result.orkiMerchantId,
+            organizationId: '',
+            externalId: row.merchantExternalId,
+            legalBusinessName: row.legalBusinessName,
+            tradeLicenseNumber: row.tradeLicenseNumber,
+            jurisdiction: row.jurisdiction,
+            representativeName: row.representativeName,
+            representativeEmail: row.representativeEmail,
             status: 'invited',
             settlementMode: 'hold_as_received',
+            nextStep: 'NOTICE',
             createdAt: new Date().toISOString(),
-            volumeUsdc: 0.0,
-          }
-          created.push(newMerchant)
-          setLogs((prev) => [
-            ...prev,
-            { id: row.ext, status: 'created', text: `${row.ext}: Created (${newMerchant.id})` },
-          ])
+          })
+          return { id: result.merchantExternalId, status: 'created' as const, text: `${result.merchantExternalId}: Registered (${result.orkiMerchantId})` }
         }
-
-        if (idx === simulatedRows.length - 1) {
-          setIsProcessing(false)
-          onBatchCreated(created)
+        return {
+          id: result.merchantExternalId,
+          status: 'rejected' as const,
+          text: `${result.merchantExternalId}: ${result.error || result.field || result.message || 'Rejected by backend'}`,
         }
-      }, (idx + 1) * 450)
-    })
+      })
+      setLogs(newLogs)
+      onBatchCreated(created)
+    } catch (reason) {
+      setLogs([{
+        id: 'batch',
+        status: 'rejected',
+        text: reason instanceof Error ? reason.message : 'Batch registration failed.',
+      }])
+    } finally {
+      setIsProcessing(false)
+    }
   }
 
   return (
@@ -74,7 +163,7 @@ export const BulkMerchantUploadModal: React.FC<BulkMerchantUploadModalProps> = (
         <div className="bg-onion p-5 text-white flex items-center justify-between border-b border-onion-700">
           <div className="flex items-center space-x-2">
             <UploadCloud className="w-5 h-5 text-onion-200" />
-            <h2 className="font-bold text-base">Bulk Merchant Ingestion (POST /v1/psp/merchants/batch)</h2>
+            <h2 className="font-bold text-base">Bulk Merchant Registration</h2>
           </div>
           <button onClick={onClose} className="p-1 rounded-lg hover:bg-onion-700/60 transition text-onion-200 hover:text-white">
             <X className="w-5 h-5" />
@@ -84,13 +173,25 @@ export const BulkMerchantUploadModal: React.FC<BulkMerchantUploadModalProps> = (
         {/* Content */}
         <div className="p-6 space-y-4 text-xs">
           <p className="text-slate-600">
-            Upload CSV or run a sample batch of pre-agreed merchants. Each row is judged independently in chunks up to 100. One row failure never blocks the rest.
+            Submit merchant records to the authenticated PSP batch API. Each row is processed independently; no sample merchants are created.
           </p>
 
           <div className="p-4 border-2 border-dashed border-slate-200 rounded-xl text-center bg-slate-50">
             <UploadCloud className="w-8 h-8 text-onion mx-auto mb-1.5" />
-            <p className="font-semibold text-slate-800">Drag and drop merchants CSV here</p>
-            <p className="text-[10px] text-slate-400 mt-0.5">Required headers: merchantExternalId, legalBusinessName, tradeLicenseNumber, jurisdiction</p>
+            <label className="font-semibold text-slate-800 block">
+              Choose a merchant CSV file
+              <input
+                type="file"
+                accept=".csv,text/csv"
+                disabled={isProcessing}
+                onChange={(event) => setFile(event.target.files?.[0] || null)}
+                className="block mx-auto mt-2 text-[10px] font-normal text-slate-500"
+              />
+            </label>
+            <p className="text-[10px] text-slate-400 mt-2">
+              Required headers: merchantExternalId, legalBusinessName, tradeLicenseNumber, jurisdiction. Optional: representativeName, representativeEmail.
+            </p>
+            {file && <p className="text-[10px] text-slate-600 mt-1">{file.name}</p>}
           </div>
 
           <button
@@ -98,7 +199,7 @@ export const BulkMerchantUploadModal: React.FC<BulkMerchantUploadModalProps> = (
             onClick={handleRunBatch}
             className="w-full py-2.5 bg-onion hover:bg-onion-700 disabled:opacity-50 text-white font-bold rounded-xl text-xs transition shadow-md flex items-center justify-center space-x-2"
           >
-            {isProcessing ? 'Processing Chunked Batch (4 rows)...' : 'Run Sample Ingestion Batch'}
+            {isProcessing ? 'Registering with backend…' : 'Register CSV merchants'}
           </button>
 
           {/* Real-time Logs Feed */}

@@ -266,6 +266,46 @@ export async function fetchPspMerchants(organizationId: string): Promise<Merchan
   return null
 }
 
+export async function createPspMerchant(
+  organizationId: string,
+  merchant: Pick<
+    Merchant,
+    'externalId' | 'legalBusinessName' | 'tradeLicenseNumber' | 'jurisdiction' |
+    'representativeName' | 'representativeEmail'
+  >,
+): Promise<Merchant> {
+  const config = getApiConfig()
+  const created = await requestApi<{
+    orkiMerchantId: string
+    status: string
+  }>(config, 'POST', '/api/v1/psp/merchants', {
+    merchantExternalId: merchant.externalId,
+    merchantName: merchant.legalBusinessName,
+    legalBusinessName: merchant.legalBusinessName,
+    tradeLicenseNumber: merchant.tradeLicenseNumber,
+    jurisdiction: merchant.jurisdiction,
+    representativeName: merchant.representativeName,
+    representativeEmail: merchant.representativeEmail,
+    acceptancePreferences: {
+      acceptedTokens: ['USDC', 'USDT'],
+      acceptedChains: ['base', 'solana'],
+    },
+    settlementPreferences: { mode: 'hold_as_received', offRampCurrency: 'AED' },
+  }, 'psp')
+
+  return {
+    ...merchant,
+    id: created.orkiMerchantId,
+    organizationId,
+    status: created.status.toLowerCase() as MerchantStatus,
+    nextStep: 'NOTICE',
+    settlementMode: 'hold_as_received',
+    createdAt: new Date().toISOString(),
+    volumeUsdc: 0,
+    balanceUsdc: 0,
+  }
+}
+
 export async function fetchPspDashboard(organizationId: string): Promise<PspDashboardData | null> {
   const config = getApiConfig()
 

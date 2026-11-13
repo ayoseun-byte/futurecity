@@ -88,13 +88,17 @@ interface B2bQuote {
   paymentId: string
   network: string
   token: string
-  chainId: number
-  decimals: number
+  chainId?: number
+  decimals?: number
   quantity: number
   unitAmount: string
   sourceAmount: string
   sourceCurrency: string
   targetAmount: string
+  amountInRaw?: string
+  mode?: 'direct' | 'swap'
+  settlementNetwork?: string
+  settlementToken?: string
   rate?: string
   expiresAt: string
 }
@@ -106,6 +110,25 @@ interface EvmTx {
   value: string
   chainId: number
 }
+
+interface RelayEvmTx extends EvmTx {
+  from: string
+}
+
+interface RelayToken {
+  token: string
+  address: string
+  decimals: number
+}
+
+interface RelayPaymentTx {
+  signingMethod: 'relay'
+  requestId: string
+  transactions: RelayEvmTx[]
+}
+
+const isRelayPaymentTx = (transaction: EvmTx | RelayPaymentTx): transaction is RelayPaymentTx =>
+  'signingMethod' in transaction && transaction.signingMethod === 'relay'
 
 interface B2bApproval {
   network: string
@@ -119,7 +142,7 @@ interface B2bApproval {
 interface B2bPrepare {
   prepareId: string
   paymentRef: string
-  paymentTx: EvmTx
+  paymentTx: EvmTx | RelayPaymentTx
   preflightVerified?: boolean
   amountRaw?: string
 }
@@ -150,18 +173,18 @@ const EVM_NETWORK_META: Record<number, {
   blockExplorerUrls: string[]
   nativeCurrency: { name: string; symbol: string; decimals: number }
 }> = {
+  11155111: {
+    chainId: '0xaa36a7',
+    chainName: 'Ethereum Sepolia',
+    rpcUrls: ['https://ethereum-sepolia-rpc.publicnode.com'],
+    blockExplorerUrls: ['https://sepolia.etherscan.io'],
+    nativeCurrency: { name: 'Sepolia Ether', symbol: 'ETH', decimals: 18 },
+  },
   84532: {
     chainId: '0x14a34',
     chainName: 'Base Sepolia',
     rpcUrls: ['https://sepolia.base.org'],
     blockExplorerUrls: ['https://sepolia.basescan.org'],
-    nativeCurrency: { name: 'Ethereum', symbol: 'ETH', decimals: 18 },
-  },
-  8453: {
-    chainId: '0x2105',
-    chainName: 'Base',
-    rpcUrls: ['https://mainnet.base.org'],
-    blockExplorerUrls: ['https://basescan.org'],
     nativeCurrency: { name: 'Ethereum', symbol: 'ETH', decimals: 18 },
   },
 }
@@ -188,6 +211,14 @@ const walletRejectionMessage = (reason: unknown, fallback: string): string => {
 
 const formatUnits = (value: string | number, decimals = 2): string =>
   Number(value).toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals })
+
+const formatRawUnits = (raw: string, decimals: number): string => {
+  const value = BigInt(raw)
+  const scale = 10n ** BigInt(decimals)
+  const whole = (value / scale).toString()
+  const fraction = (value % scale).toString().padStart(decimals, '0').slice(0, Math.min(decimals, 6)).replace(/0+$/, '')
+  return fraction ? `${whole}.${fraction}` : whole
+}
 
 const truncateAddress = (address: string): string =>
   address.length <= 12 ? address : `${address.slice(0, 6)}…${address.slice(-4)}`
@@ -221,6 +252,9 @@ export const CustomerCheckoutView: React.FC = () => {
   /* ── B2B state ── */
   const [b2bShow, setB2bShow] = useState<B2bShow | null>(null)
   const [assets, setAssets] = useState<B2bAsset[]>([])
+  const [swapsAvailable, setSwapsAvailable] = useState(false)
+  const [paymentMode, setPaymentMode] = useState<'direct' | 'swap'>('direct')
+  const [relayTokens, setRelayTokens] = useState<RelayToken[]>([])
   const [selectedNetwork, setSelectedNetwork] = useState<string | null>(null)
   const [selectedToken, setSelectedToken] = useState<string | null>(null)
   const [quote, setQuote] = useState<B2bQuote | null>(null)
@@ -243,8 +277,19 @@ export const CustomerCheckoutView: React.FC = () => {
   const customerFields = isB2bPayment ? b2bShow?.customerFields ?? [] : []
 
   const selectedAsset = useMemo(
-    () => assets.find((a) => a.network === selectedNetwork && a.token === selectedToken) ?? null,
-    [assets, selectedNetwork, selectedToken],
+    () => paymentMode === 'direct'
+      ? assets.find((a) => a.network === selectedNetwork && a.token === selectedToken) ?? null
+      : null,
+    [assets, selectedNetwork, selectedToken, paymentMode],
+  )
+  const selectedRelayToken = paymentMode === 'swap'
+    ? relayTokens.find((token) => token.token === selectedToken) ?? null
+    : null
+  const settlementAsset = useMemo(
+    () => quote?.mode === 'swap'
+      ? assets.find((asset) => asset.network === 'base' && asset.token === quote.settlementToken)
+      : selectedAsset,
+    [assets, quote, selectedAsset],
   )
 
   const networks = useMemo(() => {
@@ -296,6 +341,8 @@ export const CustomerCheckoutView: React.FC = () => {
           setError(null)
           const available = assetsResult?.assets ?? []
           setAssets(available)
+          setSwapsAvailable(assetsResult?.swapsAvailable === true)
+          setPaymentMode('direct')
           const preferredNetwork = available[0]?.network ?? null
           setSelectedNetwork(preferredNetwork)
           const preferredToken =
@@ -404,24 +451,27 @@ export const CustomerCheckoutView: React.FC = () => {
   }, [isB2bPayment, quote])
 
   const requestQuote = async (options?: { silent?: boolean }): Promise<B2bQuote | null> => {
-    const asset = selectedAsset
     const show = b2bShow
-    if (!asset || !show || b2bGate) return null
+    const network = paymentMode === 'swap' ? 'ethereum' : selectedAsset?.network
+    const token = paymentMode === 'swap' ? selectedRelayToken?.token : selectedAsset?.token
+    if (!network || !token || !show || b2bGate || (paymentMode === 'swap' && !walletAddress)) return null
     if (!options?.silent) {
       setBusy(true)
       setError(null)
     }
     try {
+      const params = new URLSearchParams({
+        network,
+        token,
+        quantity: String(Math.max(1, quantity)),
+        ...(paymentMode === 'swap' ? { mode: 'swap', payerAddress: walletAddress } : {}),
+      })
       const result = await requestApi<B2bQuote>(
         config,
-        'POST',
-        `/api/v1/pay/${encodeURIComponent(show.id)}/quote`,
-        {
-          network: asset.network,
-          token: asset.token,
-          quantity: Math.max(1, quantity),
-        },
+        'GET',
+        `/api/v1/pay/${encodeURIComponent(show.id)}/quote?${params.toString()}`,
       )
+      result.mode = paymentMode
       setQuote(result)
       setError(null)
       return result
@@ -436,12 +486,47 @@ export const CustomerCheckoutView: React.FC = () => {
     }
   }
 
+  const enableRelaySwap = async () => {
+    setBusy(true)
+    setError(null)
+    try {
+      const result = await requestApi<{ tokens: RelayToken[] }>(
+        config,
+        'GET',
+        `/api/v1/pay/${encodeURIComponent(targetIdentifier)}/swap-tokens?network=ethereum`,
+      )
+      if (!result.tokens.length) {
+        throw new Error('No Relay-compatible source tokens accepted by this merchant are available on Ethereum Sepolia.')
+      }
+      setRelayTokens(result.tokens)
+      setSelectedNetwork('ethereum')
+      setSelectedToken(result.tokens[0].token)
+      setQuote(null)
+      setPaymentMode('swap')
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Relay swap options could not be loaded.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const useDirectPayment = () => {
+    const preferred = assets.find((asset) =>
+      asset.network === selectedNetwork && asset.token === b2bShow?.currency?.toLowerCase(),
+    ) ?? assets.find((asset) => asset.network === selectedNetwork) ?? assets[0]
+    setPaymentMode('direct')
+    setSelectedNetwork(preferred?.network ?? null)
+    setSelectedToken(preferred?.token ?? null)
+    setQuote(null)
+  }
+
   /* Auto-quote whenever the selection changes (and recover after a reset). */
   useEffect(() => {
-    if (!isB2bPayment || b2bGate || stage !== 'idle' || !selectedAsset || gatewayRefreshing) return
+    const hasSelection = paymentMode === 'swap' ? Boolean(selectedRelayToken) : Boolean(selectedAsset)
+    if (!isB2bPayment || b2bGate || stage !== 'idle' || !hasSelection || gatewayRefreshing) return
     void requestQuote()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isB2bPayment, selectedAsset?.network, selectedAsset?.token, quantity, stage])
+  }, [isB2bPayment, selectedAsset?.network, selectedAsset?.token, selectedRelayToken?.token, paymentMode, walletAddress, quantity, stage])
 
   /* ── Wallet connection ── */
 
@@ -513,14 +598,20 @@ export const CustomerCheckoutView: React.FC = () => {
 
   const sendTransaction = async (transaction: EvmTx): Promise<string> => {
     if (!walletProvider) throw new Error('Connect a wallet first.')
+    if (!EVM_NETWORK_META[transaction.chainId]) {
+      throw new Error(`Transactions are only enabled on Ethereum Sepolia and Base Sepolia in this prototype.`)
+    }
     await ensureEvmChain(transaction.chainId)
+    const value = BigInt(transaction.value)
+    if (value < 0n) throw new Error('The prepared transaction contains a negative value.')
     const params = [{
       from: walletAddress,
       to: transaction.to,
       data: transaction.data,
-      value: transaction.value,
+      value: `0x${value.toString(16)}`,
     }]
     try {
+      await walletProvider.request({ method: 'eth_call', params: [params[0], 'pending'] })
       const hash = await walletProvider.request({ method: 'eth_sendTransaction', params }) as string
       if (typeof hash !== 'string' || !/^0x[0-9a-fA-F]{64}$/.test(hash)) {
         throw new Error('The wallet returned an invalid transaction hash.')
@@ -531,18 +622,48 @@ export const CustomerCheckoutView: React.FC = () => {
     }
   }
 
+  const waitForTransaction = async (hash: string): Promise<void> => {
+    if (!walletProvider) throw new Error('Connect a wallet first.')
+    const deadline = Date.now() + 120_000
+    let receiptReadFailure: string | null = null
+    while (Date.now() < deadline) {
+      try {
+        const receipt = await walletProvider.request({
+          method: 'eth_getTransactionReceipt',
+          params: [hash],
+        }) as { status?: string } | null
+        if (receipt) {
+          if (BigInt(receipt.status ?? '0x0') !== 1n) {
+            throw new Error('A Relay transaction failed on-chain. No later transaction was submitted.')
+          }
+          return
+        }
+        receiptReadFailure = null
+      } catch (reason) {
+        if (reason instanceof Error && reason.message.includes('failed on-chain')) throw reason
+        receiptReadFailure = errorText(reason) || 'The wallet RPC could not read the transaction receipt.'
+      }
+      await new Promise((resolve) => window.setTimeout(resolve, 2_000))
+    }
+    throw new Error(
+      `Timed out waiting for transaction ${hash}. Check the transaction in your wallet before retrying.${receiptReadFailure ? ` Receipt lookup error: ${receiptReadFailure}` : ''}`,
+    )
+  }
+
   /* ── B2B payment execution: approve → prepare → send → submit ── */
 
   const buildSelection = (activeQuote: B2bQuote): Record<string, unknown> | null => {
-    const asset = selectedAsset
-    if (!asset) return null
+    const network = paymentMode === 'swap' ? 'ethereum' : selectedAsset?.network
+    const token = paymentMode === 'swap' ? selectedRelayToken?.token : selectedAsset?.token
+    if (!network || !token) return null
     const payload: Record<string, unknown> = {
-      network: asset.network,
-      token: asset.token,
+      network,
+      token,
       payerAddress: walletAddress,
       quoteId: activeQuote.quoteId,
       quantity: Math.max(1, quantity),
     }
+    if (paymentMode === 'swap') payload.mode = 'swap'
     if (customerFields.length) payload.customerData = customerData
     return payload
   }
@@ -587,15 +708,17 @@ export const CustomerCheckoutView: React.FC = () => {
         }
       }
 
-      /* 1. Token allowance / approval (skipped for native ETH). */
+      /* 1. Check direct-asset allowance or mark Relay's deposit as the approval step. */
       setStage('approving')
-      setStageMessage('Checking the token allowance…')
+      setStageMessage(paymentMode === 'swap' ? 'Preparing the Relay swap…' : 'Checking the token allowance…')
       const approval = await withFreshQuote((payload) =>
         requestApi<B2bApproval>(config, 'POST', `/api/v1/pay/${encodeURIComponent(targetIdentifier)}/approve`, payload))
       if (approval.needsApproval && approval.approveTx) {
         setStageMessage('Confirm the token approval transaction in your wallet…')
-        await sendTransaction(approval.approveTx)
-        setStageMessage('Approval sent — preparing the payment…')
+        const approvalHash = await sendTransaction(approval.approveTx)
+        setStageMessage('Waiting for token approval confirmation…')
+        await waitForTransaction(approvalHash)
+        setStageMessage('Approval confirmed — preparing the payment…')
       }
 
       /* 2. Prepare the splitter payment calldata (server validated + persisted attempt). */
@@ -603,10 +726,36 @@ export const CustomerCheckoutView: React.FC = () => {
       const prepare = await withFreshQuote((payload) =>
         requestApi<B2bPrepare>(config, 'POST', `/api/v1/pay/${encodeURIComponent(targetIdentifier)}/pay`, payload))
 
-      /* 3. Dispatch processSplitPayment from the buyer's wallet. */
+      /* 3. Sign direct settlement, or Relay's source-chain approval/deposit sequence. */
       setStage('sending')
-      setStageMessage('Confirm the payment transaction in your wallet…')
-      const paymentHash = await sendTransaction(prepare.paymentTx)
+      let paymentHash: string | null = null
+      if (isRelayPaymentTx(prepare.paymentTx)) {
+        const transactions = prepare.paymentTx.transactions
+        if (!transactions.length || transactions.length > 3) {
+          throw new Error('Relay returned an unsupported transaction sequence.')
+        }
+        for (const [index, transaction] of transactions.entries()) {
+          if (
+            transaction.chainId !== 11155111 ||
+            transaction.from.toLowerCase() !== walletAddress.toLowerCase() ||
+            !/^0x[0-9a-fA-F]{40}$/.test(transaction.to) ||
+            !/^0x(?:[0-9a-fA-F]{2})*$/.test(transaction.data) ||
+            !/^(?:0|[1-9][0-9]*)$/.test(transaction.value)
+          ) {
+            throw new Error('Relay returned a transaction that does not match the connected Sepolia wallet.')
+          }
+          setStageMessage(
+            `Confirm Relay transaction ${index + 1} of ${transactions.length} in your wallet…`,
+          )
+          const hash = await sendTransaction(transaction)
+          await waitForTransaction(hash)
+          paymentHash = hash
+        }
+      } else {
+        setStageMessage('Confirm the payment transaction in your wallet…')
+        paymentHash = await sendTransaction(prepare.paymentTx)
+      }
+      if (!paymentHash) throw new Error('No Relay payment transaction was submitted.')
 
       /* 4. Submit the hash — never proof of settlement; queues verification. */
       setStageMessage('Submitting the transaction for verification…')
@@ -924,7 +1073,7 @@ export const CustomerCheckoutView: React.FC = () => {
   const show = b2bShow
   const isReusable = show?.type === 'reusable'
   const executing = stage === 'approving' || stage === 'sending' || stage === 'confirming'
-  const selectionComplete = Boolean(selectedAsset)
+  const selectionComplete = paymentMode === 'swap' ? Boolean(selectedRelayToken) : Boolean(selectedAsset)
 
   return (
     <div className="mx-auto max-w-xl py-6">
@@ -995,38 +1144,79 @@ export const CustomerCheckoutView: React.FC = () => {
           {/* Network + token selection from the merchant's on-chain allowlist */}
           <div>
             <p className="mb-2 font-bold text-slate-700">Payment method</p>
-            <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${Math.max(1, networks.length)}, minmax(0, 1fr))` }}>
-              {networks.map((network) => {
-                const disabled = executing
-                return (
-                  <button
-                    key={network.network}
-                    type="button"
-                    disabled={disabled}
-                    onClick={() => {
-                      if (executing) return
-                      setSelectedNetwork(network.network)
-                      const token = assets.find((a) => a.network === network.network && a.token === show?.currency?.toLowerCase())?.token
-                        ?? assets.find((a) => a.network === network.network)?.token
-                        ?? null
-                      setSelectedToken(token)
-                    }}
-                    aria-pressed={selectedNetwork === network.network}
-                    className={`rounded-xl border p-3 text-left font-bold ${selectedNetwork === network.network ? 'border-onion bg-onion-50 text-onion-950' : 'border-slate-200 text-slate-600'}`}
-                  >
-                    {network.networkName}
-                  </button>
-                )
-              })}
-              {networks.length === 0 && !gatewayRefreshing && (
-                <div className="col-span-full rounded-xl border border-amber-200 bg-amber-50 p-3 text-amber-900">
-                  The merchant has no payment-compatible networks configured for this payment yet.
-                </div>
-              )}
+            <div className="mb-3 grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                disabled={executing}
+                onClick={useDirectPayment}
+                aria-pressed={paymentMode === 'direct'}
+                className={`rounded-xl border p-3 text-left font-bold ${paymentMode === 'direct' ? 'border-onion bg-onion-50 text-onion-950' : 'border-slate-200 text-slate-600'}`}
+              >
+                Direct payment
+              </button>
+              <button
+                type="button"
+                disabled={executing || !swapsAvailable || busy}
+                onClick={() => { void enableRelaySwap() }}
+                aria-pressed={paymentMode === 'swap'}
+                className={`rounded-xl border p-3 text-left font-bold ${paymentMode === 'swap' ? 'border-onion bg-onion-50 text-onion-950' : 'border-slate-200 text-slate-600'} disabled:cursor-not-allowed disabled:opacity-50`}
+              >
+                Pay with Relay swap
+              </button>
             </div>
-            {tokensForNetwork.length > 1 && (
-              <div className="mt-3 flex flex-wrap gap-2">
-                {tokensForNetwork.map((token) => (
+            {paymentMode === 'swap' ? (
+              <div className="rounded-xl border border-slate-200 p-3">
+                <p className="font-semibold text-slate-700">Source network: Ethereum Sepolia</p>
+                {relayTokens.length ? (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {relayTokens.map((token) => (
+                      <button
+                        key={`${token.address}:${token.token}`}
+                        type="button"
+                        disabled={executing}
+                        onClick={() => { setSelectedToken(token.token); setQuote(null) }}
+                        aria-pressed={selectedToken === token.token}
+                        className={`rounded-lg border px-3 py-1.5 font-bold uppercase ${selectedToken === token.token ? 'border-onion bg-onion-50 text-onion-950' : 'border-slate-200 text-slate-500 hover:bg-slate-50'}`}
+                      >
+                        {token.token}
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="mt-2 text-amber-800">Relay has no accepted source tokens available for this payment.</p>
+                )}
+              </div>
+            ) : (
+              <>
+                <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${Math.max(1, networks.length)}, minmax(0, 1fr))` }}>
+                  {networks.map((network) => (
+                    <button
+                      key={network.network}
+                      type="button"
+                      disabled={executing}
+                      onClick={() => {
+                        if (executing) return
+                        setSelectedNetwork(network.network)
+                        const token = assets.find((a) => a.network === network.network && a.token === show?.currency?.toLowerCase())?.token
+                          ?? assets.find((a) => a.network === network.network)?.token
+                          ?? null
+                        setSelectedToken(token)
+                      }}
+                      aria-pressed={selectedNetwork === network.network}
+                      className={`rounded-xl border p-3 text-left font-bold ${selectedNetwork === network.network ? 'border-onion bg-onion-50 text-onion-950' : 'border-slate-200 text-slate-600'}`}
+                    >
+                      {network.networkName}
+                    </button>
+                  ))}
+                  {networks.length === 0 && !gatewayRefreshing && (
+                    <div className="col-span-full rounded-xl border border-amber-200 bg-amber-50 p-3 text-amber-900">
+                      The merchant has no payment-compatible networks configured for this payment yet.
+                    </div>
+                  )}
+                </div>
+                {tokensForNetwork.length > 1 && (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {tokensForNetwork.map((token) => (
                   <button
                     key={token}
                     type="button"
@@ -1037,24 +1227,32 @@ export const CustomerCheckoutView: React.FC = () => {
                   >
                     {token}
                   </button>
-                ))}
-              </div>
+                    ))}
+                  </div>
+                )}
+              </>
             )}
           </div>
 
           {/* Live quote summary */}
-          {quote && selectedAsset && (
+          {quote && (paymentMode === 'swap' ? selectedRelayToken : selectedAsset) && (
             <div className="space-y-2 rounded-2xl border border-slate-200 bg-slate-50 p-5">
               <div className="flex items-center justify-between font-semibold text-slate-700">
                 <span className="flex items-center gap-2"><Clock className="h-4 w-4" />Quote expires in</span>
                 <span className={`font-mono ${secondsRemaining <= 10 ? 'text-rose-600' : ''}`}>{timerLabel}</span>
               </div>
-              <p className="text-slate-700">
-                You will pay <strong>{formatUnits(quote.targetAmount, Math.min(quote.decimals, 6))} {quote.token.toUpperCase()}</strong> on <strong>{selectedAsset.networkName}</strong>
-                {` for ${formatUnits(quote.sourceAmount)} ${quote.sourceCurrency.toUpperCase()}`}
-                {quantity > 1 ? ` (${quantity} items)` : ''}.
-              </p>
-              {quote.rate && Number(quote.rate) > 0 && quote.sourceCurrency !== quote.token && (
+              {quote.mode === 'swap' && selectedRelayToken ? (
+                <p className="text-slate-700">
+                  Relay estimates <strong>{formatRawUnits(quote.amountInRaw ?? '0', selectedRelayToken.decimals)} {selectedRelayToken.token.toUpperCase()}</strong> from your wallet on <strong>Ethereum Sepolia</strong>, then delivers <strong>{formatUnits(quote.targetAmount, Math.min(settlementAsset?.decimals ?? 6, 6))} {(quote.settlementToken ?? 'USDC').toUpperCase()}</strong> on <strong>Base Sepolia</strong> for this payment.
+                </p>
+              ) : (
+                <p className="text-slate-700">
+                  You will pay <strong>{formatUnits(quote.targetAmount, Math.min(selectedAsset?.decimals ?? 6, 6))} {quote.token.toUpperCase()}</strong> on <strong>{selectedAsset?.networkName}</strong>
+                  {` for ${formatUnits(quote.sourceAmount)} ${quote.sourceCurrency.toUpperCase()}`}
+                  {quantity > 1 ? ` (${quantity} items)` : ''}.
+                </p>
+              )}
+              {quote.mode !== 'swap' && quote.rate && Number(quote.rate) > 0 && quote.sourceCurrency !== quote.token && (
                 <p className="text-[11px] text-slate-500">Exchange rate: 1 {quote.sourceCurrency.toUpperCase()} ≈ {Number(quote.rate).toFixed(6)} {quote.token.toUpperCase()}. Includes the protocol and PSP fees absorbed into this gross amount.</p>
               )}
             </div>
@@ -1097,13 +1295,19 @@ export const CustomerCheckoutView: React.FC = () => {
           )}
 
           {/* Primary CTA */}
-          {quote && walletAddress && stage === 'idle' && selectedAsset && (
+          {quote && walletAddress && stage === 'idle' && (paymentMode === 'swap' ? selectedRelayToken : selectedAsset) && (
             <button
               type="submit"
               disabled={busy}
               className="flex w-full items-center justify-center gap-2 rounded-2xl bg-onion px-4 py-3.5 text-sm font-extrabold text-white hover:bg-onion-700 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              <span>{busy ? 'Submitting…' : `Pay ${formatUnits(quote.targetAmount, Math.min(quote.decimals, 6))} ${quote.token.toUpperCase()}`}</span>
+              <span>
+                {busy
+                  ? 'Submitting…'
+                  : quote.mode === 'swap' && selectedRelayToken
+                    ? `Pay ~${formatRawUnits(quote.amountInRaw ?? '0', selectedRelayToken.decimals)} ${selectedRelayToken.token.toUpperCase()} via Relay`
+                    : `Pay ${formatUnits(quote.targetAmount, Math.min(selectedAsset?.decimals ?? 6, 6))} ${quote.token.toUpperCase()}`}
+              </span>
               <ArrowRight className="h-4 w-4" />
             </button>
           )}

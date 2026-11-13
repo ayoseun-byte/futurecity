@@ -4,11 +4,10 @@ import { useAuth } from '../../context/AuthContext'
 import type { UserRole } from '../../context/AuthContext'
 import type { Organization, Merchant } from '../../types'
 import {
-  getStoredMerchants,
-  saveStoredMerchants,
+  addStoredMerchant,
   saveStoredOrganizations,
 } from '../../services/storageService'
-import { getApiConfig, requestApi, saveAdminSessionToken } from '../../services/apiConfig'
+import { clearAdminSessionToken, getApiConfig, requestApi, saveAdminSessionToken, saveApiConfig } from '../../services/apiConfig'
 import { fetchAllMerchantsFromBackend } from '../../services/pspMerchantService'
 import { loginAdminApi } from '../../services/adminService'
 import {
@@ -28,26 +27,22 @@ export const LoginView: React.FC = () => {
   const navigate = useNavigate()
 
   const [organizations, setOrganizations] = useState<Organization[]>([])
-  const [merchants, setMerchants] = useState<Merchant[]>(() => getStoredMerchants())
+  const [merchants, setMerchants] = useState<Merchant[]>([])
 
   const [activeTab, setActiveTab] = useState<UserRole>('org')
   const [organizationsLoading, setOrganizationsLoading] = useState(false)
-  const [organizationsError, setOrganizationsError] = useState('')
   const [loginError, setLoginError] = useState('')
 
   // PSP form state
-  const [pspEmail, setPspEmail] = useState('')
-  const [pspPassword, setPspPassword] = useState('password123')
+  const [pspApiKey, setPspApiKey] = useState('')
   const [selectedOrgId, setSelectedOrgId] = useState('')
 
   // Merchant form state
-  const [merchantEmail, setMerchantEmail] = useState(merchants[0]?.representativeEmail || '')
-  const [merchantPassword, setMerchantPassword] = useState('password123')
-  const [selectedMerchantId, setSelectedMerchantId] = useState<string>(merchants[0]?.id || '')
+  const [merchantSession, setMerchantSession] = useState('')
 
   // Admin form state
-  const [adminEmail, setAdminEmail] = useState('ayoseunsolomon@internal.orki.io')
-  const [adminPassword, setAdminPassword] = useState('Ork!PxP2026Naw$')
+  const [adminEmail, setAdminEmail] = useState('')
+  const [adminPassword, setAdminPassword] = useState('')
   const [adminLoggingIn, setAdminLoggingIn] = useState(false)
   const [adminLoginError, setAdminLoginError] = useState('')
 
@@ -56,13 +51,11 @@ export const LoginView: React.FC = () => {
     if (!config.adminKey) {
       setOrganizations([])
       saveStoredOrganizations([])
-      setOrganizationsError('Set the Orki admin API key in the Backend API workbench to load PSPs from the backend.')
       return
     }
 
     let active = true
     setOrganizationsLoading(true)
-    setOrganizationsError('')
 
     // 1. Fetch live PSP organizations
     requestApi<{
@@ -94,34 +87,14 @@ export const LoginView: React.FC = () => {
         saveStoredOrganizations(rows)
         setSelectedOrgId((current) => rows.some((row) => row.id === current) ? current : rows[0]?.id || '')
       })
-      .catch((reason: unknown) => {
+      .catch(() => {
         if (active) {
           setOrganizations([])
           saveStoredOrganizations([])
-          setOrganizationsError(reason instanceof Error ? reason.message : 'PSPs could not be loaded from the backend.')
         }
       })
       .finally(() => {
         if (active) setOrganizationsLoading(false)
-      })
-
-    // 2. Fetch live merchants directly from MySQL database!
-    fetchAllMerchantsFromBackend()
-      .then((liveMerchants) => {
-        if (!active || liveMerchants.length === 0) return
-        setMerchants(liveMerchants)
-        saveStoredMerchants(liveMerchants)
-        setSelectedMerchantId((current) => {
-          const match = liveMerchants.find((m) => m.id === current) || liveMerchants[0]
-          if (match) {
-            setMerchantEmail(match.representativeEmail || '')
-            return match.id
-          }
-          return current
-        })
-      })
-      .catch((err) => {
-        console.warn('Failed to fetch merchants from DB on login page:', err)
       })
 
     return () => {
@@ -129,45 +102,131 @@ export const LoginView: React.FC = () => {
     }
   }, [])
 
-  const handleOrgLogin = (e: React.FormEvent) => {
+  const handleOrgLogin = async (e: React.FormEvent) => {
     e.preventDefault()
-    const org = organizations.find((organization) => organization.id === selectedOrgId)
-    if (!org) {
-      setLoginError('Select a PSP loaded from the backend before continuing.')
-      return
-    }
     setLoginError('')
-    login('org', org.id, {
-      id: 'usr_org_' + org.id,
-      name: org.name,
-      email: pspEmail || 'ops@' + org.id + '.example',
-      organizationId: org.id,
-      status: org.status,
-      isRegulatedEntity: org.isRegulatedEntity,
-    })
-    navigate('/psp')
+    try {
+      if (!pspApiKey.trim()) throw new Error('Enter the PSP API key issued by the backend.')
+      const config = { ...getApiConfig(), pspKey: pspApiKey.trim() }
+      const profile = await requestApi<{
+        pspId: string
+        pspName: string
+        status: Organization['status']
+        feeSchedule?: Organization['feeSchedule']
+      }>(config, 'GET', '/api/v1/psp/profile', undefined, 'psp')
+      if (selectedOrgId && selectedOrgId !== profile.pspId) {
+        throw new Error('The API key belongs to a different PSP than the selected record.')
+      }
+      clearAdminSessionToken()
+      saveApiConfig({ ...config, adminKey: '', feeApproverKey: '' })
+      const organization: Organization = {
+        id: profile.pspId,
+        name: profile.pspName,
+        category: 'FINANCE',
+        categoryType: 'psp',
+        status: profile.status,
+        isRegulatedEntity: false,
+        feeWallet: '',
+        contacts: [],
+        feeSchedule: profile.feeSchedule,
+        createdAt: new Date().toISOString(),
+      }
+      saveStoredOrganizations([organization])
+      setOrganizations([organization])
+      login('org', organization.id, {
+        id: organization.id,
+        name: organization.name,
+        organizationId: organization.id,
+        status: organization.status,
+      })
+      navigate('/psp')
+    } catch (reason) {
+      setLoginError(reason instanceof Error ? reason.message : 'PSP authentication failed.')
+    }
   }
 
-  const handleMerchantLogin = (e: React.FormEvent) => {
+  const handleMerchantLogin = async (e: React.FormEvent) => {
     e.preventDefault()
-    const merch = merchants.find((merchant) =>
-      merchant.id === selectedMerchantId &&
-      merchant.representativeEmail.trim().toLowerCase() === merchantEmail.trim().toLowerCase()
-    )
-    if (!merch) {
-      setLoginError('Select a merchant and enter its registered email.')
-      return
-    }
     setLoginError('')
-    login('merchant', merch.id, {
-      id: 'usr_merch_' + merch.id,
-      name: merch.legalBusinessName,
-      email: merch.representativeEmail,
-      organizationId: merch.organizationId,
-      merchantId: merch.id,
-      status: merch.status,
-    })
-    navigate('/merchant')
+    try {
+      const rawSession = merchantSession.trim()
+      const token = rawSession.includes('#')
+        ? new URLSearchParams(rawSession.split('#', 2)[1]).get('session') || ''
+        : rawSession
+      if (!token.startsWith('onb_sec_')) {
+        throw new Error('Open the merchant onboarding/session link or paste its onb_sec_ session token.')
+      }
+
+      const config = { ...getApiConfig(), merchantSession: token }
+      const state = await requestApi<{
+        merchantId: string
+        merchantExternalId?: string
+        organizationId?: string
+        legalBusinessName: string
+        tradeLicenseNumber?: string | null
+        jurisdiction?: string | null
+        representativeName?: string | null
+        representativeEmail?: string | null
+        status: string
+        nextStep?: Merchant['nextStep']
+        settlementMode?: Merchant['settlementMode']
+        baseWalletAddress?: string | null
+        solanaWalletAddress?: string | null
+        orkiFeeBps?: number
+        pspFeeBps?: number
+        noticeAcknowledgedAt?: string | null
+        termsAcceptedAt?: string | null
+        kybInformationSubmittedAt?: string | null
+        sumsubCompletedAt?: string | null
+        passkeyRegisteredAt?: string | null
+        verifiedAt?: string | null
+        activatedAt?: string | null
+      }>(config, 'GET', '/api/v1/merchant/onboarding', undefined, 'merchant')
+
+      const merchant: Merchant = {
+        id: state.merchantId,
+        organizationId: state.organizationId || '',
+        externalId: state.merchantExternalId || state.merchantId,
+        legalBusinessName: state.legalBusinessName,
+        tradeLicenseNumber: state.tradeLicenseNumber || '',
+        jurisdiction: state.jurisdiction || '',
+        representativeName: state.representativeName || '',
+        representativeEmail: state.representativeEmail || '',
+        status: state.status.toLowerCase() as Merchant['status'],
+        nextStep: state.nextStep,
+        settlementMode: state.settlementMode || 'hold_as_received',
+        baseWalletAddress: state.baseWalletAddress || undefined,
+        solanaWalletAddress: state.solanaWalletAddress || undefined,
+        orkiFeeBps: state.orkiFeeBps,
+        pspFeeBps: state.pspFeeBps,
+        noticeAcknowledgedAt: state.noticeAcknowledgedAt || undefined,
+        termsAcceptedAt: state.termsAcceptedAt || undefined,
+        kybInformationSubmittedAt: state.kybInformationSubmittedAt || undefined,
+        sumsubCompletedAt: state.sumsubCompletedAt || undefined,
+        passkeyRegisteredAt: state.passkeyRegisteredAt || undefined,
+        verifiedAt: state.verifiedAt || undefined,
+        activatedAt: state.activatedAt || undefined,
+        createdAt: new Date().toISOString(),
+      }
+      clearAdminSessionToken()
+      saveApiConfig({ ...config, adminKey: '', feeApproverKey: '', pspKey: '' })
+      sessionStorage.setItem(`orki_merchant_session:${merchant.externalId}`, token)
+      sessionStorage.setItem('orki_active_merchant_session', token)
+      addStoredMerchant(merchant)
+      setMerchants([merchant])
+      login('merchant', merchant.id, {
+        id: merchant.id,
+        name: merchant.legalBusinessName,
+        email: merchant.representativeEmail,
+        organizationId: merchant.organizationId,
+        merchantId: merchant.id,
+        status: merchant.status,
+        merchantProfile: merchant,
+      })
+      navigate('/merchant')
+    } catch (reason) {
+      setLoginError(reason instanceof Error ? reason.message : 'Merchant session could not be verified.')
+    }
   }
 
   const handleAdminLogin = async (e: React.FormEvent) => {
@@ -177,6 +236,32 @@ export const LoginView: React.FC = () => {
     try {
       const res = await loginAdminApi(adminEmail.trim(), adminPassword)
       saveAdminSessionToken(res.accessToken)
+      const config = getApiConfig()
+      const [{ data: pspRows }, liveMerchants] = await Promise.all([
+        requestApi<{ data: Array<{
+          pspId: string
+          pspName: string
+          category: Organization['category']
+          categoryType: Organization['categoryType']
+          status: Organization['status']
+          createdAt: string
+        }> }>(config, 'GET', '/api/v1/admin/psps', undefined, 'admin'),
+        fetchAllMerchantsFromBackend(),
+      ])
+      const liveOrganizations = pspRows.map((psp) => ({
+        id: psp.pspId,
+        name: psp.pspName,
+        category: psp.category,
+        categoryType: psp.categoryType,
+        status: psp.status,
+        createdAt: psp.createdAt,
+        isRegulatedEntity: false,
+        feeWallet: '',
+        contacts: [],
+      }))
+      setOrganizations(liveOrganizations)
+      setMerchants(liveMerchants)
+      saveStoredOrganizations(liveOrganizations)
       login('admin', undefined, {
         id: res.admin.id,
         name: res.admin.name,
@@ -184,21 +269,14 @@ export const LoginView: React.FC = () => {
       })
       navigate('/admin')
     } catch (err: unknown) {
+      clearAdminSessionToken()
+      saveApiConfig({ ...getApiConfig(), adminKey: '' })
       console.warn('Backend admin login failed:', err)
       const message = err instanceof Error ? err.message : 'Invalid admin credentials.'
       setAdminLoginError(message)
     } finally {
       setAdminLoggingIn(false)
     }
-  }
-
-  const handleAdminBypass = () => {
-    login('admin', undefined, {
-      id: 'local-admin',
-      name: 'Local Administrator',
-      email: adminEmail,
-    })
-    navigate('/admin')
   }
 
   return (
@@ -267,7 +345,7 @@ export const LoginView: React.FC = () => {
                   <span>Protocol Headquarters Access</span>
                 </div>
                 <p className="text-[11px] text-slate-500">
-                  Authenticate using seeded institutional Super Admin credentials (`POST /api/v1/admin/auth/login`) to manage PSP approvals, rate governance, and API keys.
+                  Authenticate with an admin account provisioned by the backend to manage PSP approvals, rate governance, and API keys.
                 </p>
               </div>
 
@@ -278,13 +356,6 @@ export const LoginView: React.FC = () => {
                     <span>Authentication Failed</span>
                   </div>
                   <p className="text-[11px] leading-relaxed">{adminLoginError}</p>
-                  <button
-                    type="button"
-                    onClick={handleAdminBypass}
-                    className="mt-1 text-[11px] font-semibold text-red-800 underline hover:text-red-900 block"
-                  >
-                    Bypass to local demo portal →
-                  </button>
                 </div>
               )}
 
@@ -335,181 +406,78 @@ export const LoginView: React.FC = () => {
           {/* TAB 2: PSP / ORGANIZATION PORTAL */}
           {activeTab === 'org' && (
             <form onSubmit={handleOrgLogin} className="space-y-4">
-              {organizationsLoading ? (
-                <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-xs text-slate-600">
-                  Loading PSPs from the backend…
-                </div>
-              ) : organizations.length === 0 ? (
-                <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-xs text-amber-800 space-y-2">
-                  <div className="flex items-center space-x-2 font-semibold">
-                    <AlertCircle className="w-4 h-4 text-amber-600" />
-                    <span>No Organizations Registered Yet</span>
-                  </div>
-                  <p className="text-[11px] text-amber-700 leading-relaxed">
-                    {organizationsError || 'Create a PSP in the Orki Admin Portal, then reload this page.'}
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab('admin')}
-                    className="mt-2 text-xs font-semibold text-onion hover:underline flex items-center space-x-1"
+              <p className="text-xs text-slate-600">
+                Authenticate with the PSP API key issued by the backend. The key is kept only for this browser session.
+              </p>
+              {organizationsLoading && <p className="text-xs text-slate-500">Loading PSP records…</p>}
+              {organizations.length > 0 && (
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Expected PSP (optional)</label>
+                  <select
+                    value={selectedOrgId}
+                    onChange={(event) => setSelectedOrgId(event.target.value)}
+                    className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-onion focus:border-onion bg-white"
                   >
-                    <span>Go to Orki Admin Tab</span>
-                    <ArrowRight className="w-3 h-3" />
-                  </button>
+                    <option value="">Verify PSP from API key</option>
+                    {organizations.map((organization) => (
+                      <option key={organization.id} value={organization.id}>{organization.name}</option>
+                    ))}
+                  </select>
                 </div>
-              ) : (
-                <>
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">
-                      Registered Organization
-                    </label>
-                    <select
-                      value={selectedOrgId}
-                      onChange={(e) => {
-                        setSelectedOrgId(e.target.value)
-                      }}
-                      className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-onion focus:border-onion bg-white"
-                    >
-                      {organizations.map((org) => (
-                        <option key={org.id} value={org.id}>
-                          {org.name} ({org.categoryType?.toUpperCase()} · {org.status})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">
-                      Technical / Operator Email
-                    </label>
-                    <div className="relative">
-                      <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
-                      <input
-                        type="email"
-                        value={pspEmail}
-                        onChange={(e) => setPspEmail(e.target.value)}
-                        required
-                        className="w-full pl-9 pr-3 py-2 text-xs border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-onion focus:border-onion bg-white"
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">
-                      Password / API Secret
-                    </label>
-                    <div className="relative">
-                      <Key className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
-                      <input
-                        type="password"
-                        value={pspPassword}
-                        onChange={(e) => setPspPassword(e.target.value)}
-                        required
-                        className="w-full pl-9 pr-3 py-2 text-xs border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-onion focus:border-onion bg-white"
-                      />
-                    </div>
-                  </div>
-
-                  <button
-                    type="submit"
-                    disabled={!selectedOrgId}
-                    className="w-full mat-btn-primary py-2.5 px-4 text-xs font-semibold flex items-center justify-center space-x-2 shadow-xs mt-2"
-                  >
-                    <span>Log In to PSP Dashboard</span>
-                    <ArrowRight className="w-4 h-4" />
-                  </button>
-                </>
               )}
-              {loginError && activeTab === 'org' && <p role="alert" className="text-xs text-red-600">{loginError}</p>}
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">PSP API Key</label>
+                <div className="relative">
+                  <Key className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                  <input
+                    type="password"
+                    autoComplete="current-password"
+                    value={pspApiKey}
+                    onChange={(event) => setPspApiKey(event.target.value)}
+                    required
+                    className="w-full pl-9 pr-3 py-2 text-xs border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-onion focus:border-onion bg-white"
+                  />
+                </div>
+              </div>
+              <button
+                type="submit"
+                className="w-full mat-btn-primary py-2.5 px-4 text-xs font-semibold flex items-center justify-center space-x-2 shadow-xs mt-2"
+              >
+                <span>Authenticate PSP API Key</span>
+                <ArrowRight className="w-4 h-4" />
+              </button>
+              {loginError && <p role="alert" className="text-xs text-red-600">{loginError}</p>}
             </form>
           )}
 
           {/* TAB 3: MERCHANT PORTAL */}
           {activeTab === 'merchant' && (
             <form onSubmit={handleMerchantLogin} className="space-y-4">
-              {merchants.length === 0 ? (
-                <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-xs text-amber-800 space-y-2">
-                  <div className="flex items-center space-x-2 font-semibold">
-                    <AlertCircle className="w-4 h-4 text-amber-600" />
-                    <span>No Merchants Onboarded Yet</span>
-                  </div>
-                  <p className="text-[11px] text-amber-700 leading-relaxed">
-                    Merchants are invited by their PSP. Log into your PSP portal to register a merchant with pre-fill details.
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab('org')}
-                    className="mt-2 text-xs font-semibold text-onion hover:underline flex items-center space-x-1"
-                  >
-                    <span>Switch to PSP Portal</span>
-                    <ArrowRight className="w-3 h-3" />
-                  </button>
+              <p className="text-xs text-slate-600">
+                Merchant access uses a backend-issued, time-limited onboarding session. A name and email alone do not authenticate a merchant.
+              </p>
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Onboarding/session link or session token</label>
+                <div className="relative">
+                  <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                  <input
+                    type="password"
+                    autoComplete="current-password"
+                    value={merchantSession}
+                    onChange={(event) => setMerchantSession(event.target.value)}
+                    required
+                    className="w-full pl-9 pr-3 py-2 text-xs border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-onion focus:border-onion bg-white"
+                  />
                 </div>
-              ) : (
-                <>
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">
-                      Merchant Entity
-                    </label>
-                    <select
-                      value={selectedMerchantId}
-                      onChange={(e) => {
-                        setSelectedMerchantId(e.target.value)
-                        const found = merchants.find((m) => m.id === e.target.value)
-                        if (found) setMerchantEmail(found.representativeEmail)
-                      }}
-                      className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-onion focus:border-onion bg-white"
-                    >
-                      {merchants.map((m) => (
-                        <option key={m.id} value={m.id}>
-                          {m.legalBusinessName} ({m.organizationId}) · {m.status.toUpperCase()}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">
-                      Authorized Signatory Email
-                    </label>
-                    <div className="relative">
-                      <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
-                      <input
-                        type="email"
-                        value={merchantEmail}
-                        onChange={(e) => setMerchantEmail(e.target.value)}
-                        required
-                        className="w-full pl-9 pr-3 py-2 text-xs border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-onion focus:border-onion bg-white"
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">
-                      Passkey / Password
-                    </label>
-                    <div className="relative">
-                      <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
-                      <input
-                        type="password"
-                        value={merchantPassword}
-                        onChange={(e) => setMerchantPassword(e.target.value)}
-                        required
-                        className="w-full pl-9 pr-3 py-2 text-xs border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-onion focus:border-onion bg-white"
-                      />
-                    </div>
-                  </div>
-
-                  <button
-                    type="submit"
-                    className="w-full mat-btn-primary py-2.5 px-4 text-xs font-semibold flex items-center justify-center space-x-2 shadow-xs mt-2"
-                  >
-                    <span>Access Merchant Portal</span>
-                    <ArrowRight className="w-4 h-4" />
-                  </button>
-                </>
-              )}
-              {loginError && activeTab === 'merchant' && <p role="alert" className="text-xs text-red-600">{loginError}</p>}
+              </div>
+              <button
+                type="submit"
+                className="w-full mat-btn-primary py-2.5 px-4 text-xs font-semibold flex items-center justify-center space-x-2 shadow-xs mt-2"
+              >
+                <span>Verify merchant session</span>
+                <ArrowRight className="w-4 h-4" />
+              </button>
+              {loginError && <p role="alert" className="text-xs text-red-600">{loginError}</p>}
             </form>
           )}
 
@@ -517,7 +485,7 @@ export const LoginView: React.FC = () => {
           <div className="pt-4 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
             <span className="flex items-center space-x-1">
               <Sparkles className="w-3.5 h-3.5 text-onion" />
-              <span>Interactive Local Storage Mode</span>
+              <span>Backend-authenticated sessions</span>
             </span>
             <span className="font-mono text-slate-400">
               {organizations.length} Orgs · {merchants.length} Merchants

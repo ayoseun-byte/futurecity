@@ -34,9 +34,9 @@ import {
   saveStoredPaylinks,
   getStoredTransactions,
   saveStoredTransactions,
-  ensureMerchantsForOrganization,
 } from './services/storageService'
-import { fetchPspDashboard, type PspDashboardMetrics } from './services/pspMerchantService'
+import { createPspMerchant,
+fetchPspDashboard, type PspDashboardMetrics } from './services/pspMerchantService'
 import { resolveMonotonicStep } from './services/onboardingStepService'
 import { getApiConfig, requestApi } from './services/apiConfig'
 import { AlertCircle, ArrowRight } from 'lucide-react'
@@ -72,7 +72,7 @@ function OrgMerchantRedirect() {
 }
 
 function MainRoutes() {
-  const { user, isAuthenticated, login } = useAuth()
+  const { user, isAuthenticated } = useAuth()
   const navigate = useNavigate()
   const [organizations, setOrganizations] = useState<Organization[]>(getStoredOrganizations)
   const [merchants, setMerchants] = useState<Merchant[]>(getStoredMerchants)
@@ -162,7 +162,7 @@ function MainRoutes() {
   const activeOrg = organizations.find((o) => o.id === user?.organizationId)
 
   // Derive active merchant for merchant view based on auth user
-  const activeMerchant = merchants.find((m) => m.id === user?.merchantId)
+  const activeMerchant = merchants.find((m) => m.id === user?.merchantId) ?? user?.merchantProfile
 
   // Organization Handlers
   const handleUpdateOrganization = (updated: Organization) => {
@@ -173,8 +173,6 @@ function MainRoutes() {
 
   const handleAddOrganization = (newOrg: Organization) => {
     setOrganizations([newOrg, ...organizations])
-    const newMerchants = ensureMerchantsForOrganization(newOrg.id, newOrg.name)
-    setMerchants((current) => [...newMerchants, ...current])
   }
 
   const handleRequestFeeChange = async (
@@ -214,38 +212,36 @@ function MainRoutes() {
   }
 
   // Merchant Handlers
-  const handleAddMerchant = (newMerchantData: Partial<Merchant>) => {
-    const orgId = activeOrg?.id || 'psp_default'
-    const newMerchant: Merchant = {
-      id: 'mrch_' + Math.random().toString(36).substring(7),
-      organizationId: orgId,
-      externalId:
-        newMerchantData.externalId ||
-        'XSQ-MERCH-' + Math.floor(1000 + Math.random() * 9000),
-      legalBusinessName: newMerchantData.legalBusinessName || 'New Merchant LLC',
-      tradeLicenseNumber: newMerchantData.tradeLicenseNumber || 'TL-00000',
-      jurisdiction: newMerchantData.jurisdiction || 'Dubai DED',
-      representativeName: newMerchantData.representativeName || 'Signer',
-      representativeEmail: newMerchantData.representativeEmail || 'signer@example.com',
-      status: 'invited',
-      nextStep: 'OPT_IN',
-      settlementMode: newMerchantData.settlementMode || 'hold_as_received',
-      orkiFeeWallet: undefined,
-      pspFeeWallet: activeOrg?.feeWallet || undefined,
-      orkiFeeBps: activeOrg?.feeSchedule?.orkiFeeBps ?? 100,
-      orkiFeeCapPercent: activeOrg?.feeSchedule?.orkiFeeCapPercent ?? 1.00,
-      orkiFeeCapAmount: activeOrg?.feeSchedule?.orkiFeeCapAmount ?? 25.00,
-      pspFeeBps: activeOrg?.feeSchedule?.pspMarkupBps ?? 0,
-      createdAt: new Date().toISOString(),
-      volumeUsdc: 0.0,
-      balanceUsdc: 0.0,
+  const handleAddMerchant = async (newMerchantData: Partial<Merchant>) => {
+    if (!activeOrg) throw new Error('No active PSP is selected.')
+    if (
+      !newMerchantData.externalId ||
+      !newMerchantData.legalBusinessName ||
+      !newMerchantData.tradeLicenseNumber ||
+      !newMerchantData.jurisdiction ||
+      !newMerchantData.representativeName ||
+      !newMerchantData.representativeEmail
+    ) {
+      throw new Error('All merchant registration fields are required.')
     }
-    setMerchants([newMerchant, ...merchants])
+
+    const newMerchant = await createPspMerchant(activeOrg.id, {
+      externalId: newMerchantData.externalId,
+      legalBusinessName: newMerchantData.legalBusinessName,
+      tradeLicenseNumber: newMerchantData.tradeLicenseNumber,
+      jurisdiction: newMerchantData.jurisdiction,
+      representativeName: newMerchantData.representativeName,
+      representativeEmail: newMerchantData.representativeEmail,
+    })
+    setMerchants((current) => [
+      newMerchant,
+      ...current.filter((merchant) => merchant.id !== newMerchant.id),
+    ])
   }
 
   const handleBatchCreated = (newMerchants: Merchant[]) => {
     const orgId = activeOrg?.id || 'psp_default'
-    const tagged = newMerchants.map((m) => ({ ...m, organizationId: orgId, nextStep: 'OPT_IN' as const }))
+    const tagged = newMerchants.map((merchant) => ({ ...merchant, organizationId: orgId }))
     setMerchants([...tagged, ...merchants])
   }
 
@@ -273,7 +269,7 @@ function MainRoutes() {
     const merchantId = activeMerchant?.id
     if (!merchantId) return
     setMerchants((current) => {
-      const existing = current.find((m) => m.id === merchantId)
+      const existing = current.find((m) => m.id === merchantId) ?? activeMerchant
       if (!existing) return current
 
       const safeUpdates: Partial<Merchant> = { ...updated }
@@ -287,9 +283,12 @@ function MainRoutes() {
         ([key, val]) => (existing as unknown as Record<string, unknown>)[key] !== val
       )
       if (!hasRealChange) return current
-      return current.map((merchant) => merchant.id === merchantId ? { ...merchant, ...safeUpdates } : merchant)
+      const updatedMerchant = { ...existing, ...safeUpdates }
+      return current.some((merchant) => merchant.id === merchantId)
+        ? current.map((merchant) => merchant.id === merchantId ? updatedMerchant : merchant)
+        : [updatedMerchant, ...current]
     })
-  }, [activeMerchant?.id])
+  }, [activeMerchant])
 
   const handlePaylinkCreated = (newPaylink: Paylink) => {
     setPaylinks([newPaylink, ...paylinks])
@@ -324,10 +323,7 @@ function MainRoutes() {
                   dashboardError={pspDashboardError}
                   onAddMerchant={handleAddMerchant}
                   onBatchCreated={handleBatchCreated}
-                  onSelectMerchantForDashboard={(id) => {
-                    login('merchant', id)
-                    navigate('/merchant')
-                  }}
+                  onSelectMerchantForDashboard={(id) => navigate(`/psp/merchants/${id}`)}
                   onRequestFeeChange={handleRequestFeeChange}
                   onRefreshDashboard={loadPspData}
                 />

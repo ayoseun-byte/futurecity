@@ -11,11 +11,16 @@ import { ErrorBanner } from '../../../components/ui/StateBlocks'
 /**
  * Corner Shop, headless — the direct-API integration style.
  *
- * The merchant's own website with its own button and no PSP script: it calls
- * the Orki API straight from the browser and renders whatever comes back.
+ * Headless storefront flow: create an order charge and render the API response.
  */
 export const CornerShopHeadlessView: React.FC = () => {
-  const [form, setForm] = React.useState({ merchantExternalId: '', amount: '55', currency: 'USDC' })
+  const [form, setForm] = React.useState({
+    merchantExternalId: '',
+    orderId: 'CS-ORDER-1001',
+    amount: '55',
+    currency: 'USDC',
+    description: 'Corner Shop order',
+  })
   const [result, setResult] = React.useState<ChargeSummary | null>(null)
   const [error, setError] = React.useState<string | null>(null)
   const [busy, setBusy] = React.useState(false)
@@ -32,6 +37,8 @@ export const CornerShopHeadlessView: React.FC = () => {
       merchantExternalId: form.merchantExternalId || '<merchant external id>',
       amount: form.amount,
       currency: form.currency,
+      description: form.description,
+      orderMetadata: { orderId: form.orderId },
     },
   }
 
@@ -44,6 +51,8 @@ export const CornerShopHeadlessView: React.FC = () => {
           merchantExternalId: form.merchantExternalId,
           amount: form.amount,
           currency: form.currency,
+          description: form.description,
+          orderMetadata: { orderId: form.orderId },
         }),
       )
     } catch (cause) {
@@ -62,7 +71,7 @@ export const CornerShopHeadlessView: React.FC = () => {
           Corner Shop — headless
         </h2>
         <p className="text-[11px] text-slate-500 mt-0.5">
-          The merchant's own site with its own button: no PSP script, just a direct API call.
+          Headless storefront checkout: each API-created charge is linked to its durable order ID.
         </p>
       </header>
 
@@ -74,8 +83,20 @@ export const CornerShopHeadlessView: React.FC = () => {
             <Field label="Merchant external id">
               <TextInput
                 value={form.merchantExternalId}
-                placeholder="DEMO-STORE-1"
+                placeholder="Enter a merchant external ID"
                 onChange={(event) => setForm((current) => ({ ...current, merchantExternalId: event.target.value }))}
+              />
+            </Field>
+            <Field label="Order ID">
+              <TextInput
+                value={form.orderId}
+                onChange={(event) => setForm((current) => ({ ...current, orderId: event.target.value }))}
+              />
+            </Field>
+            <Field label="Order description">
+              <TextInput
+                value={form.description}
+                onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))}
               />
             </Field>
             <div className="grid grid-cols-2 gap-3">
@@ -120,8 +141,9 @@ export const CornerShopHeadlessView: React.FC = () => {
         <Card title="The request your site makes">
           <JsonBlock label="POST /api/v1/psp/charges" value={request} collapsed={false} />
           <p className="text-[11px] text-slate-500 mt-3">
-            No script tag, no iframe: the button on the merchant's page calls the Orki API directly and renders the
-            checkout link it gets back.
+            No script tag or iframe is required here: the integration receives a durable charge and checkout URL
+            from the PSP API. The browser uses the configured PSP credential, so this is a prototype integration
+            surface and not a production merchant-secret pattern.
           </p>
         </Card>
       </div>

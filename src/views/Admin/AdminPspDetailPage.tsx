@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
-import { useAuth } from '../../context/AuthContext'
 import {
   fetchAdminPspDetail,
   updateAdminPspStatus,
@@ -51,8 +50,6 @@ export const AdminPspDetailPage: React.FC<AdminPspDetailPageProps> = ({
 }) => {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
-  const { login } = useAuth()
-
   const [pspDetail, setPspDetail] = useState<PspDetailResponse | null>(null)
   const [merchants, setMerchants] = useState<AdminMerchantRow[]>([])
   const [loading, setLoading] = useState(true)
@@ -389,13 +386,10 @@ export const AdminPspDetailPage: React.FC<AdminPspDetailPageProps> = ({
 
         <div className="flex items-center space-x-2">
           <button
-            onClick={() => {
-              login('org', pspDetail.pspId)
-              navigate('/psp')
-            }}
+            onClick={() => navigate('/login')}
             className="px-3.5 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition flex items-center space-x-1.5 shadow-xs"
           >
-            <span>Log in as PSP</span>
+            <span>PSP API-key login</span>
             <ExternalLink className="w-3.5 h-3.5" />
           </button>
           <button

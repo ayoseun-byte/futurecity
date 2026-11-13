@@ -39,7 +39,6 @@ import {
   Eye,
   EyeOff,
   Code2,
-  ExternalLink,
   Calendar,
   Fingerprint,
   ShieldAlert,
@@ -82,7 +81,7 @@ interface OrgDashboardProps {
   merchants: Merchant[]
   paylinks?: Paylink[]
   transactions: Transaction[]
-  onAddMerchant: (merchant: Partial<Merchant>) => void
+  onAddMerchant: (merchant: Partial<Merchant>) => Promise<void>
   onBatchCreated: (newMerchants: Merchant[]) => void
   onSelectMerchantForDashboard: (merchantId: string) => void
   onRequestFeeChange?: (orgId: string, newMarkupBps: number, requestedBy: string, reason: string) => Promise<void>
@@ -631,8 +630,6 @@ export const OrgDashboard: React.FC<OrgDashboardProps> = ({
                         }) + ' ' + new Date(merchant.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
                       : '—'
 
-                    const setupUrl = `${window.location.origin}/setup#session=orki_setup_${merchant.id}`
-
                     return (
                       <tr key={merchant.id} className="hover:bg-slate-50/70 transition">
                         {/* Legal Entity & Identifiers */}
@@ -788,23 +785,10 @@ export const OrgDashboard: React.FC<OrgDashboardProps> = ({
 
                           <button
                             type="button"
-                            onClick={() => {
-                              copyText(setupUrl, `setup_${merchant.id}`)
-                              window.open(setupUrl, '_blank')
-                            }}
-                            className="px-2.5 py-1 rounded text-slate-600 hover:text-slate-900 border border-slate-200 hover:bg-slate-50 transition inline-flex items-center gap-1"
-                            title="Launch wallet setup URL for merchant"
-                          >
-                            <ExternalLink className="w-3 h-3 text-slate-400" />
-                            <span>Setup</span>
-                          </button>
-
-                          <button
-                            type="button"
                             onClick={() => onSelectMerchantForDashboard(merchant.id)}
                             className="px-2.5 py-1 rounded text-onion-800 hover:text-onion-900 bg-onion-50 border border-onion-200 transition font-medium"
                           >
-                            Portal
+                            Manage
                           </button>
                         </td>
                       </tr>

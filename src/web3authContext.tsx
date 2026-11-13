@@ -22,7 +22,7 @@ const evmChainConfig = {
 
 const solanaChainConfig = {
   chainNamespace: "solana" as const,
-  chainId: "0x3", // Devnet
+  chainId: "0x67", // Devnet
   rpcTarget: "https://api.devnet.solana.com",
   displayName: "Solana Devnet",
   blockExplorerUrl: "https://explorer.solana.com?cluster=devnet",
@@ -31,20 +31,6 @@ const solanaChainConfig = {
   logo: "https://images.toruswallet.io/sol.svg",
   decimals: 9,
   isTestnet: true,
-};
-
-const solanaMainnetChainConfig = {
-  chainNamespace: "solana" as const,
-  chainId: "0x3", // Mainnet
-  rpcTarget:
-    "https://solana-devnet.g.alchemy.com/v2/xSAPrzBSqCCCVP5bvZSo4r6VXDDFlwPp",
-  displayName: "Solana Mainnet",
-  blockExplorerUrl: "https://explorer.solana.com?cluster=mainnet",
-  ticker: "SOL",
-  tickerName: "Solana",
-  logo: "https://images.toruswallet.io/sol.svg",
-  decimals: 9,
-  isTestnet: false,
 };
 
 const web3AuthOptions: Web3AuthOptions = {
@@ -80,7 +66,6 @@ const web3AuthContextConfig: Web3AuthContextConfig = {
 export const APP_CHAIN_CONFIG = {
   evm: evmChainConfig,
   solana: solanaChainConfig,
-  solanaMainnet: solanaMainnetChainConfig,
 };
 
 export default web3AuthContextConfig;

@@ -10,8 +10,7 @@ import { EmptyState, ErrorBanner, Spinner } from '../../../components/ui/StateBl
 /**
  * Corner Shop with the checkout widget — the embedded-checkout style.
  *
- * The merchant's site embeds the PSP's checkout; the widget is a live preview
- * of the hosted checkout page for a chosen payment link.
+ * The merchant's site embeds the hosted checkout in an iframe for a chosen payment link.
  */
 export const CheckoutWidgetView: React.FC = () => {
   const [links, setLinks] = React.useState<PaymentLinkSummary[]>([])
@@ -40,8 +39,14 @@ export const CheckoutWidgetView: React.FC = () => {
     }
   }, [])
 
-  const snippet = `<div id="orki-checkout" data-payment-link="${selected || '<payment link id>'}"></div>
-<script src="${typeof window !== 'undefined' ? window.location.origin : ''}/checkout/embed.js" async></script>`
+  const snippet = `<iframe
+  src="${selected || '<hosted checkout URL>'}"
+  title="Secure Orki checkout"
+  width="100%"
+  height="640"
+  frameborder="0"
+  allow="clipboard-read; clipboard-write"
+></iframe>`
 
   const copySnippet = () => {
     navigator.clipboard.writeText(snippet)
@@ -54,10 +59,10 @@ export const CheckoutWidgetView: React.FC = () => {
       <header>
         <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
           <Code2 className="w-5 h-5 text-violet-600" />
-          Corner Shop — checkout widget
+          Corner Shop —           Checkout widget widget
         </h2>
         <p className="text-[11px] text-slate-500 mt-0.5">
-          The embedded-checkout style: the merchant's site drops in the PSP's checkout and the buyer pays in place.
+          The embedded-checkout style: the merchant's site embeds the live hosted checkout URL in an iframe.
         </p>
       </header>
 

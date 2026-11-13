@@ -1,45 +1,53 @@
 import React from 'react'
 import { ExternalLink, ShoppingBag, Store } from 'lucide-react'
 import {
-  createPaymentLink,
+  createCharge,
   fetchMarkupSettings,
   fetchMerchantSettings,
-  listPaymentLinks,
+  listCharges,
 } from '../../../services/pspConsoleService'
-import type { MerchantSettings, MarkupSettings, PaymentLinkSummary } from '../../../services/pspConsoleService'
+import type { ChargeSummary, MerchantSettings, MarkupSettings } from '../../../services/pspConsoleService'
 import { Button } from '../../../components/ui/Button'
 import { Badge } from '../../../components/ui/Badge'
 import { Card } from '../../../components/ui/Card'
 import { Field, TextInput } from '../../../components/ui/Field'
 import { JsonBlock } from '../../../components/ui/JsonBlock'
 import { EmptyState, ErrorBanner, Spinner } from '../../../components/ui/StateBlocks'
+import { getApiConfig, requestApi } from '../../../services/apiConfig'
 
 /**
  * Shoplane console — the commerce-platform integration style.
  *
- * Stands in for a commerce platform that is also a payment gateway: it issues
- * payment links for its own checkout and administers its merchant's settings.
+ * Stands in for a commerce platform that is also a payment gateway: it creates
+ * durable per-order charges and administers its merchant's settings.
  */
 export const ShoplaneConsoleView: React.FC = () => {
-  const [links, setLinks] = React.useState<PaymentLinkSummary[]>([])
+  const [orders, setOrders] = React.useState<ChargeSummary[]>([])
   const [markup, setMarkup] = React.useState<MarkupSettings | null>(null)
   const [merchant, setMerchant] = React.useState<MerchantSettings | null>(null)
+  const [created, setCreated] = React.useState<ChargeSummary | null>(null)
   const [loading, setLoading] = React.useState(true)
   const [error, setError] = React.useState<string | null>(null)
   const [busy, setBusy] = React.useState(false)
-  const [form, setForm] = React.useState({ merchantExternalId: '', amount: '80', currency: 'USDC', description: '' })
+  const [form, setForm] = React.useState({
+    merchantExternalId: '',
+    orderId: 'ORD-1001',
+    amount: '80',
+    currency: 'USDC',
+    description: '',
+  })
 
   const load = React.useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
-      const page = await listPaymentLinks(form.merchantExternalId ? { merchantExternalId: form.merchantExternalId } : {})
-      setLinks(page.data ?? [])
-      try {
-        setMarkup(await fetchMarkupSettings())
-      } catch {
-        setMarkup(null)
-      }
+      const filters = form.merchantExternalId ? { merchantExternalId: form.merchantExternalId } : {}
+      const [page, markupSettings] = await Promise.all([
+        listCharges(filters),
+        fetchMarkupSettings(),
+      ])
+      setOrders(page.data ?? [])
+      setMarkup(markupSettings)
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause))
     } finally {
@@ -55,12 +63,14 @@ export const ShoplaneConsoleView: React.FC = () => {
     setBusy(true)
     setError(null)
     try {
-      await createPaymentLink({
+      const charge = await createCharge({
         merchantExternalId: form.merchantExternalId,
         amount: form.amount,
         currency: form.currency,
         description: form.description || undefined,
+        orderMetadata: { orderId: form.orderId },
       })
+      setCreated(charge)
       await load()
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause))
@@ -70,11 +80,25 @@ export const ShoplaneConsoleView: React.FC = () => {
   }
 
   const loadMerchant = async () => {
-    if (!form.merchantExternalId) return
+    if (!form.merchantExternalId.trim()) {
+      setError('Enter the merchant external ID first.')
+      return
+    }
     setBusy(true)
     setError(null)
     try {
-      setMerchant(await fetchMerchantSettings(form.merchantExternalId))
+      const page = await requestApi<{ data: Array<{ id: string; external_id?: string; externalId?: string }> }>(
+        getApiConfig(),
+        'GET',
+        `/api/v1/psp/merchants?search=${encodeURIComponent(form.merchantExternalId.trim())}`,
+        undefined,
+        'psp',
+      )
+      const record = page.data.find((item) =>
+        (item.external_id ?? item.externalId) === form.merchantExternalId.trim()
+      )
+      if (!record) throw new Error('No merchant with that external ID exists under this PSP.')
+      setMerchant(await fetchMerchantSettings(record.id))
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause))
     } finally {
@@ -91,14 +115,14 @@ export const ShoplaneConsoleView: React.FC = () => {
             Shoplane
           </h2>
           <p className="text-[11px] text-slate-500 mt-0.5">
-            Commerce platform that is also a payment gateway — issues payment links and administers merchant settings.
+            Commerce platform that is also a payment gateway — creates order charges and administers merchant settings.
           </p>
         </div>
         <div className="w-64">
           <Field label="Merchant external id">
             <TextInput
               value={form.merchantExternalId}
-              placeholder="DEMO-STORE-1"
+              placeholder="Enter a merchant external ID"
               onChange={(event) => setForm((current) => ({ ...current, merchantExternalId: event.target.value }))}
             />
           </Field>
@@ -108,8 +132,14 @@ export const ShoplaneConsoleView: React.FC = () => {
       {error && <ErrorBanner message={error} onDismiss={() => setError(null)} />}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-        <Card title="Create an order link">
+        <Card title="Create an order payment">
           <div className="space-y-3">
+            <Field label="Order ID">
+              <TextInput
+                value={form.orderId}
+                onChange={(event) => setForm((current) => ({ ...current, orderId: event.target.value }))}
+              />
+            </Field>
             <div className="grid grid-cols-2 gap-3">
               <Field label="Amount">
                 <TextInput
@@ -132,13 +162,25 @@ export const ShoplaneConsoleView: React.FC = () => {
               />
             </Field>
             <Button variant="primary" loading={busy} onClick={() => void createOrder()} className="w-full justify-center">
-              Issue payment link
+              Create order charge
             </Button>
             <Button variant="secondary" loading={busy} onClick={() => void loadMerchant()} className="w-full justify-center">
               <Store className="w-3.5 h-3.5 mr-1.5" />
               Load merchant settings
             </Button>
           </div>
+
+          {created && (
+            <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-[11px] text-emerald-900 space-y-1">
+              <p className="font-semibold">Order {String(created.orderMetadata?.orderId ?? form.orderId)} created</p>
+              <p className="font-mono break-all">{created.chargeToken}</p>
+              {created.checkoutUrl && (
+                <a href={created.checkoutUrl} target="_blank" rel="noreferrer" className="text-emerald-800 underline">
+                  Open customer checkout
+                </a>
+              )}
+            </div>
+          )}
 
           {markup && (
             <div className="mt-4">
@@ -160,16 +202,16 @@ export const ShoplaneConsoleView: React.FC = () => {
             <div className="p-5">
               <Spinner label="Loading orders…" />
             </div>
-          ) : links.length === 0 ? (
+          ) : orders.length === 0 ? (
             <div className="p-5">
-              <EmptyState title="No payment links yet" hint="Issue one with the form on the left." />
+              <EmptyState title="No orders yet" hint="Create an order payment with the form on the left." />
             </div>
           ) : (
             <table className="w-full">
               <thead className="border-b border-slate-200">
                 <tr>
                   <th className="py-2.5 px-4 text-left text-[10px] uppercase tracking-wide font-semibold text-slate-500">
-                    Link
+                    Order
                   </th>
                   <th className="py-2.5 px-4 text-left text-[10px] uppercase tracking-wide font-semibold text-slate-500">
                     Amount
@@ -183,22 +225,24 @@ export const ShoplaneConsoleView: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {links.map((link) => (
-                  <tr key={link.id} className="hover:bg-slate-50">
+                {orders.map((order) => (
+                  <tr key={order.chargeToken} className="hover:bg-slate-50">
                     <td className="py-2.5 px-4">
-                      <p className="text-xs font-semibold text-slate-900">{link.description ?? link.id}</p>
-                      <p className="font-mono text-[10px] text-slate-500 break-all">{link.id}</p>
+                      <p className="text-xs font-semibold text-slate-900">
+                        {String(order.orderMetadata?.orderId ?? order.description ?? order.chargeToken)}
+                      </p>
+                      <p className="font-mono text-[10px] text-slate-500 break-all">{order.chargeToken}</p>
                     </td>
                     <td className="py-2.5 px-4 text-xs font-mono tabular-nums text-slate-800">
-                      {link.amount ?? 'dynamic'} {link.currency}
+                      {order.amount} {order.currency}
                     </td>
                     <td className="py-2.5 px-4">
-                      <Badge tone={link.status === 'ACTIVE' ? 'success' : 'neutral'}>{link.status}</Badge>
+                      <Badge tone={order.status === 'paid' ? 'success' : 'neutral'}>{order.status}</Badge>
                     </td>
                     <td className="py-2.5 px-4">
-                      {link.checkoutUrl ? (
+                      {order.checkoutUrl ? (
                         <a
-                          href={link.checkoutUrl}
+                          href={order.checkoutUrl}
                           target="_blank"
                           rel="noreferrer"
                           className="inline-flex items-center gap-1 text-[11px] text-onion hover:underline"
@@ -207,7 +251,7 @@ export const ShoplaneConsoleView: React.FC = () => {
                           Open
                         </a>
                       ) : (
-                        <span className="text-[11px] text-slate-400">dynamic link</span>
+                        <span className="text-[11px] text-slate-400">Unavailable</span>
                       )}
                     </td>
                   </tr>

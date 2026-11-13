@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
-import { useAuth } from '../../context/AuthContext'
 import type { Organization } from '../../types'
 import { getApiConfig, requestApi } from '../../services/apiConfig'
 import {
@@ -62,7 +61,6 @@ export const OrkiAdminPortal: React.FC<OrkiAdminPortalProps> = ({
   onUpdateOrganization,
   onAddOrganization,
 }) => {
-  const { login } = useAuth()
   const navigate = useNavigate()
 
   // Navigation tab
@@ -872,14 +870,11 @@ export const OrkiAdminPortal: React.FC<OrkiAdminPortalProps> = ({
                             </button>
 
                             <button
-                              onClick={() => {
-                                login('org', org.id)
-                                navigate('/psp')
-                              }}
+                              onClick={() => navigate('/login')}
                               className="inline-flex items-center space-x-1 px-3 py-1.5 rounded-xl bg-onion-50 hover:bg-onion-100 text-onion font-bold text-xs transition"
-                              title="Sign in directly as this PSP"
+                              title="Authenticate with this PSP's API key"
                             >
-                              <span>Enter PSP</span>
+                              <span>PSP login</span>
                               <ChevronRight className="w-3.5 h-3.5" />
                             </button>
                           </td>

@@ -4,42 +4,9 @@ import type { Web3Auth } from '@web3auth/modal'
 import type { useWeb3AuthConnect } from '@web3auth/modal/react'
 import { Keypair } from '@solana/web3.js'
 import {
-  // Ethereum
-  mainnet,
-  sepolia,
-  holesky,
-  // Polygon
-  polygon,
-  polygonAmoy,
-  // Optimism / OP
-  optimism,
-  optimismSepolia,
-  // Base
-  base,
   baseSepolia,
-  // Arbitrum One
-  arbitrum,
-  arbitrumSepolia,
-  arbitrumNova,
-  // Avalanche
-  avalanche,
-  avalancheFuji,
-  // BNB Smart Chain
-  bsc,
-  bscTestnet,
-  // Monad
-  monad,
-  monadTestnet,
-  // Linea
-  linea,
-  lineaSepolia,
-  // Celo
-  celo,
-  celoSepolia,
-  celoAlfajores,
   type Chain,
 } from 'viem/chains'
-import * as allChains from 'viem/chains'
 
 // Vite env vars (must be prefixed with VITE_)
 const AUTH_CONNECTION_ID =
@@ -47,29 +14,7 @@ const AUTH_CONNECTION_ID =
 const USER_ID_FIELD = import.meta.env.VITE_WEB3AUTH_USER_ID_FIELD || 'sub'
 
 export const supportedChains: readonly Chain[] = [
-  mainnet,
-  sepolia,
-  holesky,
-  polygon,
-  polygonAmoy,
-  optimism,
-  optimismSepolia,
-  base,
   baseSepolia,
-  arbitrum,
-  arbitrumSepolia,
-  arbitrumNova,
-  avalanche,
-  avalancheFuji,
-  bsc,
-  bscTestnet,
-  monad,
-  monadTestnet,
-  linea,
-  lineaSepolia,
-  celo,
-  celoSepolia,
-  celoAlfajores,
 ]
 
 export function getJwtClaim(token: string, claim: string): string {
@@ -90,17 +35,7 @@ export const getViemChain = (decimalChainId: number): Chain => {
   const chain = supportedChains.find((c) => c.id === decimalChainId)
   if (chain) return chain
 
-  const dynamicChain = Object.values(allChains).find(
-    (c) =>
-      typeof c === 'object' &&
-      c !== null &&
-      'id' in c &&
-      (c as Chain).id === decimalChainId,
-  ) as Chain | undefined
-  if (dynamicChain) return dynamicChain
-
-  console.warn(`Chain ID ${decimalChainId} not found, defaulting to baseSepolia.`)
-  return baseSepolia
+  throw new Error(`Unsupported chain ID ${decimalChainId}; only Base Sepolia is enabled.`)
 }
 
 type ConnectTo = ReturnType<typeof useWeb3AuthConnect>['connectTo']

@@ -1,5 +1,6 @@
-import React, { createContext, useContext, useState, useEffect } from 'react'
-import { getStoredOrganizations, getStoredMerchants } from '../services/storageService'
+import React, { createContext, useContext, useState } from 'react'
+import type { Merchant } from '../types'
+import { getApiConfig, saveApiConfig, clearAdminSessionToken, clearAllMerchantSessions } from '../services/apiConfig'
 
 export type UserRole = 'org' | 'merchant' | 'admin'
 
@@ -12,6 +13,7 @@ export interface AuthUser {
   merchantId?: string
   status?: string
   isRegulatedEntity?: boolean
+  merchantProfile?: Merchant
 }
 
 interface AuthContextType {
@@ -24,84 +26,30 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<AuthUser | null>(() => {
-    const saved = localStorage.getItem('orki_auth_user')
-    if (saved) {
-      try {
-        return JSON.parse(saved)
-      } catch {
-        return null
-      }
-    }
-    return null
-  })
-
-  useEffect(() => {
-    if (user) {
-      localStorage.setItem('orki_auth_user', JSON.stringify(user))
-    } else {
-      localStorage.removeItem('orki_auth_user')
-    }
-  }, [user])
+  const [user, setUser] = useState<AuthUser | null>(null)
 
   const login = (role: UserRole, entityId?: string, customUser?: Partial<AuthUser>) => {
-    if (customUser && customUser.email) {
+    if (customUser) {
       setUser({
-        id: customUser.id || 'usr_' + Math.random().toString(36).substring(2, 9),
+        id: customUser.id || entityId || 'authenticated-user',
         name: customUser.name || 'User',
-        email: customUser.email,
+        email: customUser.email || '',
         role: role,
-        organizationId: customUser.organizationId || 'orki_default',
+        organizationId: customUser.organizationId || '',
         merchantId: customUser.merchantId,
         status: customUser.status || 'active',
         isRegulatedEntity: customUser.isRegulatedEntity,
-      })
-      return
-    }
-
-    if (role === 'org') {
-      const orgs = getStoredOrganizations()
-      const targetOrg = orgs.find((o) => o.id === entityId)
-      if (targetOrg) {
-        const primaryContact = targetOrg.contacts[0]
-        setUser({
-          id: 'usr_org_' + targetOrg.id,
-          name: targetOrg.name,
-          email: primaryContact?.email || 'ops@' + targetOrg.id + '.example',
-          role: 'org',
-          organizationId: targetOrg.id,
-          status: targetOrg.status,
-          isRegulatedEntity: targetOrg.isRegulatedEntity,
-        })
-      }
-    } else if (role === 'merchant') {
-      const merchants = getStoredMerchants()
-      const targetMerch = merchants.find((m) => m.id === entityId)
-      if (targetMerch) {
-        setUser({
-          id: 'usr_merch_' + targetMerch.id,
-          name: targetMerch.legalBusinessName,
-          email: targetMerch.representativeEmail,
-          role: 'merchant',
-          organizationId: targetMerch.organizationId || 'psp_default',
-          merchantId: targetMerch.id,
-          status: targetMerch.status,
-        })
-      }
-    } else if (role === 'admin') {
-      setUser({
-        id: 'usr_admin_01',
-        name: 'Sarah Connor (Risk & Compliance)',
-        email: 'sarah.ops@orki.com',
-        role: 'admin',
-        organizationId: 'orki_hq',
-        status: 'active',
+        merchantProfile: customUser.merchantProfile,
       })
     }
   }
 
   const logout = () => {
     setUser(null)
+    clearAdminSessionToken()
+    clearAllMerchantSessions()
+    const config = getApiConfig()
+    saveApiConfig({ ...config, adminKey: '', feeApproverKey: '', pspKey: '', merchantSession: '' })
   }
 
   return (

@@ -14,46 +14,38 @@ const clientId = import.meta.env.VITE_WEB3AUTH_CLIENT_ID
 if (!clientId) {
   throw new Error('VITE_WEB3AUTH_CLIENT_ID is required — set it in .env (see .env.example).')
 }
-const isMainnet = import.meta.env.VITE_WEB3AUTH_NETWORK === 'sapphire_mainnet'
-const isSepolia = import.meta.env.VITE_BASE_CHAIN_ID === '84532'
 
 const baseChainConfig = {
   chainNamespace: 'eip155' as const,
-  chainId: isSepolia || !isMainnet ? '0x14a34' : '0x2105', // 84532 (Base Sepolia) or 8453 (Base)
-  rpcTarget: isSepolia || !isMainnet ? 'https://sepolia.base.org' : 'https://mainnet.base.org',
-  displayName: isSepolia || !isMainnet ? 'Base Sepolia' : 'Base',
-  blockExplorerUrl: isSepolia || !isMainnet ? 'https://sepolia.basescan.org/' : 'https://basescan.org/',
+  chainId: '0x14a34', // 84532 Base Sepolia
+  rpcTarget: 'https://sepolia.base.org',
+  displayName: 'Base Sepolia',
+  blockExplorerUrl: 'https://sepolia.basescan.org/',
   ticker: 'ETH',
   tickerName: 'Ethereum',
   logo: 'https://images.toruswallet.io/base.svg',
   decimals: 18,
-  isTestnet: isSepolia || !isMainnet,
+  isTestnet: true,
 }
 
 const solanaChainConfig = {
   chainNamespace: 'solana' as const,
-  // Web3Auth v11 Solana chain IDs (SOLANA_CAIP_CHAIN_MAP): 0x65 Mainnet, 0x66 Testnet, 0x67 Devnet.
-  chainId: isMainnet ? '0x65' : '0x67',
-  rpcTarget: isMainnet
-    ? (import.meta.env.VITE_SOLANA_MAINNET_RPC_URL || 'https://api.mainnet-beta.solana.com')
-    : (import.meta.env.VITE_SOLANA_RPC_URL || 'https://api.devnet.solana.com'),
-  displayName: isMainnet ? 'Solana' : 'Solana Devnet',
-  blockExplorerUrl: isMainnet
-    ? 'https://explorer.solana.com'
-    : 'https://explorer.solana.com?cluster=devnet',
+  // Web3Auth v11 Solana chain ID for Devnet.
+  chainId: '0x67',
+  rpcTarget: import.meta.env.VITE_SOLANA_RPC_URL || 'https://api.devnet.solana.com',
+  displayName: 'Solana Devnet',
+  blockExplorerUrl: 'https://explorer.solana.com?cluster=devnet',
   ticker: 'SOL',
   tickerName: 'Solana',
   logo: 'https://images.toruswallet.io/sol.svg',
   decimals: 9,
-  isTestnet: !isMainnet,
+  isTestnet: true,
 }
 
 const web3AuthConfig: Web3AuthContextConfig = {
   web3AuthOptions: {
     clientId,
-    web3AuthNetwork: isMainnet
-      ? WEB3AUTH_NETWORK.SAPPHIRE_MAINNET
-      : WEB3AUTH_NETWORK.SAPPHIRE_DEVNET,
+    web3AuthNetwork: WEB3AUTH_NETWORK.SAPPHIRE_DEVNET,
     defaultChainId: baseChainConfig.chainId,
     chains: [baseChainConfig, solanaChainConfig] as unknown as Web3AuthContextConfig['web3AuthOptions']['chains'],
   },
