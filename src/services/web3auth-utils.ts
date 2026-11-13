@@ -152,12 +152,19 @@ export const ensureWeb3AuthConnection = async (
 type Web3AuthProvider = NonNullable<Web3Auth['provider']>
 export type { Web3AuthProvider }
 
-const resolveProvider = (web3Auth: Web3Auth, hookProvider?: Web3AuthProvider | null) =>
-  hookProvider ||
-  web3Auth.provider ||
-  ((web3Auth as unknown as { connectedConnector?: { provider?: Web3AuthProvider } })
-    .connectedConnector?.provider ??
-    null)
+const isRequestProvider = (provider: unknown): provider is Web3AuthProvider =>
+  typeof provider === 'object' &&
+  provider !== null &&
+  'request' in provider &&
+  typeof provider.request === 'function'
+
+const resolveProvider = (web3Auth: Web3Auth, hookProvider?: Web3AuthProvider | null) => {
+  const connectedProvider = (web3Auth as unknown as {
+    connectedConnector?: { provider?: unknown }
+  }).connectedConnector?.provider
+
+  return [hookProvider, web3Auth.provider, connectedProvider].find(isRequestProvider) ?? null
+}
 
 const waitForProvider = async (
   web3Auth: Web3Auth,
@@ -168,7 +175,7 @@ const waitForProvider = async (
   let provider = resolveProvider(web3Auth, hookProvider)
   while (!provider) {
     if (Date.now() > deadline) {
-      throw new Error(`Web3Auth provider missing (status: ${web3Auth.status})`)
+      throw new Error(`Web3Auth EIP-1193 provider with request() missing (status: ${web3Auth.status})`)
     }
     await sleep(250)
     provider = resolveProvider(web3Auth, hookProvider)
@@ -202,12 +209,11 @@ export const getSolanaKeypairFromWeb3Auth = async (
  */
 export const signEip191ViaWeb3Auth = async (
   web3Auth: Web3Auth | null,
-  hookProvider?: Web3AuthProvider | null,
   message = '',
   address = '',
 ): Promise<string> => {
   if (!web3Auth) throw new Error('Web3Auth is not initialised')
-  const provider = await waitForProvider(web3Auth, hookProvider)
+  const provider = await waitForProvider(web3Auth)
   const signature = (await provider.request({
     method: 'personal_sign',
     params: [message, address],

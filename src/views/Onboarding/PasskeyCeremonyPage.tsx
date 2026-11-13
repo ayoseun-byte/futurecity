@@ -23,7 +23,7 @@ import {
 } from '@web3auth/modal/react'
 import { useConnection, usePublicClient } from 'wagmi'
 import type { PublicClient as ViemPublicClient } from 'viem'
-import { signEip191ViaWeb3Auth, type Web3AuthProvider } from '../../services/web3auth-utils'
+import { signEip191ViaWeb3Auth } from '../../services/web3auth-utils'
 import {
   toPasskeyValidator,
   toWebAuthnKey,
@@ -437,7 +437,7 @@ function WalletSetup({
   const { web3Auth } = useWeb3Auth()
   const { disconnect, loading: disconnecting } = useWeb3AuthDisconnect()
   const { userInfo, getUserInfo } = useWeb3AuthUser()
-  const { address: evmSignerAddress, connector } = useConnection()
+  const { address: evmSignerAddress } = useConnection()
   const publicClient = usePublicClient()
 
   const registeredEmail = (onboarding.representativeEmail || '').trim()
@@ -569,7 +569,6 @@ function WalletSetup({
 
       const signature = await signEip191ViaWeb3Auth(
         web3Auth,
-        (connector as unknown as Web3AuthProvider) ?? null,
         challenge,
         evmSignerAddress || baseAccount,
       )
