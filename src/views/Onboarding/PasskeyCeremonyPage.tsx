@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   AlertTriangle,
@@ -23,7 +23,7 @@ import {
 } from '@web3auth/modal/react'
 import { useConnection, usePublicClient } from 'wagmi'
 import type { PublicClient as ViemPublicClient } from 'viem'
-import { signEip191ViaWeb3Auth } from '../../services/web3auth-eip1193'
+
 import {
   toPasskeyValidator,
   toWebAuthnKey,
@@ -136,15 +136,16 @@ function getSolanaAddressFromUserInfo(userInfo: unknown): string | undefined {
 }
 
 // Passkey-only Kernel smart account (mirrors useSmartWallet.createSmartWallet)
-async function createPasskeySmartAccount(
+async function createPasskeyKernelAccount(
   publicClient: ViemPublicClient,
   passkeyName: string,
   projectId: string,
-): Promise<string> {
+  mode: WebAuthnMode = WebAuthnMode.Register,
+) {
   const webAuthnKey = await toWebAuthnKey({
     passkeyName,
     passkeyServerUrl: `https://passkeys.zerodev.app/api/v3/${projectId}`,
-    mode: WebAuthnMode.Register,
+    mode,
     passkeyServerHeaders: {},
   })
 
@@ -161,7 +162,7 @@ async function createPasskeySmartAccount(
     kernelVersion: KERNEL_VERSION,
   })
 
-  return kernelAccount.address
+  return kernelAccount
 }
 
 async function apiRequest<T>(apiBaseUrl: string, path: string, session: string, init?: RequestInit): Promise<T> {
@@ -475,6 +476,8 @@ function WalletSetup({
       onboarding.baseWalletAddress || null,
     )
 
+  const kernelAccountRef = useRef<any>(null)
+
   const [enrollingPasskey, setEnrollingPasskey] =
     useState(false)
 
@@ -534,8 +537,17 @@ function WalletSetup({
     evmSignerAddress,
   ])
 
-  // Create the ZeroDev Kernel smart account.
-  const enrollPasskeyAccount = async (): Promise<string | null> => {
+  const passkeyName = (
+    registeredEmail ||
+    connectedEmail ||
+    onboarding.legalBusinessName ||
+    'Orki Merchant Passkey'
+  ).trim()
+
+  // Create or load the ZeroDev Kernel passkey smart account.
+  const enrollPasskeyAccount = async (
+    mode: WebAuthnMode = WebAuthnMode.Register,
+  ): Promise<{ address: string; account: any } | null> => {
     if (!zeroDevProjectId) {
       setZeroDevError(
         'VITE_ZERODEV_PROJECT_ID is not configured in your environment.',
@@ -552,28 +564,26 @@ function WalletSetup({
     setZeroDevError(null)
 
     try {
-      const passkeyName = (
-        registeredEmail ||
-        connectedEmail ||
-        onboarding.legalBusinessName ||
-        'Orki Merchant Passkey'
-      ).trim()
-
-      const address = await createPasskeySmartAccount(
+      const account = await createPasskeyKernelAccount(
         publicClient as ViemPublicClient,
         passkeyName,
         zeroDevProjectId,
+        mode,
       )
 
+      const address = account.address as string
+      kernelAccountRef.current = account
       setZeroDevSmartAccount(address)
-      setPasskeyEnrolled(true)
+      if (mode === WebAuthnMode.Register) {
+        setPasskeyEnrolled(true)
+      }
 
-      return address
+      return { address, account }
     } catch (reason: unknown) {
       setZeroDevError(
         reason instanceof Error
           ? reason.message
-          : 'Failed to create smart wallet.',
+          : 'Failed to create or load smart wallet.',
       )
 
       return null
@@ -583,7 +593,7 @@ function WalletSetup({
   }
 
   const handleEnrollZeroDevPasskey = async () => {
-    await enrollPasskeyAccount()
+    await enrollPasskeyAccount(WebAuthnMode.Register)
   }
 
   const emailMismatch =
@@ -624,12 +634,17 @@ function WalletSetup({
         onboarding.baseWalletAddress ||
         ''
 
-      if (!passkeyEnrolled || !baseAccount) {
-        const created = await enrollPasskeyAccount()
-
-        if (!created) return
-
-        baseAccount = created
+      let kernelAccount = kernelAccountRef.current
+      if (!kernelAccount) {
+        const mode = passkeyEnrolled || onboarding.passkeyRegisteredAt
+          ? WebAuthnMode.Login
+          : WebAuthnMode.Register
+        const loaded = await enrollPasskeyAccount(mode)
+        if (!loaded) return
+        baseAccount = loaded.address
+        kernelAccount = loaded.account
+      } else if (!baseAccount) {
+        baseAccount = kernelAccount.address
       }
 
       // 2. Require the Solana address.
@@ -680,13 +695,21 @@ function WalletSetup({
         )
       }
 
-      // 5. Sign using the Web3Auth v11 EVM provider.
-      const signature = await signEip191ViaWeb3Auth(
-        connection,
-        challenge,
-        evmSignerAddress,
-        ethereumProvider,
-      )
+      // 5. Sign the challenge with the ZeroDev Kernel passkey smart account.
+      if (!kernelAccount || typeof kernelAccount.signMessage !== 'function') {
+        throw new Error('Smart account signer is unavailable. Please re-enroll or unlock your passkey and try again.')
+      }
+      if (kernelAccount.address && baseAccount && kernelAccount.address.toLowerCase() !== baseAccount.toLowerCase()) {
+        console.warn('Kernel account address differs from expected base wallet address', {
+          kernel: kernelAccount.address,
+          expected: baseAccount,
+        })
+        baseAccount = kernelAccount.address
+      }
+      const signature = (await kernelAccount.signMessage({ message: challenge })) as string
+      if (!signature || typeof signature !== 'string') {
+        throw new Error('Smart account did not return a valid signature.')
+      }
 
       // 6. Submit activation to your backend.
       await onActivate({
