@@ -196,7 +196,7 @@ export const MerchantDetailPage: React.FC<MerchantDetailPageProps> = ({
         config,
         'POST',
         `/api/v1/psp/merchants/${encodeURIComponent(merchant.id)}/onboarding-sessions`,
-        { ttlMinutes: 60 },
+        { returnUrl: `${window.location.origin}/merchant`, ttlMinutes: 60 },
         'psp'
       )
 
