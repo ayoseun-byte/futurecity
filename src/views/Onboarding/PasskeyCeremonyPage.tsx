@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   AlertTriangle,
@@ -11,6 +11,7 @@ import {
   LockKeyhole,
   LogOut,
   Mail,
+  RefreshCw,
   ShieldCheck,
   Wallet,
 } from 'lucide-react'
@@ -21,7 +22,7 @@ import {
   useWeb3AuthDisconnect,
   useWeb3AuthUser,
 } from '@web3auth/modal/react'
-import { useConnection, usePublicClient } from 'wagmi'
+import { usePublicClient } from 'wagmi'
 import type { PublicClient as ViemPublicClient } from 'viem'
 
 import {
@@ -65,8 +66,19 @@ type WalletActivationResponse = {
 
 type ApiError = { message?: string; error?: string }
 
+type Identity = {
+  evm?: string
+  solana?: string
+  email?: string
+  idToken?: string
+}
+
+type IdentityStatus = 'idle' | 'loading' | 'ready' | 'failed'
+
 const KERNEL_VERSION = KERNEL_V3_3
 const ENTRY_POINT = getEntryPoint('0.7')
+
+const IDENTITY_MAX_ATTEMPTS = 6
 
 function resolveApiBaseUrl(): string {
   const configured = getApiConfig().baseUrl
@@ -448,20 +460,21 @@ function WalletSetup({
   } = useWeb3Auth()
 
   const ethereumProvider = connection?.ethereumProvider
+  const web3AuthStatus = web3Auth?.status
 
   const {
     disconnect,
     loading: disconnecting,
   } = useWeb3AuthDisconnect()
 
-  const {
-    userInfo,
-    getUserInfo,
-  } = useWeb3AuthUser()
+  const { getUserInfo } = useWeb3AuthUser()
 
-  const {
-    address: evmSignerAddress,
-  } = useConnection()
+  // Keep the latest getUserInfo in a ref so the resolver effect does not
+  // re-run (and restart its retry loop) when the hook returns a new function identity.
+  const getUserInfoRef = useRef(getUserInfo)
+  useEffect(() => {
+    getUserInfoRef.current = getUserInfo
+  }, [getUserInfo])
 
   const publicClient = usePublicClient()
 
@@ -494,48 +507,89 @@ function WalletSetup({
     import.meta.env.VITE_ZERODEV_PROJECT_ID || ''
   ).trim()
 
-  const connectedEmail = (
-    userInfo?.email || ''
-  ).trim()
+  // ---------------------------------------------------------------------------
+  // Single identity resolver.
+  //
+  // EVM signer, Solana address, email and idToken all come from different async
+  // sources that become ready at different times after a reload. Resolving them
+  // together (and retrying until both are present) removes the race where one
+  // shows up and the other is stuck.
+  // ---------------------------------------------------------------------------
+  const [identity, setIdentity] = useState<Identity>({})
+  const [identityStatus, setIdentityStatus] = useState<IdentityStatus>('idle')
+  const [identityRetryKey, setIdentityRetryKey] = useState(0)
 
-  const solanaAddress =
-    getSolanaAddressFromUserInfo(userInfo) ||
-    onboarding.solanaWalletAddress ||
-    undefined
+  const retryIdentity = useCallback(() => {
+    setIdentityRetryKey((k) => k + 1)
+  }, [])
 
-  // Fetch Web3Auth user information after authentication.
   useEffect(() => {
-    if (isConnected && !userInfo) {
-      void getUserInfo().catch((reason) => {
-        console.error('Could not retrieve Web3Auth user info:', reason)
-      })
+    if (!isConnected || web3AuthStatus !== 'connected' || !ethereumProvider) {
+      setIdentity({})
+      setIdentityStatus('idle')
+      return
     }
-  }, [isConnected, userInfo, getUserInfo])
 
-  // Temporary provider diagnostics.
-  useEffect(() => {
-    if (!isConnected) return
+    let cancelled = false
+    setIdentityStatus('loading')
 
-    console.log('Web3Auth provider diagnostics:', {
-      status: web3Auth?.status,
-      connected: isConnected,
-      connectionAvailable: Boolean(connection),
-      ethereumProviderAvailable: Boolean(ethereumProvider),
-      ethereumProviderType: typeof ethereumProvider,
-      requestType: typeof (
-        ethereumProvider as {
-          request?: unknown
-        } | undefined
-      )?.request,
-      evmSignerAddress,
-    })
-  }, [
-    isConnected,
-    web3Auth,
-    connection,
-    ethereumProvider,
-    evmSignerAddress,
-  ])
+    const sleep = (ms: number) => new Promise<void>((resolve) => window.setTimeout(resolve, ms))
+
+    void (async () => {
+      for (let attempt = 0; attempt < IDENTITY_MAX_ATTEMPTS && !cancelled; attempt++) {
+        const [evmRes, infoRes] = await Promise.allSettled([
+          (ethereumProvider as { request: (args: { method: string }) => Promise<unknown> }).request({
+            method: 'eth_accounts',
+          }),
+          getUserInfoRef.current(),
+        ])
+
+        if (cancelled) return
+
+        const evm =
+          evmRes.status === 'fulfilled'
+            ? (evmRes.value as string[] | undefined)?.[0]
+            : undefined
+        const info =
+          infoRes.status === 'fulfilled'
+            ? (infoRes.value as { email?: string; idToken?: string } | null | undefined)
+            : undefined
+        const solana = getSolanaAddressFromUserInfo(info)
+
+        // Temporary diagnostics: remove once the flakiness is confirmed fixed.
+        console.log(`[identity] attempt ${attempt}`, {
+          evm: Boolean(evm),
+          solana: Boolean(solana),
+          hasIdToken: Boolean(info?.idToken),
+          evmErr: evmRes.status === 'rejected' ? String(evmRes.reason) : null,
+          infoErr: infoRes.status === 'rejected' ? String(infoRes.reason) : null,
+        })
+
+        if (evm && solana) {
+          setIdentity({
+            evm,
+            solana,
+            email: info?.email,
+            idToken: info?.idToken,
+          })
+          setIdentityStatus('ready')
+          return
+        }
+
+        await sleep(500 * (attempt + 1))
+      }
+
+      if (!cancelled) setIdentityStatus('failed')
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [isConnected, web3AuthStatus, ethereumProvider, identityRetryKey])
+
+  const evmSignerAddress = identity.evm
+  const solanaAddress = identity.solana || onboarding.solanaWalletAddress || undefined
+  const connectedEmail = (identity.email || '').trim()
 
   const passkeyName = (
     registeredEmail ||
@@ -628,6 +682,12 @@ function WalletSetup({
     setZeroDevError(null)
 
     try {
+      // The button is gated on identityStatus === 'ready', but guard anyway.
+      if (!evmSignerAddress || !solanaAddress) {
+        setZeroDevError('Wallet addresses are still loading. Please try again in a moment.')
+        return
+      }
+
       // 1. Create or retrieve the ZeroDev smart account.
       let baseAccount =
         zeroDevSmartAccount ||
@@ -647,24 +707,7 @@ function WalletSetup({
         baseAccount = kernelAccount.address
       }
 
-      // 2. Require the Solana address.
-      if (!solanaAddress) {
-        setZeroDevError(
-          'Solana address is not available yet. Please wait a moment and retry.',
-        )
-        return
-      }
-
-      // 3. Require the actual EVM signer address.
-      // Do not substitute the Kernel smart account address here.
-      if (!evmSignerAddress) {
-        setZeroDevError(
-          'Web3Auth is connected, but the EVM signer address is not available yet. Please wait and retry.',
-        )
-        return
-      }
-
-      // 4. Get a fresh server-issued challenge.
+      // 2. Get a fresh server-issued challenge.
       let challenge =
         onboarding.walletSetupChallenge ||
         `orki_wallet_setup:${onboarding.merchantId}`
@@ -695,7 +738,7 @@ function WalletSetup({
         )
       }
 
-      // 5. Sign the challenge with the ZeroDev Kernel passkey smart account.
+      // 3. Sign the challenge with the ZeroDev Kernel passkey smart account.
       if (!kernelAccount || typeof kernelAccount.signMessage !== 'function') {
         throw new Error('Smart account signer is unavailable. Please re-enroll or unlock your passkey and try again.')
       }
@@ -711,14 +754,14 @@ function WalletSetup({
         throw new Error('Smart account did not return a valid signature.')
       }
 
-      // 6. Submit activation to your backend.
+      // 4. Submit activation to your backend.
       await onActivate({
         baseSmartAccountAddress: baseAccount,
         solanaWalletAddress: solanaAddress,
         evmSignerAddress,
         merchantEmail:
           connectedEmail || registeredEmail || undefined,
-        idToken: userInfo?.idToken,
+        idToken: identity.idToken,
         challenge,
         signature,
       })
@@ -741,16 +784,20 @@ function WalletSetup({
     }, 2000)
   }
 
+  const identityReady = identityStatus === 'ready'
+
   const canActivate =
     isConnected &&
-    Boolean(evmSignerAddress) &&
-    Boolean(solanaAddress) &&
+    identityReady &&
     !enrollingPasskey &&
     !emailMismatch
 
   const recoveryVaultUrl = zeroDevSmartAccount
     ? `https://orki-organisation.github.io/orki-evm-emergency-recovery/?account=${zeroDevSmartAccount}`
     : null
+
+  const identityLoading = isConnected && identityStatus === 'loading'
+  const identityFailed = isConnected && identityStatus === 'failed'
 
   return (
     <div className="space-y-6">
@@ -948,11 +995,11 @@ function WalletSetup({
                 }
                 value={
                   solanaAddress ||
-                  (isConnected
-                    ? 'Loading Solana address…'
-                    : 'Not derived')
+                  (identityFailed
+                    ? 'Could not load Solana address.'
+                    : 'Loading Solana address…')
                 }
-                loading={isConnected && !solanaAddress}
+                loading={!solanaAddress && identityLoading}
                 onCopy={
                   solanaAddress
                     ? () => copyText(solanaAddress, 'solana')
@@ -968,8 +1015,11 @@ function WalletSetup({
                 badge="Attestation Signer"
                 value={
                   evmSignerAddress ||
-                  'No EVM signer returned'
+                  (identityFailed
+                    ? 'Could not load EVM signer.'
+                    : 'Loading EVM signer…')
                 }
+                loading={!evmSignerAddress && identityLoading}
                 onCopy={
                   evmSignerAddress
                     ? () => copyText(evmSignerAddress, 'eoa')
@@ -978,6 +1028,22 @@ function WalletSetup({
                 copied={copiedKey === 'eoa'}
               />
             </div>
+
+            {identityFailed && (
+              <div className="flex items-center justify-between gap-3 border-t border-slate-800/80 pt-3 text-xs">
+                <p className="text-amber-200/80">
+                  Your wallet addresses did not load. Retry, or switch account and sign in again.
+                </p>
+                <button
+                  type="button"
+                  onClick={retryIdentity}
+                  className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-slate-700 bg-slate-900 px-2.5 py-1.5 font-medium text-slate-200 transition hover:border-slate-600 hover:text-white"
+                >
+                  <RefreshCw className="h-3.5 w-3.5" />
+                  <span>Retry</span>
+                </button>
+              </div>
+            )}
           </div>
 
           {zeroDevError && (
@@ -1073,7 +1139,7 @@ function WalletSetup({
             disabled={!canActivate || saving}
             className="flex w-full items-center justify-center gap-2 rounded-xl bg-onion-700 px-4 py-3 text-sm font-semibold text-white transition hover:bg-onion-600 disabled:cursor-not-allowed disabled:opacity-40"
           >
-            {saving ? (
+            {saving || identityLoading ? (
               <LoaderCircle className="h-4 w-4 animate-spin" />
             ) : (
               <Fingerprint className="h-4 w-4" />
@@ -1082,7 +1148,9 @@ function WalletSetup({
             <span>
               {saving
                 ? 'Verifying signature & activating merchant…'
-                : 'Sign Attestation & Activate Merchant Wallets'}
+                : identityLoading
+                  ? 'Loading wallet addresses…'
+                  : 'Sign Attestation & Activate Merchant Wallets'}
             </span>
           </button>
         )
