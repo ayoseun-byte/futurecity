@@ -226,7 +226,7 @@ const truncateAddress = (address: string): string =>
 export const CustomerCheckoutView: React.FC = () => {
   const { slug = '', paymentId = '' } = useParams<{ slug?: string; paymentId?: string }>()
   const targetIdentifier = paymentId || slug
-  const isB2bPayment = targetIdentifier.startsWith('pay_') || Boolean(paymentId)
+  const isB2bPayment = targetIdentifier.startsWith('pay_') || targetIdentifier.startsWith('plink_') || Boolean(paymentId)
   const config = getApiConfig()
 
   /* Web3Auth fallback when no browser wallet extension is injected. */
