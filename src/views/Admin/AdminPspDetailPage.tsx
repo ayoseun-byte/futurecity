@@ -70,18 +70,20 @@ export const AdminPspDetailPage: React.FC<AdminPspDetailPageProps> = ({
   const [chainMessage, setChainMessage] = useState<string | null>(null)
 
   const refreshOnChainStatus = useCallback(async (detail: PspDetailResponse) => {
-    const wallet = detail.feeWallet || undefined
-    if (!wallet) {
+    const evmWallet = detail.feeWallet || undefined
+    const solanaWallet = detail.solanaFeeWallet || undefined
+    if (!evmWallet && !solanaWallet) {
       setChainStatus({ base: undefined, solana: undefined })
       return
     }
-    // Only the EVM splitter exposes a read endpoint for PSP registration state;
-    // Solana B2B registration is prepared-only and has no read path yet.
     try {
-      const base = await fetchAdminPspOnChainStatus(detail.pspId, 'base', wallet)
-      setChainStatus((current) => ({ ...current, base }))
+      const [base, solana] = await Promise.all([
+        evmWallet ? fetchAdminPspOnChainStatus(detail.pspId, 'base', evmWallet).catch(() => undefined) : undefined,
+        solanaWallet ? fetchAdminPspOnChainStatus(detail.pspId, 'solana', solanaWallet).catch(() => undefined) : undefined,
+      ])
+      setChainStatus({ base, solana })
     } catch {
-      setChainStatus((current) => ({ ...current, base: undefined }))
+      setChainStatus({ base: undefined, solana: undefined })
     }
   }, [])
 
@@ -185,11 +187,11 @@ export const AdminPspDetailPage: React.FC<AdminPspDetailPageProps> = ({
     }
   }
 
-  const handleRegisterOnChain = async (network: 'base') => {
+  const handleRegisterOnChain = async (network: 'base' | 'solana') => {
     if (!id) return
-    const wallet = feeWalletDraft.trim()
+    const wallet = (network === 'base' ? feeWalletDraft : solanaWalletDraft).trim()
     if (!wallet) {
-      setWalletError('A fee wallet is required before registering on Base.')
+      setWalletError(`A fee wallet is required before registering on ${network === 'base' ? 'Base' : 'Solana'}.`)
       return
     }
     setChainBusy(network)
@@ -203,8 +205,9 @@ export const AdminPspDetailPage: React.FC<AdminPspDetailPageProps> = ({
         prepared: 'prepared calldata (no operator broadcast)',
         pending_retry: 'deferred — will retry on next attempt',
       }
+      const label = network === 'base' ? 'EVM splitter' : 'Solana program'
       const hashSuffix = result.txHash ? ` · tx ${result.txHash.slice(0, 10)}…` : ''
-      setChainMessage(`EVM splitter: ${statusLabels[result.status ?? ''] ?? result.status ?? 'ok'}${hashSuffix}`)
+      setChainMessage(`${label}: ${statusLabels[result.status ?? ''] ?? result.status ?? 'ok'}${hashSuffix}`)
       setChainStatus((current) => ({ ...current, [network]: result }))
     } catch (err) {
       setChainMessage(`Registration failed: ${err instanceof Error ? err.message : 'unknown error'}`)
@@ -696,11 +699,21 @@ export const AdminPspDetailPage: React.FC<AdminPspDetailPageProps> = ({
                   className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs font-mono text-slate-800"
                 />
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-[10px] text-slate-500">
-                    {solanaWalletDraft.trim()
-                      ? 'Stored for provisioning — no Solana registration path'
+                  <span className={`text-[10px] ${chainStatus.solana?.registered ? 'text-emerald-700' : 'text-amber-700'}`}>
+                    {pspDetail.solanaFeeWallet
+                      ? chainStatus.solana?.registered
+                        ? '✓ Registered on Solana'
+                        : 'Not yet registered on Solana'
                       : 'No Solana wallet set'}
                   </span>
+                  <button
+                    type="button"
+                    onClick={() => void handleRegisterOnChain('solana')}
+                    disabled={chainBusy !== null || !solanaWalletDraft.trim()}
+                    className="px-2.5 py-1 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 text-[10px] font-bold text-slate-700 disabled:opacity-50"
+                  >
+                    {chainBusy === 'solana' ? 'Registering…' : 'Register on Solana'}
+                  </button>
                 </div>
               </div>
             </div>
