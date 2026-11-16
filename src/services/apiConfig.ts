@@ -68,25 +68,30 @@ export function resolveMerchantSession(config?: Partial<ApiConfig>, merchantExte
   // 1. If a specific merchant identifier is provided, only return their session
   if (merchantExternalId) {
     const specific = sessionStorage.getItem(`orki_merchant_session:${merchantExternalId}`)
-    if (specific && specific.startsWith('onb_sec_')) return specific
-    return ''
+    if (specific && specific.trim()) return specific.trim()
   }
 
-  // 2. Direct from provided config if it's a valid session token
-  if (config?.merchantSession && config.merchantSession.startsWith('onb_sec_')) {
-    return config.merchantSession
+  // 2. Direct from provided config if non-empty
+  if (config?.merchantSession && config.merchantSession.trim()) {
+    return config.merchantSession.trim()
   }
 
   // 3. From saved API config in sessionStorage
   const saved = getApiConfig()
-  if (saved.merchantSession && saved.merchantSession.startsWith('onb_sec_')) {
-    return saved.merchantSession
+  if (saved.merchantSession && saved.merchantSession.trim()) {
+    return saved.merchantSession.trim()
   }
 
   // 4. From global active merchant session key
   const active = sessionStorage.getItem('orki_active_merchant_session')
-  if (active && active.startsWith('onb_sec_')) {
-    return active
+  if (active && active.trim()) {
+    return active.trim()
+  }
+
+  // 5. From setup active session key
+  const setupActive = sessionStorage.getItem('orki_setup_active_session')
+  if (setupActive && setupActive.trim()) {
+    return setupActive.trim()
   }
 
   return ''
