@@ -331,14 +331,18 @@ export const CustomerCheckoutView: React.FC = () => {
 
     if (isB2bPayment) {
       setGatewayRefreshing(true)
+      let assetsLoadError: string | null = null
       Promise.all([
         requestApi<B2bShow>(config, 'GET', `/api/v1/pay/${encodeURIComponent(targetIdentifier)}`),
-        requestApi<{ assets: B2bAsset[]; swapsAvailable?: boolean }>(config, 'GET', `/api/v1/pay/${encodeURIComponent(targetIdentifier)}/assets`).catch(() => null),
+        requestApi<{ assets: B2bAsset[]; swapsAvailable?: boolean }>(config, 'GET', `/api/v1/pay/${encodeURIComponent(targetIdentifier)}/assets`).catch((err) => {
+          assetsLoadError = err instanceof Error ? err.message : 'Unable to verify payment networks with chain-service.'
+          return null
+        }),
       ])
         .then(([show, assetsResult]) => {
           if (!active) return
           setB2bShow(show)
-          setError(null)
+          setError(assetsLoadError)
           const available = assetsResult?.assets ?? []
           setAssets(available)
           setSwapsAvailable(assetsResult?.swapsAvailable === true)
@@ -1210,7 +1214,7 @@ export const CustomerCheckoutView: React.FC = () => {
                   ))}
                   {networks.length === 0 && !gatewayRefreshing && (
                     <div className="col-span-full rounded-xl border border-amber-200 bg-amber-50 p-3 text-amber-900">
-                      The merchant has no payment-compatible networks configured for this payment yet.
+                      {error ? `Payment rails unavailable: ${error}` : 'The merchant has no payment-compatible networks configured for this payment yet.'}
                     </div>
                   )}
                 </div>
