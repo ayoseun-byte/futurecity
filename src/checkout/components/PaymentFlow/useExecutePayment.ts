@@ -263,7 +263,7 @@ export const useExecutePayment = () => {
             {
               skipPreflight: true,
               preflightCommitment: "confirmed",
-              maxRetries: 0n,
+              maxRetries: 0,
             },
           );
         } catch (sendError: any) {

@@ -544,7 +544,7 @@ function WalletSetup({
       if (!getSolanaAddressFromUserInfo(userInfo) && web3Auth) {
         try {
           const kp = await getSolanaKeypairFromWeb3Auth(web3Auth, provider as any)
-          const derivedSol = kp?.publicKey?.toBase58?.() || kp?.address
+          const derivedSol = kp?.publicKey?.toBase58?.()
           if (!cancelled && derivedSol) {
             setFallbackSolanaAddress(String(derivedSol))
           }
