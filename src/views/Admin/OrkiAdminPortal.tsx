@@ -17,6 +17,10 @@ import {
   generateAdminUserKey,
   fetchAdminSessions,
   revokeAdminSession,
+  fetchAdminChains,
+  addAdminChain,
+  fetchAdminTokens,
+  addAdminToken,
   type AdminMetrics,
   type AdminMerchantRow,
   type AdminTransactionRow,
@@ -24,6 +28,8 @@ import {
   type FeeChangeRequest,
   type AdminUser,
   type AdminSession,
+  type SupportedChain,
+  type SupportedToken,
 } from '../../services/adminService'
 import {
   ShieldCheck,
@@ -46,6 +52,7 @@ import {
   Users,
   Copy,
   AlertTriangle,
+  Globe,
 } from 'lucide-react'
 
 interface OrkiAdminPortalProps {
@@ -54,7 +61,7 @@ interface OrkiAdminPortalProps {
   onAddOrganization: (newOrg: Organization) => void
 }
 
-type AdminPortalTab = 'psps' | 'merchants' | 'transactions' | 'fees' | 'audit' | 'vaults' | 'users'
+type AdminPortalTab = 'psps' | 'merchants' | 'transactions' | 'fees' | 'audit' | 'vaults' | 'chains' | 'users'
 
 export const OrkiAdminPortal: React.FC<OrkiAdminPortalProps> = ({
   organizations,
@@ -110,6 +117,96 @@ export const OrkiAdminPortal: React.FC<OrkiAdminPortalProps> = ({
   const [isAddAdminModalOpen, setIsAddAdminModalOpen] = useState(false)
   const [contractPaused, setContractPaused] = useState(false)
   const [circuitBreakerBusy, setCircuitBreakerBusy] = useState(false)
+
+  // Chains & Tokens Registry State
+  const [supportedChains, setSupportedChains] = useState<SupportedChain[]>([])
+  const [supportedTokens, setSupportedTokens] = useState<SupportedToken[]>([])
+  const [chainsLoading, setChainsLoading] = useState(false)
+  const [isAddChainModalOpen, setIsAddChainModalOpen] = useState(false)
+  const [isAddTokenModalOpen, setIsAddTokenModalOpen] = useState(false)
+  const [newChainForm, setNewChainForm] = useState({
+    chainFamily: 'evm',
+    name: '',
+    rpc: '',
+    chainId: '',
+    explorer: '',
+    image: '',
+  })
+  const [newTokenForm, setNewTokenForm] = useState({
+    chain: 'base',
+    chainFamily: 'evm',
+    contractAddress: '',
+    name: '',
+    symbol: '',
+    image: '',
+    isNative: false,
+    isStableCoin: true,
+  })
+
+  const loadChainsAndTokens = useCallback(async () => {
+    setChainsLoading(true)
+    try {
+      const [chainsRes, tokensRes] = await Promise.all([fetchAdminChains(), fetchAdminTokens()])
+      setSupportedChains(chainsRes)
+      setSupportedTokens(tokensRes)
+    } catch (e) {
+      setApiError(e instanceof Error ? e.message : 'Failed to load chains and tokens.')
+    } finally {
+      setChainsLoading(false)
+    }
+  }, [])
+
+  const handleAddChainSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setApiBusy(true)
+    setApiError(null)
+    try {
+      await addAdminChain(newChainForm)
+      setApiSuccess(`Chain "${newChainForm.name}" saved to DB & Redis.`)
+      setNewChainForm({ chainFamily: 'evm', name: '', rpc: '', chainId: '', explorer: '', image: '' })
+      setIsAddChainModalOpen(false)
+      await loadChainsAndTokens()
+    } catch (e) {
+      setApiError(e instanceof Error ? e.message : 'Failed to add chain.')
+    } finally {
+      setApiBusy(false)
+    }
+  }
+
+  const handleAddTokenSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setApiBusy(true)
+    setApiError(null)
+    try {
+      await addAdminToken({
+        chain: newTokenForm.chain,
+        chainFamily: newTokenForm.chainFamily,
+        contractAddress: newTokenForm.isNative ? undefined : newTokenForm.contractAddress || undefined,
+        name: newTokenForm.name,
+        symbol: newTokenForm.symbol,
+        image: newTokenForm.image || undefined,
+        isNative: newTokenForm.isNative,
+        isStableCoin: newTokenForm.isStableCoin,
+      })
+      setApiSuccess(`Token "${newTokenForm.symbol}" saved to DB & Redis.`)
+      setNewTokenForm({
+        chain: supportedChains[0]?.id || 'base',
+        chainFamily: supportedChains[0]?.chain_family || 'evm',
+        contractAddress: '',
+        name: '',
+        symbol: '',
+        image: '',
+        isNative: false,
+        isStableCoin: true,
+      })
+      setIsAddTokenModalOpen(false)
+      await loadChainsAndTokens()
+    } catch (e) {
+      setApiError(e instanceof Error ? e.message : 'Failed to add token.')
+    } finally {
+      setApiBusy(false)
+    }
+  }
 
   const handleToggleCircuitBreaker = async () => {
     setCircuitBreakerBusy(true)
@@ -211,6 +308,8 @@ export const OrkiAdminPortal: React.FC<OrkiAdminPortalProps> = ({
         .then((res) => setAuditLogs(res.data))
         .catch((err) => setApiError(err instanceof Error ? err.message : 'Failed to load audit logs.'))
         .finally(() => setAuditLoading(false))
+    } else if (activeTab === 'chains') {
+      void loadChainsAndTokens()
     } else if (activeTab === 'users') {
       setAdminUsersLoading(true)
       Promise.all([fetchAdminUsers(), fetchAdminSessions()])
@@ -221,7 +320,7 @@ export const OrkiAdminPortal: React.FC<OrkiAdminPortalProps> = ({
         .catch((err) => setApiError(err instanceof Error ? err.message : 'Failed to load platform admin users.'))
         .finally(() => setAdminUsersLoading(false))
     }
-  }, [activeTab, merchantSearch, merchantStatusFilter, txChainFilter, txSearch, auditCategoryFilter])
+  }, [activeTab, merchantSearch, merchantStatusFilter, txChainFilter, txSearch, auditCategoryFilter, loadChainsAndTokens])
 
   const loadAdminUsersData = async () => {
     setAdminUsersLoading(true)
@@ -668,6 +767,18 @@ export const OrkiAdminPortal: React.FC<OrkiAdminPortalProps> = ({
         >
           <Layers className="w-4 h-4" />
           <span>Smart Contracts</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('chains')}
+          className={`flex items-center space-x-2 px-4 py-2.5 rounded-xl transition ${
+            activeTab === 'chains'
+              ? 'bg-slate-900 text-white shadow-xs'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+          }`}
+        >
+          <Globe className="w-4 h-4" />
+          <span>Chains & Tokens</span>
         </button>
 
         <button
@@ -1419,6 +1530,416 @@ export const OrkiAdminPortal: React.FC<OrkiAdminPortalProps> = ({
               Provides multi-party non-custodial token settlement across Solana sub-second finality rails with instantaneous merchant wallet credit.
             </p>
           </div>
+        </div>
+      )}
+
+      {/* ─────────────────────────────────────────────────────────────
+          TAB: MULTI-CHAIN & SUPPORTED TOKENS REGISTRY (DB + REDIS)
+         ───────────────────────────────────────────────────────────── */}
+      {activeTab === 'chains' && (
+        <div className="space-y-6">
+          {/* Header Action Bar */}
+          <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <h2 className="text-sm font-bold text-slate-900 flex items-center space-x-2">
+                <Globe className="w-4 h-4 text-onion" />
+                <span>Supported Chains & Asset Registry (PostgreSQL + Redis)</span>
+              </h2>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Networks and token contracts added here are synced to Redis (`orki:chains` / `orki:tokens`) and power Merchant Preferences.
+              </p>
+            </div>
+            <div className="flex items-center space-x-2">
+              <button
+                type="button"
+                onClick={() => setIsAddChainModalOpen(true)}
+                className="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold flex items-center space-x-1.5 shadow-xs transition"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Add Chain</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsAddTokenModalOpen(true)}
+                className="mat-btn-primary px-3.5 py-2 text-xs font-semibold flex items-center space-x-1.5 shadow-xs"
+              >
+                <Coins className="w-3.5 h-3.5" />
+                <span>Add Token</span>
+              </button>
+            </div>
+          </div>
+
+          {chainsLoading ? (
+            <div className="bg-white rounded-2xl p-10 text-center text-xs text-slate-400 border border-slate-200">
+              Loading blockchain registry from backend & Redis...
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Configured Chains Table */}
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
+                <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/70">
+                  <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+                    Supported Chains ({supportedChains.length})
+                  </h3>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-slate-100 text-xs">
+                    <thead className="bg-slate-50 text-[10px] uppercase text-slate-500 font-semibold">
+                      <tr>
+                        <th className="py-2.5 px-4 text-left">Network</th>
+                        <th className="py-2.5 px-4 text-left">Family / ID</th>
+                        <th className="py-2.5 px-4 text-left">RPC & Explorer</th>
+                        <th className="py-2.5 px-4 text-right">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {supportedChains.map((c) => (
+                        <tr key={c.id} className="hover:bg-slate-50/60 transition">
+                          <td className="py-3 px-4">
+                            <div className="flex items-center space-x-2">
+                              {c.image ? (
+                                <img src={c.image} alt={c.name} className="w-5 h-5 rounded-full object-contain bg-slate-100" />
+                              ) : (
+                                <div className="w-5 h-5 rounded-full bg-slate-200 flex items-center justify-center text-[10px] font-bold text-slate-600">
+                                  {c.name.charAt(0)}
+                                </div>
+                              )}
+                              <div>
+                                <div className="font-bold text-slate-900">{c.name}</div>
+                                <div className="text-[10px] font-mono text-slate-400">{c.id}</div>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="py-3 px-4 font-mono text-[11px]">
+                            <span className="px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200 uppercase text-[10px] font-bold mr-1">
+                              {c.chain_family}
+                            </span>
+                            <span className="text-slate-600">#{c.chain_id}</span>
+                          </td>
+                          <td className="py-3 px-4 text-[11px] max-w-[180px]">
+                            <div className="truncate font-mono text-slate-600" title={c.rpc}>{c.rpc}</div>
+                            <a
+                              href={c.explorer}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex items-center space-x-1 text-[10px] text-onion-700 hover:underline mt-0.5"
+                            >
+                              <span>Explorer</span>
+                              <ExternalLink className="w-2.5 h-2.5" />
+                            </a>
+                          </td>
+                          <td className="py-3 px-4 text-right">
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                              c.is_active ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-slate-100 text-slate-500'
+                            }`}>
+                              {c.is_active ? 'Active' : 'Disabled'}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Configured Tokens Table */}
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
+                <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/70">
+                  <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+                    Supported Tokens ({supportedTokens.length})
+                  </h3>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-slate-100 text-xs">
+                    <thead className="bg-slate-50 text-[10px] uppercase text-slate-500 font-semibold">
+                      <tr>
+                        <th className="py-2.5 px-4 text-left">Token</th>
+                        <th className="py-2.5 px-4 text-left">Chain</th>
+                        <th className="py-2.5 px-4 text-left">Contract</th>
+                        <th className="py-2.5 px-4 text-right">Flags</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {supportedTokens.map((t) => (
+                        <tr key={t.id} className="hover:bg-slate-50/60 transition">
+                          <td className="py-3 px-4">
+                            <div className="flex items-center space-x-2">
+                              {t.image ? (
+                                <img src={t.image} alt={t.symbol} className="w-5 h-5 rounded-full object-contain bg-slate-100" />
+                              ) : (
+                                <div className="w-5 h-5 rounded-full bg-slate-200 flex items-center justify-center text-[10px] font-bold text-slate-600">
+                                  {t.symbol.charAt(0)}
+                                </div>
+                              )}
+                              <div>
+                                <div className="font-bold text-slate-900">{t.symbol}</div>
+                                <div className="text-[10px] text-slate-400">{t.name}</div>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="py-3 px-4 font-mono text-[11px] capitalize text-slate-700">
+                            {t.chain_id}
+                            <span className="ml-1 text-[9px] text-slate-400 uppercase">({t.chain_family})</span>
+                          </td>
+                          <td className="py-3 px-4 font-mono text-[10px] text-slate-600 max-w-[140px] truncate" title={t.contract_address || 'Native'}>
+                            {t.is_native ? <span className="italic text-slate-400">Native Asset</span> : (t.contract_address || '—')}
+                          </td>
+                          <td className="py-3 px-4 text-right space-x-1">
+                            {t.is_stablecoin && (
+                              <span className="px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200 text-[9px] font-bold">
+                                Stable
+                              </span>
+                            )}
+                            {t.is_native && (
+                              <span className="px-1.5 py-0.5 rounded bg-purple-50 text-purple-700 border border-purple-200 text-[9px] font-bold">
+                                Native
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ADD CHAIN MODAL */}
+          {isAddChainModalOpen && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 overflow-y-auto">
+              <div className="w-full max-w-md bg-white rounded-3xl shadow-2xl p-6 sm:p-8 space-y-4 border border-slate-200 my-8">
+                <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+                  <h3 className="font-bold text-slate-900 text-base flex items-center space-x-2">
+                    <Globe className="w-5 h-5 text-onion" />
+                    <span>Add Supported Chain</span>
+                  </h3>
+                  <button onClick={() => setIsAddChainModalOpen(false)} className="p-1 text-slate-400">
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+                <form onSubmit={handleAddChainSubmit} className="space-y-3 text-xs">
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">Chain Family</label>
+                    <select
+                      value={newChainForm.chainFamily}
+                      onChange={(e) => setNewChainForm({ ...newChainForm, chainFamily: e.target.value })}
+                      className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-white text-slate-800"
+                    >
+                      <option value="evm">EVM (Ethereum / L2s)</option>
+                      <option value="solana">Solana (SVM)</option>
+                    </select>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-1">Chain Name</label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="e.g. Polygon Amoy"
+                        value={newChainForm.name}
+                        onChange={(e) => setNewChainForm({ ...newChainForm, name: e.target.value })}
+                        className="w-full px-3 py-2 border border-slate-200 rounded-xl"
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-1">Chain ID</label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="e.g. 80002"
+                        value={newChainForm.chainId}
+                        onChange={(e) => setNewChainForm({ ...newChainForm, chainId: e.target.value })}
+                        className="w-full px-3 py-2 border border-slate-200 rounded-xl font-mono"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">RPC URL</label>
+                    <input
+                      type="url"
+                      required
+                      placeholder="https://rpc-amoy.polygon.technology"
+                      value={newChainForm.rpc}
+                      onChange={(e) => setNewChainForm({ ...newChainForm, rpc: e.target.value })}
+                      className="w-full px-3 py-2 border border-slate-200 rounded-xl font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">Block Explorer URL</label>
+                    <input
+                      type="url"
+                      required
+                      placeholder="https://amoy.polygonscan.com"
+                      value={newChainForm.explorer}
+                      onChange={(e) => setNewChainForm({ ...newChainForm, explorer: e.target.value })}
+                      className="w-full px-3 py-2 border border-slate-200 rounded-xl font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">Logo Image URL (Optional)</label>
+                    <input
+                      type="url"
+                      placeholder="https://..."
+                      value={newChainForm.image}
+                      onChange={(e) => setNewChainForm({ ...newChainForm, image: e.target.value })}
+                      className="w-full px-3 py-2 border border-slate-200 rounded-xl font-mono"
+                    />
+                  </div>
+                  <div className="pt-2 flex justify-end space-x-2">
+                    <button
+                      type="button"
+                      onClick={() => setIsAddChainModalOpen(false)}
+                      className="px-4 py-2 rounded-xl border border-slate-200 text-slate-600 font-semibold"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={apiBusy}
+                      className="mat-btn-primary px-5 py-2 font-semibold disabled:opacity-50"
+                    >
+                      {apiBusy ? 'Saving...' : 'Save Chain'}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+
+          {/* ADD TOKEN MODAL */}
+          {isAddTokenModalOpen && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 overflow-y-auto">
+              <div className="w-full max-w-md bg-white rounded-3xl shadow-2xl p-6 sm:p-8 space-y-4 border border-slate-200 my-8">
+                <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+                  <h3 className="font-bold text-slate-900 text-base flex items-center space-x-2">
+                    <Coins className="w-5 h-5 text-onion" />
+                    <span>Add Supported Token</span>
+                  </h3>
+                  <button onClick={() => setIsAddTokenModalOpen(false)} className="p-1 text-slate-400">
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+                <form onSubmit={handleAddTokenSubmit} className="space-y-3 text-xs">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-1">Target Chain</label>
+                      <select
+                        value={newTokenForm.chain}
+                        onChange={(e) => {
+                          const selected = supportedChains.find((c) => c.id === e.target.value)
+                          setNewTokenForm({
+                            ...newTokenForm,
+                            chain: e.target.value,
+                            chainFamily: selected?.chain_family || 'evm',
+                          })
+                        }}
+                        className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-white text-slate-800"
+                      >
+                        {supportedChains.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.name} ({c.chain_family})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-1">Chain Family</label>
+                      <input
+                        type="text"
+                        readOnly
+                        value={newTokenForm.chainFamily}
+                        className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 font-mono text-slate-500 uppercase"
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-1">Token Name</label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="e.g. USD Coin"
+                        value={newTokenForm.name}
+                        onChange={(e) => setNewTokenForm({ ...newTokenForm, name: e.target.value })}
+                        className="w-full px-3 py-2 border border-slate-200 rounded-xl"
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-1">Symbol</label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="e.g. USDC"
+                        value={newTokenForm.symbol}
+                        onChange={(e) => setNewTokenForm({ ...newTokenForm, symbol: e.target.value })}
+                        className="w-full px-3 py-2 border border-slate-200 rounded-xl font-mono uppercase"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex items-center space-x-6 py-1">
+                    <label className="flex items-center space-x-2 cursor-pointer font-semibold text-slate-700">
+                      <input
+                        type="checkbox"
+                        checked={newTokenForm.isNative}
+                        onChange={(e) => setNewTokenForm({ ...newTokenForm, isNative: e.target.checked })}
+                        className="rounded border-slate-300 text-onion"
+                      />
+                      <span>isNative Asset</span>
+                    </label>
+                    <label className="flex items-center space-x-2 cursor-pointer font-semibold text-slate-700">
+                      <input
+                        type="checkbox"
+                        checked={newTokenForm.isStableCoin}
+                        onChange={(e) => setNewTokenForm({ ...newTokenForm, isStableCoin: e.target.checked })}
+                        className="rounded border-slate-300 text-onion"
+                      />
+                      <span>isStableCoin</span>
+                    </label>
+                  </div>
+                  {!newTokenForm.isNative && (
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-1">Contract Address</label>
+                      <input
+                        type="text"
+                        required={!newTokenForm.isNative}
+                        placeholder="0x... or Solana Mint Address"
+                        value={newTokenForm.contractAddress}
+                        onChange={(e) => setNewTokenForm({ ...newTokenForm, contractAddress: e.target.value })}
+                        className="w-full px-3 py-2 border border-slate-200 rounded-xl font-mono"
+                      />
+                    </div>
+                  )}
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">Icon Image URL (Optional)</label>
+                    <input
+                      type="url"
+                      placeholder="https://..."
+                      value={newTokenForm.image}
+                      onChange={(e) => setNewTokenForm({ ...newTokenForm, image: e.target.value })}
+                      className="w-full px-3 py-2 border border-slate-200 rounded-xl font-mono"
+                    />
+                  </div>
+                  <div className="pt-2 flex justify-end space-x-2">
+                    <button
+                      type="button"
+                      onClick={() => setIsAddTokenModalOpen(false)}
+                      className="px-4 py-2 rounded-xl border border-slate-200 text-slate-600 font-semibold"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={apiBusy}
+                      className="mat-btn-primary px-5 py-2 font-semibold disabled:opacity-50"
+                    >
+                      {apiBusy ? 'Saving...' : 'Save Token'}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

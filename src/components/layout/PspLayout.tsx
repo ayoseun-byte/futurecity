@@ -9,7 +9,7 @@ export const PspLayout: React.FC<{ children: React.ReactNode }> = ({ children })
 
   const handleSignOut = () => {
     logout()
-    navigate('/login')
+    navigate('/psp/login')
   }
 
   return (

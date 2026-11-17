@@ -16,6 +16,7 @@ import {
   type PspPaymentItem,
 } from '../../services/pspMerchantService'
 import { StatusBadge } from '../../components/StatusBadge'
+import { MerchantConcernBadge } from '../../components/MerchantConcernBadge'
 import { AddMerchantModal } from './AddMerchantModal'
 import { BulkMerchantUploadModal } from './BulkMerchantUploadModal'
 import {
@@ -328,7 +329,19 @@ export const OrgDashboard: React.FC<OrgDashboardProps> = ({
       m.tradeLicenseNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
       m.id.toLowerCase().includes(searchTerm.toLowerCase())
 
-    const matchesStatus = statusFilter === 'all' || (m.status || '').toLowerCase() === statusFilter.toLowerCase()
+    const matchesStatus =
+      statusFilter === 'all'
+        ? true
+        : statusFilter === 'concerns'
+        ? Boolean(
+            m.statusReasonCode ||
+            m.statusReason ||
+            m.status === 'verification_action_required' ||
+            m.status === 'on_hold' ||
+            m.status === 'rejected' ||
+            (m.nextStep && m.status !== 'active')
+          )
+        : (m.status || '').toLowerCase() === statusFilter.toLowerCase()
     return matchesSearch && matchesStatus
   })
 
@@ -559,10 +572,13 @@ export const OrgDashboard: React.FC<OrgDashboardProps> = ({
                 className="py-1.5 px-3 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none text-slate-700 font-medium"
               >
                 <option value="all">All Statuses</option>
+                <option value="concerns">⚠️ Action Required & Holds</option>
                 <option value="active">Active</option>
                 <option value="invited">Setup Pending</option>
                 <option value="verifying">Verifying</option>
                 <option value="verification_action_required">Action Required</option>
+                <option value="on_hold">Compliance Review</option>
+                <option value="rejected">Rejected</option>
                 <option value="suspended">Suspended</option>
               </select>
             </div>
@@ -687,7 +703,7 @@ export const OrgDashboard: React.FC<OrgDashboardProps> = ({
                         </td>
 
                         {/* Onboarding & KYB */}
-                        <td className="px-5 py-3.5">
+                        <td className="px-5 py-3.5 max-w-sm">
                           <div className="flex flex-col space-y-1">
                             <StatusBadge status={merchant.status} nextStep={merchant.nextStep} />
                             {merchant.nextStep && merchant.status !== 'active' && (
@@ -711,6 +727,20 @@ export const OrgDashboard: React.FC<OrgDashboardProps> = ({
                                 </span>
                               )}
                             </div>
+
+                            {/* Actionable Concern & Failure Reason */}
+                            <MerchantConcernBadge
+                              status={merchant.status}
+                              nextStep={merchant.nextStep}
+                              statusReasonCode={merchant.statusReasonCode}
+                              statusReason={merchant.statusReason}
+                              merchantId={merchant.id}
+                              externalId={merchant.externalId}
+                              onCopyOnboardingLink={() => {
+                                const link = `${window.location.origin}/setup?merchantId=${merchant.id}`
+                                copyText(link, `setup_${merchant.id}`)
+                              }}
+                            />
                           </div>
                         </td>
 

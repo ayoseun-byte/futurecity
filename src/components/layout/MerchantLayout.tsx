@@ -9,7 +9,7 @@ export const MerchantLayout: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const handleSignOut = () => {
     logout()
-    navigate('/login')
+    navigate('/merchant/login')
   }
 
   return (

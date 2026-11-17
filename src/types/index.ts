@@ -80,6 +80,7 @@ export interface Merchant {
   solanaWalletAddress?: string
   passkeyId?: string
   statusReason?: string
+  statusReasonCode?: string
   noticeAcknowledgedAt?: string
   kybInformationSubmittedAt?: string
   termsAcceptedAt?: string

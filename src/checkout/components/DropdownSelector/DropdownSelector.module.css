@@ -1,0 +1,256 @@
+.selectorSection {
+  width: 100%;
+  position: relative;
+}
+
+.sectionLabel {
+  display: block;
+  margin-bottom: 12px;
+  color: #62748e;
+  font-size: 15px;
+  font-style: normal;
+  font-weight: 500;
+  line-height: 22px;
+  letter-spacing: -0.15px;
+}
+
+/* ── Trigger button ── */
+.selector {
+  padding: 14px 17px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+  transition: background 0.2s;
+  border-radius: 10px;
+  border: 1px solid var(--Card-Stroke, #e2e8f0);
+  outline: none;
+  background: #f7f7f9;
+  width: 100%;
+  text-align: left;
+}
+
+.selector:hover {
+  background: #f0f1f3;
+}
+
+.selectorOpen {
+  background: #f0f1f3;
+}
+
+.selectorContent {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.triggerRight {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.triggerBalance {
+  color: #7d828d;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+/* ── Shared icon ── */
+.icon {
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  border-radius: 50%;
+}
+
+/* ── Info block ── */
+.info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.name {
+  color: var(--Grey-900, #0c0c0e);
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 22px;
+  letter-spacing: -0.15px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.subtitle {
+  color: var(--Grey-500, #7d828d);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 18px;
+}
+
+/* ── Chevron ── */
+.dropdownArrow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.dropdownArrowOpen {
+  transform: rotate(180deg);
+}
+
+/* ── Dropdown panel ── */
+.dropdownMenu {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  z-index: 200;
+  border-radius: 12px;
+  border: 1px solid var(--Grey-Grey-100, #f1f2f3);
+  background: #fff;
+  box-shadow: 0 20px 40px 0 rgba(16, 24, 40, 0.12);
+  overflow: hidden;
+  animation: slideDown 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ── Search ── */
+.searchWrapper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-bottom: 1px solid #f1f2f3;
+  background: #fafafa;
+}
+
+.searchIcon {
+  flex-shrink: 0;
+}
+
+.searchInput {
+  flex: 1;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 14px;
+  color: #0c0c0e;
+  font-family: inherit;
+}
+
+.searchInput::placeholder {
+  color: #b0b5be;
+}
+
+.searchClear {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #7d828d;
+  font-size: 12px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+}
+
+.searchClear:hover {
+  background: #f0f1f3;
+}
+
+/* ── Options list ── */
+.optionsList {
+  max-height: 280px;
+  overflow-y: auto;
+  padding: 4px;
+}
+
+.optionsList::-webkit-scrollbar {
+  width: 4px;
+}
+
+.optionsList::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.optionsList::-webkit-scrollbar-thumb {
+  background: #e2e8f0;
+  border-radius: 4px;
+}
+
+/* ── Option item ── */
+.dropdownItem {
+  width: 100%;
+  padding: 12px 14px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+  transition: background 0.15s;
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  text-align: left;
+  outline: none;
+}
+
+.dropdownItem:hover {
+  background: #f8f9fa;
+}
+
+.dropdownItem.selected {
+  background: #f0f1f3;
+}
+
+/* ── Item right side (balance + check) ── */
+.itemRight {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.balance {
+  color: #0c0c0e;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.balanceSymbol {
+  color: #7d828d;
+  font-weight: 400;
+}
+
+.checkmark {
+  color: #6366f1;
+  display: flex;
+  align-items: center;
+}
+
+/* ── Empty state ── */
+.noResults {
+  padding: 20px 16px;
+  text-align: center;
+  color: #7d828d;
+  font-size: 14px;
+}
+
+/* ── Animation ── */
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}

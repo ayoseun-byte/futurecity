@@ -1,0 +1,17 @@
+.fallback {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: #f7f7f8;
+  border: 1px solid #d7d8dc;
+  color: #aaadb5;
+  font-family: "Geist", sans-serif;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: -0.1px;
+  text-transform: uppercase;
+  user-select: none;
+  flex-shrink: 0;
+  box-sizing: border-box;
+}

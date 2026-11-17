@@ -1,0 +1,102 @@
+.button {
+  width: auto;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  white-space: nowrap;
+  border: none;
+  background: transparent;
+  transition: all 0.2s ease;
+  position: relative;
+  /* Needed for pseudo-element positioning */
+  isolation: isolate;
+  /* Creates a new stacking context */
+}
+
+.button .content {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 10px;
+  position: relative;
+  /* Ensures text stays above pseudo-element */
+  z-index: 1;
+}
+
+.variant-primary,
+.variant-secondary {
+  flex: 1;
+  width: 100%;
+  height: 44px;
+  padding: 13px 14px;
+  border-radius: 12px;
+  background: linear-gradient(0deg, #6148c2 0%, #7b66cc 100%);
+  /* text */
+  color: #fff;
+  text-align: center;
+  font-size: 15px;
+  font-style: normal;
+  font-weight: 500;
+  line-height: 22px;
+  /* 146.667% */
+  letter-spacing: -0.15px;
+  overflow: hidden;
+  /* Clips the pseudo-element to border-radius */
+}
+
+/* Pseudo-element for hover state */
+.variant-primary::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(0deg, #6c52d9 0%, #8773d9 100%);
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  z-index: 0;
+}
+
+.variant-primary:hover::before {
+  opacity: 1;
+}
+
+.variant-primary:active::before {
+  opacity: 1;
+  background: linear-gradient(0deg, #533dad 0%, #6b58b3 100%);
+  transition: none;
+  /* Instant feedback on click */
+}
+
+.variant-primary:disabled {
+  background: linear-gradient(0deg, #6148c2 0%, #7b66cc 100%);
+}
+
+/* Disable pseudo-element effects when disabled */
+.variant-primary:disabled::before {
+  opacity: 0;
+}
+
+.variant-secondary {
+  border-radius: 10px;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  display: flex;
+  align-items: center;
+  flex-direction: column;
+  /* text */
+  color: #0f172b;
+}
+
+.variant-secondary:hover {
+  background: #f1f5f9;
+}
+
+.variant-secondary:active {
+  background: #e2e8f0;
+}
+
+.button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}

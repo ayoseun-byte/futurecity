@@ -109,3 +109,13 @@ export async function fetchMerchantSettings(
 ): Promise<MerchantSettings> {
   return requestApi<MerchantSettings>(config, 'GET', `/api/v1/psp/merchants/${merchantId}`, undefined, 'psp')
 }
+
+/** Rewrite any backend checkoutUrl origin to the current unified Prototype-UI portal origin. */
+export function resolveLocalCheckoutHref(checkoutUrl: string): string {
+  try {
+    const parsed = new URL(checkoutUrl, window.location.origin)
+    return `${window.location.origin}${parsed.pathname}${parsed.search}`
+  } catch {
+    return checkoutUrl
+  }
+}

@@ -1,0 +1,87 @@
+.expiredCard {
+  flex: 50%;
+  width: 100%;
+  max-width: 480px;
+  background: #ffffff;
+  padding: 32px 28px;
+  border-radius: 16px;
+  border: 1px solid var(--Card-Stroke, #e2e8f0);
+  box-shadow:
+    0 1px 3px 0 rgba(0, 0, 0, 0.1),
+    0 1px 2px -1px rgba(0, 0, 0, 0.1);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  font-family: inherit;
+}
+
+.iconWrapper {
+  margin-bottom: 20px;
+}
+
+.iconCircle {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #dc2626;
+}
+
+.clockIcon {
+  width: 30px;
+  height: 30px;
+}
+
+.title {
+  color: var(--Grey-900, #0c0c0e);
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 28px;
+  margin: 0 0 8px 0;
+}
+
+.description {
+  color: var(--Grey-500, #64748b);
+  font-size: 14px;
+  line-height: 1.5;
+  margin: 0 0 24px 0;
+  max-width: 360px;
+}
+
+.detailsCard {
+  width: 100%;
+  background: #f8fafc;
+  border: 1px solid #edf0f7;
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.detailRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13.5px;
+}
+
+.detailLabel {
+  color: #64748b;
+  font-weight: 400;
+}
+
+.detailValue {
+  color: #0f172a;
+  font-weight: 600;
+}
+
+.buttonWrapper {
+  width: 100%;
+}

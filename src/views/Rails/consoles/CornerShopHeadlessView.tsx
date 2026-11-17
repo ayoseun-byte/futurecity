@@ -1,6 +1,6 @@
 import React from 'react'
 import { Code2, Send } from 'lucide-react'
-import { createCharge } from '../../../services/pspConsoleService'
+import { createCharge, resolveLocalCheckoutHref } from '../../../services/pspConsoleService'
 import type { ChargeSummary } from '../../../services/pspConsoleService'
 import { Button } from '../../../components/ui/Button'
 import { Card } from '../../../components/ui/Card'
@@ -125,7 +125,7 @@ export const CornerShopHeadlessView: React.FC = () => {
               </p>
               {result.checkoutUrl && (
                 <a
-                  href={result.checkoutUrl}
+                  href={resolveLocalCheckoutHref(result.checkoutUrl)}
                   target="_blank"
                   rel="noreferrer"
                   className="text-[11px] text-onion hover:underline"

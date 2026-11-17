@@ -1,0 +1,50 @@
+.paymentContainer {
+  width: 100%;
+  max-width: 964px;
+  margin: 0 auto;
+  padding-left: 16px;
+  padding-right: 16px;
+  padding-top: 56px;
+  padding-bottom: 48px;
+}
+
+.content {
+  width: 100%;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 32px;
+}
+
+.content > div {
+  position: sticky;
+  top: 16px;
+}
+
+@media (max-width: 968px) {
+  .content {
+    flex-direction: column;
+  }
+
+  .content > div {
+    position: static;
+    width: 100%;
+    max-width: 480px;
+    margin: 0 auto;
+  }
+}
+
+.dynamicContent {
+  justify-content: center;
+}
+
+.dynamicContent > div {
+  width: 100%;
+  max-width: 480px;
+}
+
+@media (max-width: 768px) {
+  .paymentContainer {
+    padding: 24px 16px;
+  }
+}

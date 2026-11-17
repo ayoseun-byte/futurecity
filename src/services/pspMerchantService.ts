@@ -1,6 +1,7 @@
 import type { Merchant, MerchantStatus, OnboardingStep, Organization, SettlementMode, Transaction } from '../types'
 import { getApiConfig, requestApi } from './apiConfig'
 import { resolveMonotonicStep } from './onboardingStepService'
+import type { SupportedChain, SupportedToken } from './adminService'
 
 interface PspMerchantRecord {
   [key: string]: unknown
@@ -41,6 +42,8 @@ interface PspMerchantRecord {
   passkeyId?: string | null
   status_reason?: string | null
   statusReason?: string | null
+  status_reason_code?: string | null
+  statusReasonCode?: string | null
   notice_acknowledged_at?: string | null
   noticeAcknowledgedAt?: string | null
   kyb_information_submitted_at?: string | null
@@ -187,6 +190,7 @@ function mapMerchant(record: PspMerchantRecord, organizationId: string): Merchan
     solanaWalletAddress: record.solana_wallet_address ?? record.solanaWalletAddress ?? undefined,
     passkeyId: record.passkey_id ?? record.passkeyId ?? undefined,
     statusReason: record.status_reason ?? record.statusReason ?? undefined,
+    statusReasonCode: record.status_reason_code ?? record.statusReasonCode ?? undefined,
     noticeAcknowledgedAt: record.notice_acknowledged_at ?? record.noticeAcknowledgedAt ?? undefined,
     kybInformationSubmittedAt: record.kyb_information_submitted_at ?? record.kybInformationSubmittedAt ?? undefined,
     termsAcceptedAt: record.terms_accepted_at ?? record.termsAcceptedAt ?? undefined,
@@ -622,10 +626,22 @@ export async function resubmitMerchantKybParticulars(
   )
 }
 
+export interface SavedTokenContract {
+  chain: string
+  chainFamily: string
+  symbol: string
+  contractAddress?: string | null
+  isNative: boolean
+  isStableCoin: boolean
+}
+
 export interface MerchantPreferencesResponse {
   merchantId: string
   acceptedChains: string[]
   acceptedTokens: string[]
+  contracts?: Record<string, SavedTokenContract>
+  supportedChains?: SupportedChain[]
+  supportedTokens?: SupportedToken[]
   wallets?: { base?: string | null; solana?: string | null }
   onChain?: {
     base?: {
@@ -652,6 +668,7 @@ export interface UpdateMerchantPreferencesResponse {
   merchantId: string
   acceptedChains: string[]
   acceptedTokens: string[]
+  contracts?: Record<string, SavedTokenContract>
   onChain?: {
     base?: { status: string; wallet?: string; tokens?: MerchantTokenSyncResult[] }
     solana?: { status: string; wallet?: string; merchantName?: string; tokens?: MerchantTokenSyncResult[] }

@@ -12,11 +12,14 @@ import { CornerShopHeadlessView } from './views/Rails/consoles/CornerShopHeadles
 import { CheckoutWidgetView } from './views/Rails/consoles/CheckoutWidgetView'
 import { PspLayout } from './components/layout/PspLayout'
 import { MerchantLayout } from './components/layout/MerchantLayout'
-import { LoginView } from './views/Auth/LoginView'
+import { AdminLoginView } from './views/Auth/AdminLoginView'
+import { PspLoginView } from './views/Auth/PspLoginView'
+import { MerchantLoginView } from './views/Auth/MerchantLoginView'
 import { OrgDashboard } from './views/Organization/OrgDashboard'
 import { MerchantDetailPage } from './views/Organization/MerchantDetailPage'
 import { MerchantDashboard } from './views/Merchant/MerchantDashboard'
-import { CustomerCheckoutView } from './views/Checkout/CustomerCheckoutView'
+import { PublicCheckoutPage } from './views/Checkout/PublicCheckoutPage'
+import { Web3AuthShell } from './context/Web3AuthShell'
 import { OrkiAdminPortal } from './views/Admin/OrkiAdminPortal'
 import { AdminMerchantDetailPage } from './views/Admin/AdminMerchantDetailPage'
 import { AdminPspDetailPage } from './views/Admin/AdminPspDetailPage'
@@ -52,14 +55,16 @@ function ProtectedRoute({
   const { user, isAuthenticated } = useAuth()
 
   if (!isAuthenticated || !user) {
-    return <Navigate to="/login" replace />
+    if (allowedRoles.includes('admin')) return <Navigate to="/admin/login" replace />
+    if (allowedRoles.includes('merchant')) return <Navigate to="/merchant/login" replace />
+    return <Navigate to="/psp/login" replace />
   }
 
   if (!allowedRoles.includes(user.role)) {
     if (user.role === 'admin') return <Navigate to="/admin" replace />
     if (user.role === 'org') return <Navigate to="/psp" replace />
     if (user.role === 'merchant') return <Navigate to="/merchant" replace />
-    return <Navigate to="/login" replace />
+    return <Navigate to="/psp/login" replace />
   }
 
   return <>{children}</>
@@ -296,12 +301,22 @@ function MainRoutes() {
 
   return (
     <Routes>
-      <Route path="/login" element={<LoginView />} />
+      <Route path="/admin/login" element={<AdminLoginView />} />
+      <Route path="/psp/login" element={<PspLoginView />} />
+      <Route path="/merchant/login" element={<MerchantLoginView />} />
+      <Route path="/login" element={<Navigate to="/psp/login" replace />} />
       <Route path="/api-workbench" element={<ApiWorkbench />} />
 
       {/* External Ceremony Routes (Open in New Tab / Hosted Gateway) */}
       <Route path="/tos/:token" element={<HostedTosPage />} />
-      <Route path="/setup" element={<PasskeyCeremonyPage />} />
+      <Route
+        path="/setup"
+        element={
+          <Web3AuthShell>
+            <PasskeyCeremonyPage />
+          </Web3AuthShell>
+        }
+      />
       <Route path="/legal/:doc" element={<LegalDocumentPage />} />
       <Route path="/legal/terms" element={<LegalDocumentPage documentType="terms" />} />
       <Route path="/legal/privacy" element={<LegalDocumentPage documentType="privacy" />} />
@@ -537,15 +552,15 @@ function MainRoutes() {
       {/* Standalone Hosted Customer Checkout */}
       <Route
         path="/checkout/:slug"
-        element={
-          <CustomerCheckoutView />
-        }
+        element={<PublicCheckoutPage mode="auto" />}
       />
       <Route
         path="/pay/:paymentId"
-        element={
-          <CustomerCheckoutView />
-        }
+        element={<PublicCheckoutPage mode="b2b" />}
+      />
+      <Route
+        path="/charge/:paymentId"
+        element={<PublicCheckoutPage mode="b2b" />}
       />
 
       {/* Root redirect */}
@@ -561,13 +576,13 @@ function MainRoutes() {
               <Navigate to="/merchant" replace />
             )
           ) : (
-            <Navigate to="/login" replace />
+            <Navigate to="/psp/login" replace />
           )
         }
       />
 
       {/* Catch-all redirect */}
-      <Route path="*" element={<Navigate to="/login" replace />} />
+      <Route path="*" element={<Navigate to="/psp/login" replace />} />
     </Routes>
   )
 }

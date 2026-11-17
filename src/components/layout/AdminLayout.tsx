@@ -10,7 +10,7 @@ export const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const handleSignOut = () => {
     logout()
-    navigate('/login')
+    navigate('/admin/login')
   }
 
   return (

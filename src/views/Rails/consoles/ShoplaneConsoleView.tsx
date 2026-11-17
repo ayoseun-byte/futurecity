@@ -5,6 +5,7 @@ import {
   fetchMarkupSettings,
   fetchMerchantSettings,
   listCharges,
+  resolveLocalCheckoutHref,
 } from '../../../services/pspConsoleService'
 import type { ChargeSummary, MerchantSettings, MarkupSettings } from '../../../services/pspConsoleService'
 import { Button } from '../../../components/ui/Button'
@@ -175,7 +176,7 @@ export const ShoplaneConsoleView: React.FC = () => {
               <p className="font-semibold">Order {String(created.orderMetadata?.orderId ?? form.orderId)} created</p>
               <p className="font-mono break-all">{created.chargeToken}</p>
               {created.checkoutUrl && (
-                <a href={created.checkoutUrl} target="_blank" rel="noreferrer" className="text-emerald-800 underline">
+                <a href={resolveLocalCheckoutHref(created.checkoutUrl)} target="_blank" rel="noreferrer" className="text-emerald-800 underline">
                   Open customer checkout
                 </a>
               )}
@@ -242,7 +243,7 @@ export const ShoplaneConsoleView: React.FC = () => {
                     <td className="py-2.5 px-4">
                       {order.checkoutUrl ? (
                         <a
-                          href={order.checkoutUrl}
+                          href={resolveLocalCheckoutHref(order.checkoutUrl)}
                           target="_blank"
                           rel="noreferrer"
                           className="inline-flex items-center gap-1 text-[11px] text-onion hover:underline"

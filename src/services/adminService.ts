@@ -725,3 +725,122 @@ export async function fetchAdminTransactionDetail(id: string): Promise<Record<st
     'admin'
   )
 }
+
+// 13. Dynamic Multi-Chain & Token Registry
+export interface SupportedChain {
+  id: string
+  chain_family: string
+  name: string
+  rpc: string
+  chain_id: string
+  explorer: string
+  image?: string | null
+  is_active: boolean
+  created_at?: string
+  updated_at?: string
+}
+
+export interface SupportedToken {
+  id: string
+  chain_id: string
+  chain_family: string
+  contract_address?: string | null
+  name: string
+  symbol: string
+  image?: string | null
+  is_native: boolean
+  is_stablecoin: boolean
+  is_active: boolean
+  created_at?: string
+  updated_at?: string
+}
+
+export async function fetchAdminChains(): Promise<SupportedChain[]> {
+  const config = getApiConfig()
+  const res = await requestApi<{ status: string; data: SupportedChain[] }>(
+    config,
+    'GET',
+    '/api/v1/admin/chains',
+    undefined,
+    'admin'
+  )
+  return res.data || []
+}
+
+export async function addAdminChain(payload: {
+  chainFamily: string
+  name: string
+  rpc: string
+  chainId: string
+  explorer: string
+  image?: string
+}): Promise<SupportedChain> {
+  const config = getApiConfig()
+  const res = await requestApi<{ status: string; data: SupportedChain }>(
+    config,
+    'POST',
+    '/api/v1/admin/chains',
+    payload,
+    'admin'
+  )
+  return res.data
+}
+
+export async function fetchAdminTokens(chain?: string): Promise<SupportedToken[]> {
+  const config = getApiConfig()
+  const path = chain ? `/api/v1/admin/tokens?chain=${encodeURIComponent(chain)}` : '/api/v1/admin/tokens'
+  const res = await requestApi<{ status: string; data: SupportedToken[] }>(
+    config,
+    'GET',
+    path,
+    undefined,
+    'admin'
+  )
+  return res.data || []
+}
+
+export async function addAdminToken(payload: {
+  chain: string
+  chainFamily?: string
+  contractAddress?: string
+  image?: string
+  name: string
+  symbol: string
+  isNative?: boolean
+  isStableCoin?: boolean
+}): Promise<SupportedToken> {
+  const config = getApiConfig()
+  const res = await requestApi<{ status: string; data: SupportedToken }>(
+    config,
+    'POST',
+    '/api/v1/admin/tokens',
+    payload,
+    'admin'
+  )
+  return res.data
+}
+
+export async function fetchPublicChains(): Promise<SupportedChain[]> {
+  const config = getApiConfig()
+  const res = await requestApi<{ status: string; data: SupportedChain[] }>(
+    config,
+    'GET',
+    '/api/v1/chains',
+    undefined,
+    'none'
+  )
+  return res.data || []
+}
+
+export async function fetchPublicTokens(chain?: string): Promise<SupportedToken[]> {
+  const config = getApiConfig()
+  const path = chain ? `/api/v1/tokens?chain=${encodeURIComponent(chain)}` : '/api/v1/tokens'
+  const res = await requestApi<{ status: string; data: SupportedToken[] }>(
+    config,
+    'GET',
+    path,
+    undefined,
+    'none'
+  )
+  return res.data || []
+}

@@ -4,6 +4,7 @@ import {
   cancelCharge,
   createCharge,
   listCharges,
+  resolveLocalCheckoutHref,
 } from '../../../services/pspConsoleService'
 import type { ChargeSummary } from '../../../services/pspConsoleService'
 import { Button } from '../../../components/ui/Button'
@@ -157,7 +158,7 @@ export const InvoicelyConsoleView: React.FC = () => {
               <p className="font-mono break-all">{created.chargeToken}</p>
               {created.checkoutUrl && (
                 <a
-                  href={created.checkoutUrl}
+                  href={resolveLocalCheckoutHref(created.checkoutUrl)}
                   target="_blank"
                   rel="noreferrer"
                   className="inline-flex items-center gap-1 text-emerald-800 underline"
@@ -217,7 +218,7 @@ export const InvoicelyConsoleView: React.FC = () => {
                       <div className="flex items-center gap-2">
                         {charge.checkoutUrl && (
                           <a
-                            href={charge.checkoutUrl}
+                            href={resolveLocalCheckoutHref(charge.checkoutUrl)}
                             target="_blank"
                             rel="noreferrer"
                             className="text-[11px] text-onion hover:underline"

@@ -1,0 +1,145 @@
+/* PhoneInput.module.css */
+.formGroup {
+    margin-bottom: 16px;
+}
+
+.label {
+    display: block;
+    color: var(--Grey-500, #7d828d);
+    font-size: 14px;
+    font-weight: 500;
+    margin-bottom: 8px;
+}
+
+.container {
+    display: flex;
+    gap: 12px;
+    height: 40px;
+}
+
+.countrySelect {
+    width: 140px;
+    flex-shrink: 0;
+}
+
+.selectTrigger {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    width: 100%;
+    padding: 12px;
+    border-radius: 8px;
+    border: 1px solid var(--Grey-200, #e2e8f0);
+    background: #f8fafc;
+    color: var(--Grey-900, #0c0c0e);
+    font-size: 14px;
+    outline: none;
+    cursor: pointer;
+    transition: border-color 0.2s;
+    box-sizing: border-box;
+}
+
+.selectTrigger:hover {
+    background: white;
+    border-color: #6366f1;
+}
+
+.selectedContent {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    overflow: hidden;
+}
+
+.flag {
+    width: 20px;
+    height: 15px;
+    object-fit: cover;
+    border-radius: 2px;
+    flex-shrink: 0;
+}
+
+.dialCode {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.selectContent {
+    background: white;
+    border-radius: 8px;
+    border: 1px solid var(--Grey-200, #e2e8f0);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    overflow: hidden;
+    z-index: 100;
+    max-height: 250px;
+    width: 300px;
+    /* Wider dropdown to show country names */
+}
+
+.selectItem {
+    padding: 10px 12px;
+    font-size: 14px;
+    color: var(--Grey-900, #0c0c0e);
+    cursor: pointer;
+    outline: none;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    transition: background-color 0.2s;
+}
+
+.selectItem:hover,
+.selectItem[data-highlighted] {
+    background: #f8fafc;
+}
+
+.selectIcon {
+    font-size: 10px;
+    color: var(--Grey-500, #7d828d);
+    display: flex;
+    align-items: center;
+}
+
+.inputWrapper {
+    flex-grow: 1;
+}
+
+.input {
+    width: 100%;
+    padding: 12px 16px;
+    border-radius: 8px;
+    border: 1px solid var(--Grey-200, #e2e8f0);
+    background: #f8fafc;
+    color: var(--Grey-900, #0c0c0e);
+    font-size: 14px;
+    outline: none;
+    transition: border-color 0.2s;
+    box-sizing: border-box;
+}
+
+.input:focus {
+    border-color: #6366f1;
+    background: white;
+}
+
+.input::placeholder {
+    color: var(--Grey-400, #94a3b8);
+}
+
+.inputError {
+    border-color: #ef4444 !important;
+}
+
+.inputError:focus {
+    border-color: #ef4444 !important;
+    background: white;
+}
+
+.errorMessage {
+    color: #ef4444;
+    font-size: 13px;
+    margin-top: 6px;
+    font-weight: 500;
+}
