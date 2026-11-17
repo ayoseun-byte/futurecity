@@ -185,6 +185,11 @@ export const PaymentCard: React.FC<PaymentCardProps> = ({
           label="Network"
         />
       </div>
+      {cryptoOptions.length === 0 && (
+        <div className={styles.error}>
+          <WarningIcon style={{ flex: "0 0 auto" }} /> No accepted tokens or networks are currently available for this payment.
+        </div>
+      )}
       <br />
       {isWalletConnected &&
         nativeBalance !== null &&

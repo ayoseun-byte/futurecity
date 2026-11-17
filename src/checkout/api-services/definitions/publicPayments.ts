@@ -177,7 +177,7 @@ function normalizeCustomerInfo(rawFields: any): {
   };
 }
 
-function normalizePaymentDetails(
+export function normalizePaymentDetails(
   identifier: string,
   raw: any,
   assetsPayload?: { assets?: any[]; swapsAvailable?: boolean; swapTokens?: string[] },
@@ -233,6 +233,7 @@ function normalizePaymentDetails(
   const chargeStatus = String(raw?.status || "open").toLowerCase();
   const isDynamic = Boolean(
     raw?.charge ||
+    raw?.type === "single" ||
     raw?.type === "single_use" ||
     raw?.pricing === "dynamic" ||
     identifier.startsWith("chg_"),
@@ -283,7 +284,7 @@ function normalizePaymentDetails(
   };
 }
 
-function normalizeQuote(raw: any): get_createAShortLivedExchangeRateQuoteForAPayment {
+export function normalizeQuote(raw: any): get_createAShortLivedExchangeRateQuoteForAPayment {
   if (raw?.quote_id && raw?.target_amount !== undefined) {
     return raw as get_createAShortLivedExchangeRateQuoteForAPayment;
   }
@@ -312,12 +313,26 @@ export const publicPaymentsApi = {
       return raw;
     }
 
+    const statusLower = String(raw?.status || "open").toLowerCase();
+    const isTerminalStatus = [
+      "expired",
+      "paid",
+      "completed",
+      "cancelled",
+      "inactive",
+      "sold_out",
+    ].includes(statusLower);
+
     let assetsPayload: { assets?: any[]; swapsAvailable?: boolean; swapTokens?: string[] } | undefined;
     try {
       assetsPayload = await apiClient.get(`/api/v1/pay/${identifier}/assets`);
-    } catch {
+    } catch (err: any) {
       // Non-payable states (expired, paid, cancelled) return 409/410 from /assets;
       // still return the normalized details so the checkout renders the terminal card.
+      // For open/active payments, surface the backend diagnostic instead of showing empty dropdowns.
+      if (!isTerminalStatus && err?.statusCode !== 410) {
+        throw err;
+      }
     }
 
     return normalizePaymentDetails(identifier, raw, assetsPayload);

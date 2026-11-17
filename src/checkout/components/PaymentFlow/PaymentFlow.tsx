@@ -67,6 +67,7 @@ const PaymentFlow: React.FC = () => {
     data: pd,
     isLoading: isPdLoading,
     isError,
+    error: pdError,
   } = useGetPaymentDetailsForPayerQuery(identifier);
 
   const isDynamicFromUrl = useMemo(() => {
@@ -571,7 +572,7 @@ const PaymentFlow: React.FC = () => {
   if (!pd || isError)
     return (
       <ErrorState
-        message="Failed to load payment details."
+        message={(pdError as { message?: string } | null)?.message || "Failed to load payment details."}
         onRetry={() => window.location.reload()}
       />
     );
