@@ -7,8 +7,7 @@ import { SolanaAdapter } from "@reown/appkit-adapter-solana/react";
 import { WagmiAdapter } from "@reown/appkit-adapter-wagmi";
 
 export const projectId =
-  import.meta.env.VITE_WALLETCONNECT_PROJECT_ID ||
-  import.meta.env.VITE_WEB3AUTH_CLIENT_ID ||
+  import.meta.env.VITE_WALLETCONNECT_PROJECT_ID?.trim() ||
   "orki-checkout-project-id";
 
 export interface NetworkConfig {
