@@ -808,12 +808,38 @@ export async function addAdminToken(payload: {
   symbol: string
   isNative?: boolean
   isStableCoin?: boolean
+  isActive?: boolean
 }): Promise<SupportedToken> {
   const config = getApiConfig()
   const res = await requestApi<{ status: string; data: SupportedToken }>(
     config,
     'POST',
     '/api/v1/admin/tokens',
+    payload,
+    'admin'
+  )
+  return res.data
+}
+
+export async function updateAdminToken(
+  id: string,
+  payload: {
+    chain?: string
+    chainFamily?: string
+    contractAddress?: string | null
+    image?: string | null
+    name?: string
+    symbol?: string
+    isNative?: boolean
+    isStableCoin?: boolean
+    isActive?: boolean
+  }
+): Promise<SupportedToken> {
+  const config = getApiConfig()
+  const res = await requestApi<{ status: string; data: SupportedToken }>(
+    config,
+    'PATCH',
+    `/api/v1/admin/tokens/${encodeURIComponent(id)}`,
     payload,
     'admin'
   )

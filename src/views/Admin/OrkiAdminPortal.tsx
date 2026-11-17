@@ -21,6 +21,7 @@ import {
   addAdminChain,
   fetchAdminTokens,
   addAdminToken,
+  updateAdminToken,
   type AdminMetrics,
   type AdminMerchantRow,
   type AdminTransactionRow,
@@ -53,6 +54,7 @@ import {
   Copy,
   AlertTriangle,
   Globe,
+  Pencil,
 } from 'lucide-react'
 
 interface OrkiAdminPortalProps {
@@ -124,6 +126,7 @@ export const OrkiAdminPortal: React.FC<OrkiAdminPortalProps> = ({
   const [chainsLoading, setChainsLoading] = useState(false)
   const [isAddChainModalOpen, setIsAddChainModalOpen] = useState(false)
   const [isAddTokenModalOpen, setIsAddTokenModalOpen] = useState(false)
+  const [editingToken, setEditingToken] = useState<SupportedToken | null>(null)
   const [newChainForm, setNewChainForm] = useState({
     chainFamily: 'evm',
     name: '',
@@ -141,6 +144,7 @@ export const OrkiAdminPortal: React.FC<OrkiAdminPortalProps> = ({
     image: '',
     isNative: false,
     isStableCoin: true,
+    isActive: true,
   })
 
   const loadChainsAndTokens = useCallback(async () => {
@@ -173,36 +177,75 @@ export const OrkiAdminPortal: React.FC<OrkiAdminPortalProps> = ({
     }
   }
 
+  const openAddTokenModal = () => {
+    setEditingToken(null)
+    setNewTokenForm({
+      chain: supportedChains[0]?.id || 'base',
+      chainFamily: supportedChains[0]?.chain_family || 'evm',
+      contractAddress: '',
+      name: '',
+      symbol: '',
+      image: '',
+      isNative: false,
+      isStableCoin: true,
+      isActive: true,
+    })
+    setIsAddTokenModalOpen(true)
+  }
+
+  const openEditTokenModal = (token: SupportedToken) => {
+    setEditingToken(token)
+    setNewTokenForm({
+      chain: token.chain_id,
+      chainFamily: token.chain_family || 'evm',
+      contractAddress: token.contract_address || '',
+      name: token.name,
+      symbol: token.symbol,
+      image: token.image || '',
+      isNative: Boolean(token.is_native),
+      isStableCoin: Boolean(token.is_stablecoin),
+      isActive: Boolean(token.is_active),
+    })
+    setIsAddTokenModalOpen(true)
+  }
+
   const handleAddTokenSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setApiBusy(true)
     setApiError(null)
     try {
-      await addAdminToken({
-        chain: newTokenForm.chain,
-        chainFamily: newTokenForm.chainFamily,
-        contractAddress: newTokenForm.isNative ? undefined : newTokenForm.contractAddress || undefined,
-        name: newTokenForm.name,
-        symbol: newTokenForm.symbol,
-        image: newTokenForm.image || undefined,
-        isNative: newTokenForm.isNative,
-        isStableCoin: newTokenForm.isStableCoin,
-      })
-      setApiSuccess(`Token "${newTokenForm.symbol}" saved to DB & Redis.`)
-      setNewTokenForm({
-        chain: supportedChains[0]?.id || 'base',
-        chainFamily: supportedChains[0]?.chain_family || 'evm',
-        contractAddress: '',
-        name: '',
-        symbol: '',
-        image: '',
-        isNative: false,
-        isStableCoin: true,
-      })
+      if (editingToken) {
+        await updateAdminToken(editingToken.id, {
+          chain: newTokenForm.chain,
+          chainFamily: newTokenForm.chainFamily,
+          contractAddress: newTokenForm.isNative ? null : newTokenForm.contractAddress || null,
+          name: newTokenForm.name,
+          symbol: newTokenForm.symbol,
+          image: newTokenForm.image || null,
+          isNative: newTokenForm.isNative,
+          isStableCoin: newTokenForm.isStableCoin,
+          isActive: newTokenForm.isActive,
+        })
+        setApiSuccess(`Token "${newTokenForm.symbol}" updated in DB & Redis.`)
+      } else {
+        await addAdminToken({
+          chain: newTokenForm.chain,
+          chainFamily: newTokenForm.chainFamily,
+          contractAddress: newTokenForm.isNative ? undefined : newTokenForm.contractAddress || undefined,
+          name: newTokenForm.name,
+          symbol: newTokenForm.symbol,
+          image: newTokenForm.image || undefined,
+          isNative: newTokenForm.isNative,
+          isStableCoin: newTokenForm.isStableCoin,
+          isActive: newTokenForm.isActive,
+        })
+        setApiSuccess(`Token "${newTokenForm.symbol}" saved to DB & Redis.`)
+      }
+      setEditingToken(null)
       setIsAddTokenModalOpen(false)
       await loadChainsAndTokens()
     } catch (e) {
-      setApiError(e instanceof Error ? e.message : 'Failed to add token.')
+      setApiError(e instanceof Error ? e.message : editingToken ? 'Failed to update token.' : 'Failed to add token.')
     } finally {
       setApiBusy(false)
     }
@@ -1560,7 +1603,7 @@ export const OrkiAdminPortal: React.FC<OrkiAdminPortalProps> = ({
               </button>
               <button
                 type="button"
-                onClick={() => setIsAddTokenModalOpen(true)}
+                onClick={openAddTokenModal}
                 className="mat-btn-primary px-3.5 py-2 text-xs font-semibold flex items-center space-x-1.5 shadow-xs"
               >
                 <Coins className="w-3.5 h-3.5" />
@@ -1657,6 +1700,7 @@ export const OrkiAdminPortal: React.FC<OrkiAdminPortalProps> = ({
                         <th className="py-2.5 px-4 text-left">Chain</th>
                         <th className="py-2.5 px-4 text-left">Contract</th>
                         <th className="py-2.5 px-4 text-right">Flags</th>
+                        <th className="py-2.5 px-4 text-right">Actions</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
@@ -1684,7 +1728,7 @@ export const OrkiAdminPortal: React.FC<OrkiAdminPortalProps> = ({
                           <td className="py-3 px-4 font-mono text-[10px] text-slate-600 max-w-[140px] truncate" title={t.contract_address || 'Native'}>
                             {t.is_native ? <span className="italic text-slate-400">Native Asset</span> : (t.contract_address || '—')}
                           </td>
-                          <td className="py-3 px-4 text-right space-x-1">
+                          <td className="py-3 px-4 text-right space-x-1 whitespace-nowrap">
                             {t.is_stablecoin && (
                               <span className="px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200 text-[9px] font-bold">
                                 Stable
@@ -1695,6 +1739,21 @@ export const OrkiAdminPortal: React.FC<OrkiAdminPortalProps> = ({
                                 Native
                               </span>
                             )}
+                            <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${
+                              t.is_active ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-slate-100 text-slate-500 border border-slate-200'
+                            }`}>
+                              {t.is_active ? 'Active' : 'Disabled'}
+                            </span>
+                          </td>
+                          <td className="py-3 px-4 text-right">
+                            <button
+                              type="button"
+                              onClick={() => openEditTokenModal(t)}
+                              className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-[11px] font-semibold transition"
+                            >
+                              <Pencil className="w-3 h-3" />
+                              <span>Edit</span>
+                            </button>
                           </td>
                         </tr>
                       ))}
@@ -1807,16 +1866,22 @@ export const OrkiAdminPortal: React.FC<OrkiAdminPortalProps> = ({
             </div>
           )}
 
-          {/* ADD TOKEN MODAL */}
+          {/* ADD / EDIT TOKEN MODAL */}
           {isAddTokenModalOpen && (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 overflow-y-auto">
               <div className="w-full max-w-md bg-white rounded-3xl shadow-2xl p-6 sm:p-8 space-y-4 border border-slate-200 my-8">
                 <div className="flex justify-between items-center border-b border-slate-100 pb-3">
                   <h3 className="font-bold text-slate-900 text-base flex items-center space-x-2">
                     <Coins className="w-5 h-5 text-onion" />
-                    <span>Add Supported Token</span>
+                    <span>{editingToken ? 'Edit Supported Token' : 'Add Supported Token'}</span>
                   </h3>
-                  <button onClick={() => setIsAddTokenModalOpen(false)} className="p-1 text-slate-400">
+                  <button
+                    onClick={() => {
+                      setIsAddTokenModalOpen(false)
+                      setEditingToken(null)
+                    }}
+                    className="p-1 text-slate-400"
+                  >
                     <X className="w-5 h-5" />
                   </button>
                 </div>
@@ -1896,6 +1961,15 @@ export const OrkiAdminPortal: React.FC<OrkiAdminPortalProps> = ({
                       />
                       <span>isStableCoin</span>
                     </label>
+                    <label className="flex items-center space-x-2 cursor-pointer font-semibold text-slate-700">
+                      <input
+                        type="checkbox"
+                        checked={newTokenForm.isActive}
+                        onChange={(e) => setNewTokenForm({ ...newTokenForm, isActive: e.target.checked })}
+                        className="rounded border-slate-300 text-onion"
+                      />
+                      <span>Active</span>
+                    </label>
                   </div>
                   {!newTokenForm.isNative && (
                     <div>
@@ -1923,7 +1997,10 @@ export const OrkiAdminPortal: React.FC<OrkiAdminPortalProps> = ({
                   <div className="pt-2 flex justify-end space-x-2">
                     <button
                       type="button"
-                      onClick={() => setIsAddTokenModalOpen(false)}
+                      onClick={() => {
+                        setIsAddTokenModalOpen(false)
+                        setEditingToken(null)
+                      }}
                       className="px-4 py-2 rounded-xl border border-slate-200 text-slate-600 font-semibold"
                     >
                       Cancel
@@ -1933,7 +2010,7 @@ export const OrkiAdminPortal: React.FC<OrkiAdminPortalProps> = ({
                       disabled={apiBusy}
                       className="mat-btn-primary px-5 py-2 font-semibold disabled:opacity-50"
                     >
-                      {apiBusy ? 'Saving...' : 'Save Token'}
+                      {apiBusy ? 'Saving...' : editingToken ? 'Update Token' : 'Save Token'}
                     </button>
                   </div>
                 </form>

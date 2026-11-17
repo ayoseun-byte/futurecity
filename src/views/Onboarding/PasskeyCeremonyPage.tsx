@@ -23,7 +23,6 @@ import {
 } from '@web3auth/modal/react'
 import { useConnection, usePublicClient } from 'wagmi'
 import type { PublicClient as ViemPublicClient } from 'viem'
-import { getSolanaKeypairFromWeb3Auth } from '../../services/web3auth-utils'
 
 import {
   toPasskeyValidator,
@@ -461,7 +460,7 @@ function WalletSetup({
   } = useWeb3AuthUser()
 
   const {
-    address: wagmiEvmSignerAddress,
+    address: evmSignerAddress,
   } = useConnection()
 
   const publicClient = usePublicClient()
@@ -471,10 +470,6 @@ function WalletSetup({
   ).trim()
 
   const [emailInput, setEmailInput] = useState(registeredEmail)
-  const [fallbackEvmSigner, setFallbackEvmSigner] = useState<string | undefined>(undefined)
-  const [fallbackSolanaAddress, setFallbackSolanaAddress] = useState<string | undefined>(undefined)
-
-  const evmSignerAddress = wagmiEvmSignerAddress || fallbackEvmSigner
 
   const [zeroDevSmartAccount, setZeroDevSmartAccount] =
     useState<string | null>(
@@ -505,65 +500,17 @@ function WalletSetup({
 
   const solanaAddress =
     getSolanaAddressFromUserInfo(userInfo) ||
-    fallbackSolanaAddress ||
     onboarding.solanaWalletAddress ||
     undefined
 
-  // Fetch Web3Auth user info and derive addresses immediately on connect (without requiring a page reload).
+  // Fetch Web3Auth user information after authentication.
   useEffect(() => {
-    if (!isConnected) {
-      setFallbackEvmSigner(undefined)
-      setFallbackSolanaAddress(undefined)
-      return
-    }
-
-    let cancelled = false
-
-    if (!userInfo) {
+    if (isConnected && !userInfo) {
       void getUserInfo().catch((reason) => {
         console.error('Could not retrieve Web3Auth user info:', reason)
       })
     }
-
-    const syncAddresses = async () => {
-      const provider = (ethereumProvider || (web3Auth as unknown as { provider?: any })?.provider) as
-        | { request?: (args: { method: string; params?: unknown[] }) => Promise<unknown> }
-        | undefined
-
-      if (!wagmiEvmSignerAddress && provider?.request) {
-        try {
-          const accounts = (await provider.request({ method: 'eth_accounts' })) as string[] | undefined
-          if (!cancelled && accounts?.[0]) {
-            setFallbackEvmSigner(accounts[0])
-          }
-        } catch {
-          // ignore and let wagmi or retry populate
-        }
-      }
-
-      if (!getSolanaAddressFromUserInfo(userInfo) && web3Auth) {
-        try {
-          const kp = await getSolanaKeypairFromWeb3Auth(web3Auth, provider as any)
-          const derivedSol = kp?.publicKey?.toBase58?.()
-          if (!cancelled && derivedSol) {
-            setFallbackSolanaAddress(String(derivedSol))
-          }
-        } catch {
-          // ignore if provider is still initializing
-        }
-      }
-    }
-
-    void syncAddresses()
-    const timer = window.setTimeout(() => {
-      void syncAddresses()
-    }, 600)
-
-    return () => {
-      cancelled = true
-      window.clearTimeout(timer)
-    }
-  }, [isConnected, userInfo, getUserInfo, ethereumProvider, web3Auth, wagmiEvmSignerAddress])
+  }, [isConnected, userInfo, getUserInfo])
 
   // Temporary provider diagnostics.
   useEffect(() => {
