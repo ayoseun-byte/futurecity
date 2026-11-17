@@ -260,12 +260,22 @@ export const OrkiAdminPortal: React.FC<OrkiAdminPortalProps> = ({
     setCircuitBreakerBusy(true)
     try {
       const next = !contractPaused
-      await requestApi(getApiConfig(), 'POST', '/api/v1/admin/contracts/circuit-breaker', {
-        network: 'base',
-        paused: next,
-      }, 'admin')
+      const res = await requestApi<{ status?: string; operationId?: string; message?: string }>(
+        getApiConfig(),
+        'POST',
+        '/api/v1/admin/contracts/circuit-breaker',
+        {
+          network: 'base',
+          paused: next,
+        },
+        'admin'
+      )
       setContractPaused(next)
-      setApiSuccess(`Base EVM Splitter contract successfully ${next ? 'paused' : 'resumed'}.`)
+      setApiSuccess(
+        res.status === 'processing'
+          ? `Circuit breaker ${next ? 'pause' : 'resume'} is being processed asynchronously${res.operationId ? ` (Operation: ${res.operationId})` : ''}.`
+          : `Base EVM Splitter contract successfully ${next ? 'paused' : 'resumed'}.`
+      )
     } catch (e) {
       setApiError(e instanceof Error ? e.message : 'Failed to update contract circuit breaker.')
     } finally {
@@ -359,7 +369,9 @@ export const OrkiAdminPortal: React.FC<OrkiAdminPortalProps> = ({
     try {
       const outcome = await retryAdminOnChainRegistration(retryIdOrAuditId)
       setApiSuccess(
-        `On-chain registration retry succeeded (${outcome.retryId}); chain re-enabled.`
+        outcome.status === 'processing'
+          ? `Retry queued (${outcome.retryId}) — processing asynchronously${outcome.operationId ? ` (Operation: ${outcome.operationId})` : ''}.`
+          : `On-chain registration retry succeeded (${outcome.retryId}); chain re-enabled.`
       )
       await loadAuditAndRetries()
     } catch (err) {

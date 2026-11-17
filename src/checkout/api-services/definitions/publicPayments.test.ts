@@ -91,6 +91,34 @@ describe("B2B checkout payload normalization", () => {
     expect(details.price_denomination_asset.slug).toBe("usd");
     expect(details.crypto_options).toEqual([]);
     expect(details.recipients).toEqual([]);
+    expect(details.expires_at).toBe("2026-11-16T12:00:00Z");
+  });
+
+  test("preserves invoice metadata alongside expiry on normalized payment details", () => {
+    const details = normalizePaymentDetails("chg_inv_1", {
+      id: "chg_inv_1",
+      type: "single",
+      merchantName: "Invoicely",
+      amount: "120.00",
+      currency: "usd",
+      status: "open",
+      expiresAt: "2026-11-22T23:59:59+00:00",
+      invoice: {
+        number: "INV-2026-0042",
+        issuedAt: "2026-11-08",
+        dueAt: "2026-11-22",
+        billTo: { name: "Acme GmbH", email: "ap@acme.example" },
+      },
+    });
+
+    expect(details.product_title).toBe("INV-2026-0042");
+    expect(details.expires_at).toBe("2026-11-22T23:59:59+00:00");
+    expect(details.invoice).toEqual({
+      number: "INV-2026-0042",
+      issuedAt: "2026-11-08",
+      dueAt: "2026-11-22",
+      billTo: { name: "Acme GmbH", email: "ap@acme.example" },
+    });
   });
 
   test("normalizes B2B camelCase quote into snake_case checkout quote", () => {

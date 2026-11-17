@@ -2,6 +2,7 @@
 
 import type { get_createAShortLivedExchangeRateQuoteForAPayment } from "@/api-services/types/publicPayments/get_createAShortLivedExchangeRateQuoteForAPayment";
 import type {
+  CheckoutInvoice,
   CustomerInfo,
   get_paymentDetailsForPayer,
 } from "@/api-services/types/publicPayments/get_paymentDetailsForPayer";
@@ -43,6 +44,7 @@ interface PaymentCardProps {
   tokenBalances?: { symbol: string; balance: number }[];
   isQuoteError: boolean;
   quoteError: any;
+  invoice?: CheckoutInvoice | null;
   onPay: () => void;
   refetchQuote: () => void;
   disableQuoteRefresh?: boolean;
@@ -73,6 +75,7 @@ export const PaymentCard: React.FC<PaymentCardProps> = ({
   tokenBalances = [],
   isQuoteError,
   quoteError,
+  invoice,
   onPay,
   onValidate,
   refetchQuote,
@@ -141,6 +144,26 @@ export const PaymentCard: React.FC<PaymentCardProps> = ({
   const fee = 0;
   const totalPrice = itemPrice + fee;
 
+  const invoiceSummary =
+    invoice && invoice.number ? (
+      <div className={styles.invoiceSummary}>
+        <div className={styles.invoiceRow}>
+          <span className={styles.invoiceTitle}>Invoice #{invoice.number}</span>
+          {invoice.dueAt && <span>Due {invoice.dueAt}</span>}
+        </div>
+        {(invoice.billTo?.name || invoice.billTo?.email || invoice.issuedAt) && (
+          <div className={styles.invoiceRow}>
+            <span>
+              {invoice.billTo?.name || invoice.billTo?.email
+                ? `Bill to: ${[invoice.billTo?.name, invoice.billTo?.email].filter(Boolean).join(" · ")}`
+                : ""}
+            </span>
+            {invoice.issuedAt && <span>Issued {invoice.issuedAt}</span>}
+          </div>
+        )}
+      </div>
+    ) : null;
+
   if (!isWalletConnected) {
     return (
       <div className={styles.paymentCard}>
@@ -150,6 +173,7 @@ export const PaymentCard: React.FC<PaymentCardProps> = ({
           </span>
           <span>Pay with {priceDenomination}</span>
         </div>
+        {invoiceSummary}
         <div className={styles.totalPrice}>
           <span className={styles.priceLabel}>Total price</span>
           <div className={styles.priceAmount}>
@@ -170,6 +194,7 @@ export const PaymentCard: React.FC<PaymentCardProps> = ({
 
   return (
     <div className={styles.paymentCard}>
+      {invoiceSummary}
       <div className={styles.dropdownWrapper}>
         <DropdownSelector
           options={tokens}

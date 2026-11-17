@@ -1017,6 +1017,7 @@ function WalletSetup({
           const solStatus = activationResult.solanaOnChainRegistration?.status?.toLowerCase()
           const isFailedLike = (s?: string) =>
             Boolean(s && ['failed', 'error', 'prepared', 'pending_retry'].includes(s))
+          const isProcessing = baseStatus === 'processing' || solStatus === 'processing'
           const hasPartialChainFailure =
             isFailedLike(baseStatus) ||
             isFailedLike(solStatus) ||
@@ -1026,14 +1027,14 @@ function WalletSetup({
           return (
             <div
               className={`space-y-4 rounded-2xl border p-5 text-sm ${
-                hasPartialChainFailure
+                hasPartialChainFailure || isProcessing
                   ? 'border-amber-700/70 bg-amber-950/30 text-amber-100'
                   : 'border-emerald-800/70 bg-emerald-950/30 text-emerald-100'
               }`}
             >
               <div
                 className={`flex items-center gap-2 font-semibold ${
-                  hasPartialChainFailure ? 'text-amber-300' : 'text-emerald-300'
+                  hasPartialChainFailure || isProcessing ? 'text-amber-300' : 'text-emerald-300'
                 }`}
               >
                 {hasPartialChainFailure ? (
@@ -1044,7 +1045,9 @@ function WalletSetup({
                 <span>
                   {hasPartialChainFailure
                     ? 'Wallets Verified — One Chain Registration Needs Retry'
-                    : 'Merchant Wallets & Passkey Verified — Account Active'}
+                    : isProcessing
+                      ? 'Wallets Verified — On-Chain Registration Processing'
+                      : 'Merchant Wallets & Passkey Verified — Account Active'}
                 </span>
               </div>
 

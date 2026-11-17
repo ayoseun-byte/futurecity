@@ -662,6 +662,7 @@ const PaymentFlow: React.FC = () => {
             tokenBalances={tokenBalances}
             isQuoteError={isQuoteError}
             quoteError={quoteError}
+            invoice={pd.invoice}
           />
         )}
       </div>

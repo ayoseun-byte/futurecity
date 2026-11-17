@@ -904,11 +904,56 @@ export async function fetchAdminOnChainRetries(status?: string): Promise<OnChain
   return res.retries || []
 }
 
+export interface BlockchainOperation {
+  operationId: string
+  action: string
+  network: string
+  entityType: string
+  entityId: string
+  organizationId?: string | null
+  status: 'processing' | 'confirmed' | 'failed' | 'retrying' | 'alerted' | string
+  txHash?: string | null
+  error?: string | null
+  result?: Record<string, unknown> | null
+  attempts: number
+  processedAt?: string | null
+  createdAt?: string | null
+  updatedAt?: string | null
+}
+
+export async function fetchBlockchainOperation(
+  scope: 'admin' | 'psp' | 'merchant',
+  operationId: string
+): Promise<BlockchainOperation> {
+  const config = getApiConfig()
+  return requestApi<BlockchainOperation>(
+    config,
+    'GET',
+    `/api/v1/${scope}/operations/${encodeURIComponent(operationId)}`,
+    undefined,
+    scope
+  )
+}
+
 export async function retryAdminOnChainRegistration(
   id: string
-): Promise<{ status: string; retryId: string; chainEnabled?: boolean; error?: string }> {
+): Promise<{
+  status: string
+  retryId: string
+  operationId?: string
+  chainEnabled?: boolean
+  error?: string
+  message?: string
+}> {
   const config = getApiConfig()
-  return requestApi<{ status: string; retryId: string; chainEnabled?: boolean; error?: string }>(
+  return requestApi<{
+    status: string
+    retryId: string
+    operationId?: string
+    chainEnabled?: boolean
+    error?: string
+    message?: string
+  }>(
     config,
     'POST',
     `/api/v1/admin/onchain-retries/${encodeURIComponent(id)}/retry`,

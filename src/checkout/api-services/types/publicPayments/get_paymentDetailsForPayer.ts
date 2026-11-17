@@ -28,6 +28,17 @@ export interface get_paymentDetailsForPayer {
   button_color: string;
   // Only set for dynamic payments (ISO 8601 or epoch)
   expires_at?: string | null;
+  invoice?: CheckoutInvoice | null;
+}
+
+export interface CheckoutInvoice {
+  number: string;
+  issuedAt?: string | null;
+  dueAt?: string | null;
+  billTo?: {
+    name?: string | null;
+    email?: string | null;
+  } | null;
 }
 
 export interface ProductImage {

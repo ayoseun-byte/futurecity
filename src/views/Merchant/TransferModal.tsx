@@ -15,7 +15,13 @@ export const TransferModal: React.FC<TransferModalProps> = ({ isOpen, onClose, o
   const [amount, setAmount] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [successResult, setSuccessResult] = useState<{ txHash?: string; transferId?: string } | null>(null)
+  const [successResult, setSuccessResult] = useState<{
+    status?: string
+    operationId?: string | null
+    txHash?: string | null
+    transferId?: string
+    message?: string
+  } | null>(null)
 
   if (!isOpen) return null
 
@@ -68,11 +74,13 @@ export const TransferModal: React.FC<TransferModalProps> = ({ isOpen, onClose, o
         }
       }
 
-      // 3. Broadcast to sidecar / blockchain
+      // 3. Broadcast to sidecar / blockchain (async via Redis Pub/Sub)
       const broadcastRes = await requestApi<{
         status: string
+        operationId?: string | null
         transferId: string
-        txHash: string
+        txHash?: string | null
+        message?: string
       }>(config, 'POST', '/api/v1/merchant/transfers/broadcast', {
         prepareId,
         network,
@@ -83,8 +91,11 @@ export const TransferModal: React.FC<TransferModalProps> = ({ isOpen, onClose, o
       }, 'merchant')
 
       setSuccessResult({
+        status: broadcastRes.status,
+        operationId: broadcastRes.operationId,
         txHash: broadcastRes.txHash,
         transferId: broadcastRes.transferId,
+        message: broadcastRes.message,
       })
       onSuccess?.()
     } catch (err) {
@@ -121,14 +132,21 @@ export const TransferModal: React.FC<TransferModalProps> = ({ isOpen, onClose, o
               <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-emerald-800">
                 <p className="flex items-center gap-2 font-bold text-sm">
                   <CheckCircle2 className="h-5 w-5 text-emerald-600" />
-                  Transfer broadcasted successfully!
+                  {successResult.status === 'processing'
+                    ? 'Transfer broadcast is processing...'
+                    : 'Transfer broadcasted successfully!'}
                 </p>
                 <p className="mt-2 text-xs">
-                  Your funds were transferred on-chain via the non-custodial pipeline.
+                  {successResult.message ||
+                    (successResult.status === 'processing'
+                      ? 'Your transfer has been queued for on-chain broadcast via Pub/Sub. Status will update to confirmed once mined.'
+                      : 'Your funds were transferred on-chain via the non-custodial pipeline.')}
                 </p>
-                {successResult.txHash && (
-                  <div className="mt-3 p-2 bg-white rounded-lg border border-emerald-200 font-mono text-[11px] break-all">
-                    Tx: {successResult.txHash}
+                {(successResult.txHash || successResult.operationId || successResult.transferId) && (
+                  <div className="mt-3 p-2 bg-white rounded-lg border border-emerald-200 font-mono text-[11px] break-all space-y-1">
+                    {successResult.txHash && <div>Tx: {successResult.txHash}</div>}
+                    {successResult.operationId && <div>Operation: {successResult.operationId}</div>}
+                    {successResult.transferId && <div>Transfer: {successResult.transferId}</div>}
                   </div>
                 )}
               </div>

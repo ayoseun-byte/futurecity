@@ -281,6 +281,20 @@ export function normalizePaymentDetails(
     primary_color: String(raw?.appearance?.primaryColor || "#000000"),
     button_color: String(raw?.appearance?.buttonColor || "#000000"),
     expires_at: raw?.expiresAt ?? null,
+    invoice:
+      raw?.invoice && typeof raw.invoice === "object"
+        ? {
+            number: String(raw.invoice.number ?? ""),
+            issuedAt: raw.invoice.issuedAt ?? null,
+            dueAt: raw.invoice.dueAt ?? null,
+            billTo: raw.invoice.billTo
+              ? {
+                  name: raw.invoice.billTo.name ?? null,
+                  email: raw.invoice.billTo.email ?? null,
+                }
+              : null,
+          }
+        : null,
   };
 }
 

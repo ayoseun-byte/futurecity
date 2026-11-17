@@ -133,6 +133,32 @@
   letter-spacing: -0.28px;
 }
 
+.invoiceSummary {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+  border-radius: 10px;
+  border: 1px solid #e4e7ec;
+  background: #f8fafc;
+  font-size: 12px;
+  color: #475467;
+}
+
+.invoiceRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.invoiceTitle {
+  font-weight: 600;
+  color: #0c0c0e;
+}
+
 .priceRow {
   display: flex;
   justify-content: space-between;
