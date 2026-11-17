@@ -67,7 +67,7 @@ export const formatBackendTokens = (
   const solanaTokens: TokenConfig[] = [];
 
   cryptoOptions.forEach((token) => {
-    const symbol = token.slug.toUpperCase();
+    const symbol = (token.slug ?? token.id ?? "").toUpperCase();
     const logoUrl = token.logo;
 
     const isStablecoin = ["USDC", "USDT"].includes(symbol);

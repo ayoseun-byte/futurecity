@@ -46,7 +46,7 @@ export const AdditionalInformation: React.FC<AdditionalInformationProps> = ({
         // Custom Fields
         if (customerInfo.custom) {
             for (const field of customerInfo.custom) {
-                if (field.required && !data[field.key]) return false;
+                if (field.required === "1" && !data[field.key]) return false;
             }
         }
 

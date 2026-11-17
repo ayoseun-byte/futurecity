@@ -21,6 +21,7 @@ export const SUPPORTED_CHAINS = {
   evm: [
     {
       slug: "base-sepolia",
+      aliases: ["base", "base sepolia"],
       appKitNetwork: baseSepolia,
       nativeCurrency: "ETH",
     },

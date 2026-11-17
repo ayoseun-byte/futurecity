@@ -301,8 +301,8 @@ const PaymentFlow: React.FC = () => {
   const recipientAddress = useMemo(() => {
     if (!selectedNetwork || !pd) return "";
     // Prefer explicit recipient matching by network id
-    const matched = pd.recipients.find(
-      (r) => r.network.id === selectedNetwork.id,
+    const matched = (pd.recipients ?? []).find(
+      (r) => r.network?.id === selectedNetwork.id,
     );
     if (matched) return matched.wallet_address;
     // Fallback: for swap mode the swap network may not appear in recipients,
@@ -530,15 +530,16 @@ const PaymentFlow: React.FC = () => {
           id: selectedSwapNetwork.network.id,
           name: selectedSwapNetwork.network.title,
           icon: selectedSwapNetwork.network.logo,
-          symbol: selectedSwapNetwork.network.slug.toUpperCase(),
+          symbol: (selectedSwapNetwork.network.slug ?? selectedSwapNetwork.network.id ?? "").toUpperCase(),
         }
       : null;
+    const tokenSym = (opt.slug ?? opt.id ?? "").toUpperCase();
     setSelectedToken({
       id: opt.id,
-      name: opt.slug.toUpperCase(),
+      name: tokenSym,
       subtitle: opt.title,
       icon: opt.logo,
-      symbol: opt.slug.toUpperCase(),
+      symbol: tokenSym,
       networks: opt.networks,
     });
     if (swapNetwork) setSelectedNetwork(swapNetwork);
@@ -603,9 +604,10 @@ const PaymentFlow: React.FC = () => {
           <PaymentExpiredCard
             price={Number(pd.price) || 0}
             priceDenomination={(
-              pd.price_denomination_asset.slug ||
-              pd.price_denomination_asset.code ||
-              ""
+              pd.price_denomination_asset?.slug ||
+              pd.price_denomination_asset?.code ||
+              pd.price_denomination_asset?.symbol ||
+              "USD"
             ).toUpperCase()}
             expirationDate={expirationDate}
             identifier={identifier}
@@ -616,9 +618,10 @@ const PaymentFlow: React.FC = () => {
             isWalletConnected={isConnected}
             itemPrice={Number(pd.price) || 0}
             priceDenomination={(
-              pd.price_denomination_asset.slug ||
-              pd.price_denomination_asset.code ||
-              ""
+              pd.price_denomination_asset?.slug ||
+              pd.price_denomination_asset?.code ||
+              pd.price_denomination_asset?.symbol ||
+              "USD"
             ).toUpperCase()}
             onConnectWallet={handleConnectWallet}
             quote={quote}

@@ -90,7 +90,7 @@ export const PaymentCard: React.FC<PaymentCardProps> = ({
   const quoteReady = !!selectedNetwork && !!selectedToken;
 
   const tokens: SelectorOption[] = cryptoOptions.map((opt) => {
-    const symUpper = opt.slug.toUpperCase();
+    const symUpper = (opt.slug ?? opt.id ?? "").toUpperCase();
     const bal = tokenBalances.find(
       (t) => t.symbol.toLowerCase() === symUpper.toLowerCase(),
     );
@@ -114,7 +114,7 @@ export const PaymentCard: React.FC<PaymentCardProps> = ({
         id: net.id,
         name: net.title,
         icon: net.logo,
-        symbol: net.slug.toUpperCase(),
+        symbol: (net.slug ?? net.id ?? "").toUpperCase(),
         tokenAddress: net.token_address,
       }))
     : [];
