@@ -1,7 +1,7 @@
 import React from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
-import { Building2, LogOut, ExternalLink, Clock, Activity } from 'lucide-react'
+import { Building2, LogOut, ExternalLink, Clock, Activity, ShoppingBag } from 'lucide-react'
 
 export const PspLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, logout } = useAuth()
@@ -50,6 +50,15 @@ export const PspLayout: React.FC<{ children: React.ReactNode }> = ({ children })
 
             {/* Actions */}
             <div className="flex items-center space-x-2.5">
+              <Link
+                to="/store"
+                target="_blank"
+                className="hidden sm:inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-onion-800 hover:text-onion-900 bg-onion-50 hover:bg-onion-100 border border-onion-200 transition"
+                title="Open $0.50–$10.00 PSP Storefront Demo"
+              >
+                <ShoppingBag className="w-3.5 h-3.5" />
+                <span>Store Demo</span>
+              </Link>
               <Link
                 to="/psp/rails"
                 className="hidden sm:inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-slate-600 hover:text-slate-900 bg-slate-50 hover:bg-slate-100 border border-slate-200 transition"

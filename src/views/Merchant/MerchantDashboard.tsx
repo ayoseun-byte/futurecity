@@ -3,10 +3,12 @@ import type { Merchant, Paylink, SettlementMode, Transaction } from '../../types
 import { StatusBadge } from '../../components/StatusBadge'
 import { resolveMonotonicStep } from '../../services/onboardingStepService'
 import { CreatePaylinkModal } from './CreatePaylinkModal'
+import { CheckoutSnippetModal } from './CheckoutSnippetModal'
 import { OffRampModal } from './OffRampModal'
 import { TransferModal } from './TransferModal'
 import PaymentRailsCard from './PaymentRailsCard'
 import { getApiConfig, requestApi, saveApiConfig } from '../../services/apiConfig'
+import { resolveLocalCheckoutHref } from '../../services/pspConsoleService'
 import {
   ArrowRightLeft,
   Send,
@@ -36,6 +38,7 @@ import {
   Key,
   RefreshCw,
   AlertCircle,
+  Code2,
 } from 'lucide-react'
 
 interface MerchantMetrics {
@@ -275,6 +278,7 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
   onLaunchCheckout,
 }) => {
   const [isPaylinkModalOpen, setIsPaylinkModalOpen] = useState(false)
+  const [snippetPaylink, setSnippetPaylink] = useState<Paylink | null>(null)
   const [isOffRampModalOpen, setIsOffRampModalOpen] = useState(false)
   const [isTransferModalOpen, setIsTransferModalOpen] = useState(false)
   const [copiedId, setCopiedId] = useState<string | null>(null)
@@ -1790,7 +1794,20 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
                   <tr key={link.id} className="hover:bg-slate-50/60 transition">
                     <td className="px-6 py-3.5 font-medium text-slate-900">
                       <div>{link.title}</div>
-                      <span className="font-mono text-[11px] text-slate-400">{link.slug}</span>
+                      <div className="flex items-center space-x-2 mt-0.5">
+                        <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200">
+                          ID: {link.id}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => copyToClipboard(link.id, `id_${link.id}`)}
+                          className="text-slate-400 hover:text-slate-800"
+                          title="Copy Paylink ID"
+                        >
+                          {copiedId === `id_${link.id}` ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
+                        </button>
+                      </div>
+                      <span className="font-mono text-[10px] text-slate-400">{link.slug}</span>
                     </td>
                     <td className="px-6 py-3.5 font-mono font-semibold text-slate-800 tabular-nums">
                       {link.amountType === 'fixed' ? `${link.amount?.toFixed(2)} ${link.currency}` : 'Customer Defined'}
@@ -1810,14 +1827,25 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
                     <td className="px-6 py-3.5 text-slate-600 capitalize">
                       {link.settlementMode.replace('_', ' ')}
                     </td>
-                    <td className="px-6 py-3.5 text-right space-x-2">
+                    <td className="px-6 py-3.5 text-right space-x-1.5 whitespace-nowrap">
                       <button
-                        onClick={() => copyToClipboard(`${window.location.origin}${link.checkoutUrl}`, link.id)}
+                        type="button"
+                        onClick={() => setSnippetPaylink(link)}
+                        className="inline-flex items-center space-x-1 px-2.5 py-1 rounded text-slate-700 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 border border-slate-200 transition font-medium"
+                        title="Get Vanilla JS / React / Iframe embed snippet"
+                      >
+                        <Code2 className="w-3 h-3" />
+                        <span>Code Snippet</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => copyToClipboard(resolveLocalCheckoutHref(link.checkoutUrl || `/checkout/${link.slug}`), link.id)}
                         className="px-2.5 py-1 rounded text-slate-600 hover:text-slate-900 border border-slate-200 hover:bg-slate-50 transition"
                       >
                         {copiedId === link.id ? 'Copied!' : 'Copy Link'}
                       </button>
                       <button
+                        type="button"
                         onClick={() => onLaunchCheckout(link)}
                         className="px-2.5 py-1 rounded text-onion-800 hover:text-onion-900 bg-onion-50 border border-onion-200 transition font-medium"
                       >
@@ -2483,6 +2511,11 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
         onClose={() => setIsPaylinkModalOpen(false)}
         onPaylinkCreated={(link) => { void handlePaylinkCreated(link) }}
         merchantDefaultSettlement={merchant.settlementMode}
+      />
+
+      <CheckoutSnippetModal
+        paylink={snippetPaylink}
+        onClose={() => setSnippetPaylink(null)}
       />
 
       <OffRampModal

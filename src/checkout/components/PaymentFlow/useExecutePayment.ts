@@ -236,9 +236,15 @@ export const useExecutePayment = () => {
 
         assertSessionOpen();
         setPaymentStep("Awaiting wallet signature...");
-        const txBuffer = decodeBase64Tx(
-          prepareResult.payment_tx.tx as unknown as string,
-        );
+        const solTxPayload = (prepareResult.payment_tx || (prepareResult as any).paymentTx) as any;
+        const encodedSolTx =
+          typeof solTxPayload === "string"
+            ? solTxPayload
+            : solTxPayload?.serialized || solTxPayload?.tx;
+        if (!encodedSolTx) {
+          throw new Error("Solana transaction payload was missing from prepare response.");
+        }
+        const txBuffer = decodeBase64Tx(encodedSolTx);
 
         let transaction: Transaction | VersionedTransaction;
         try {
@@ -327,10 +333,13 @@ export const useExecutePayment = () => {
           payload: commonPayload,
         });
 
-        if (approvalResult.needs_approval) {
+        const approvalAny = approvalResult as any;
+        const needsApproval = approvalAny.needs_approval ?? approvalAny.needsApproval;
+        if (needsApproval) {
           assertSessionOpen();
           setPaymentStep("Approving token spend...");
-          const { tx } = approvalResult.approve_tx;
+          const rawApproveTx = approvalAny.approve_tx ?? approvalAny.approveTx;
+          const tx = rawApproveTx?.tx ?? rawApproveTx;
           const parsedChainId = parseChainId(tx.chainId);
           assertTestnetChain(parsedChainId);
 
@@ -364,9 +373,12 @@ export const useExecutePayment = () => {
 
       let finalTxHash: string = "";
 
-      if (prepareResult.payment_tx.executions) {
+      const rawPaymentTx = (prepareResult.payment_tx || (prepareResult as any).paymentTx) as any;
+      const singlePayTx = rawPaymentTx?.tx ?? (rawPaymentTx?.to ? rawPaymentTx : null);
+
+      if (rawPaymentTx?.executions) {
         // Swap Flow: Multiple executions
-        const executions = prepareResult.payment_tx.executions;
+        const executions = rawPaymentTx.executions;
         const executionHashes: { id: string; kind?: string; hash: string }[] = [];
 
         for (let i = 0; i < executions.length; i++) {
@@ -427,10 +439,10 @@ export const useExecutePayment = () => {
           const lastExec = executionHashes[executionHashes.length - 1];
           finalTxHash = lastExec.hash;
         }
-      } else if (prepareResult.payment_tx.tx) {
+      } else if (singlePayTx) {
         // Non-Swap Flow: Single transaction
         setPaymentStep("Sending payment...");
-        const payTx = prepareResult.payment_tx.tx;
+        const payTx = singlePayTx;
         const payChainId = parseChainId(payTx.chainId);
         assertTestnetChain(payChainId);
 

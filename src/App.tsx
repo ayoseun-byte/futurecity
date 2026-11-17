@@ -18,7 +18,9 @@ import { MerchantLoginView } from './views/Auth/MerchantLoginView'
 import { OrgDashboard } from './views/Organization/OrgDashboard'
 import { MerchantDetailPage } from './views/Organization/MerchantDetailPage'
 import { MerchantDashboard } from './views/Merchant/MerchantDashboard'
+import { DemoStorefrontView } from './views/Store/DemoStorefrontView'
 import { PublicCheckoutPage } from './views/Checkout/PublicCheckoutPage'
+import { resolveLocalCheckoutHref } from './services/pspConsoleService'
 import { Web3AuthShell } from './context/Web3AuthShell'
 import { OrkiAdminPortal } from './views/Admin/OrkiAdminPortal'
 import { AdminMerchantDetailPage } from './views/Admin/AdminMerchantDetailPage'
@@ -400,7 +402,10 @@ function MainRoutes() {
                   onUpdateMerchant={handleUpdateActiveMerchant}
                   onPaylinkCreated={handlePaylinkCreated}
                   onLaunchCheckout={(plk) => {
-                    window.open(`/checkout/${plk.slug}`, '_blank')
+                    const target = plk.checkoutUrl
+                      ? resolveLocalCheckoutHref(plk.checkoutUrl)
+                      : `/checkout/${plk.slug}`
+                    window.open(target, '_blank')
                   }}
                 />
               ) : (
@@ -549,7 +554,15 @@ function MainRoutes() {
         }
       />
 
-      {/* Standalone Hosted Customer Checkout */}
+      {/* Standalone Hosted Customer Checkout & Demo E-Commerce Storefront */}
+      <Route
+        path="/store"
+        element={<DemoStorefrontView />}
+      />
+      <Route
+        path="/store/:merchantExternalId"
+        element={<DemoStorefrontView />}
+      />
       <Route
         path="/checkout/:slug"
         element={<PublicCheckoutPage mode="auto" />}

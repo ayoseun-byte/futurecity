@@ -1,6 +1,12 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { X, Link2 } from 'lucide-react'
 import type { Paylink, SettlementMode } from '../../types'
+import {
+  fetchPublicChains,
+  fetchPublicTokens,
+  type SupportedChain,
+  type SupportedToken,
+} from '../../services/adminService'
 
 interface CreatePaylinkModalProps {
   isOpen: boolean
@@ -18,10 +24,36 @@ export const CreatePaylinkModal: React.FC<CreatePaylinkModalProps> = ({
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [amountType, setAmountType] = useState<'fixed' | 'open'>('fixed')
-  const [amount, setAmount] = useState('250')
-  const [currency, setCurrency] = useState<'USDC' | 'USDT'>('USDC')
+  const [amount, setAmount] = useState('5.00')
+  const [currency, setCurrency] = useState<string>('USDC')
   const [allowedChains, setAllowedChains] = useState<string[]>(['base', 'solana'])
   const [settlementMode, setSettlementMode] = useState<SettlementMode>(merchantDefaultSettlement)
+  const [chainsCatalog, setChainsCatalog] = useState<SupportedChain[]>([
+    { id: 'base', chain_family: 'evm', name: 'Base', rpc: '', chain_id: '84532', explorer: '', is_active: true },
+    { id: 'solana', chain_family: 'solana', name: 'Solana', rpc: '', chain_id: 'devnet', explorer: '', is_active: true },
+  ])
+  const [tokenSymbols, setTokenSymbols] = useState<string[]>(['USDC', 'USDT'])
+
+  useEffect(() => {
+    if (!isOpen) return
+    let active = true
+    Promise.all([
+      fetchPublicChains().catch(() => [] as SupportedChain[]),
+      fetchPublicTokens().catch(() => [] as SupportedToken[]),
+    ]).then(([chains, tokens]) => {
+      if (!active) return
+      if (chains.length > 0) {
+        setChainsCatalog(chains)
+      }
+      if (tokens.length > 0) {
+        const syms = Array.from(new Set(tokens.map((t) => t.symbol.toUpperCase())))
+        if (syms.length > 0) setTokenSymbols(syms)
+      }
+    })
+    return () => {
+      active = false
+    }
+  }, [isOpen])
 
   if (!isOpen) return null
 
@@ -46,7 +78,7 @@ export const CreatePaylinkModal: React.FC<CreatePaylinkModalProps> = ({
       description: description || undefined,
       amountType: amountType,
       amount: amountType === 'fixed' ? parseFloat(amount) : undefined,
-      currency: currency,
+      currency: currency as Paylink['currency'],
       settlementMode: settlementMode,
       allowedChains: allowedChains,
       status: 'active',
@@ -132,7 +164,7 @@ export const CreatePaylinkModal: React.FC<CreatePaylinkModalProps> = ({
                 <input
                   type="number"
                   required
-                  min="1"
+                  min="0.01"
                   step="any"
                   value={amount}
                   onChange={(e) => setAmount(e.target.value)}
@@ -143,11 +175,14 @@ export const CreatePaylinkModal: React.FC<CreatePaylinkModalProps> = ({
                 <label className="font-semibold text-slate-700 block mb-1">Token</label>
                 <select
                   value={currency}
-                  onChange={(e) => setCurrency(e.target.value as 'USDC' | 'USDT')}
+                  onChange={(e) => setCurrency(e.target.value)}
                   className="w-full px-3 py-2 border border-slate-300 rounded-xl font-bold text-slate-900 focus:ring-2 focus:ring-onion-500 focus:outline-none"
                 >
-                  <option value="USDC">USDC</option>
-                  <option value="USDT">USDT</option>
+                  {tokenSymbols.map((sym) => (
+                    <option key={sym} value={sym}>
+                      {sym}
+                    </option>
+                  ))}
                 </select>
               </div>
             </div>
@@ -156,30 +191,26 @@ export const CreatePaylinkModal: React.FC<CreatePaylinkModalProps> = ({
           <div>
             <label className="font-semibold text-slate-700 block mb-1">Accepted Payment Chains</label>
             <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => toggleChain('base')}
-                className={`py-2 px-3 rounded-xl border font-bold text-xs flex items-center justify-center space-x-1 transition ${
-                  allowedChains.includes('base')
-                    ? 'border-blue-500 bg-blue-50 text-blue-800 ring-2 ring-blue-400'
-                    : 'border-slate-200 text-slate-400 hover:bg-slate-50'
-                }`}
-              >
-                <span>Base (EVM)</span>
-                {allowedChains.includes('base') && <span>✓</span>}
-              </button>
-              <button
-                type="button"
-                onClick={() => toggleChain('solana')}
-                className={`py-2 px-3 rounded-xl border font-bold text-xs flex items-center justify-center space-x-1 transition ${
-                  allowedChains.includes('solana')
-                    ? 'border-purple-500 bg-purple-50 text-purple-800 ring-2 ring-purple-400'
-                    : 'border-slate-200 text-slate-400 hover:bg-slate-50'
-                }`}
-              >
-                <span>Solana (Raydium)</span>
-                {allowedChains.includes('solana') && <span>✓</span>}
-              </button>
+              {chainsCatalog.map((chain) => {
+                const selected = allowedChains.includes(chain.id)
+                return (
+                  <button
+                    key={chain.id}
+                    type="button"
+                    onClick={() => toggleChain(chain.id)}
+                    className={`py-2 px-3 rounded-xl border font-bold text-xs flex items-center justify-center space-x-1 transition ${
+                      selected
+                        ? 'border-onion bg-onion-50 text-onion-900 ring-2 ring-onion-400'
+                        : 'border-slate-200 text-slate-400 hover:bg-slate-50'
+                    }`}
+                  >
+                    <span>
+                      {chain.name} ({chain.chain_family.toUpperCase()})
+                    </span>
+                    {selected && <span>✓</span>}
+                  </button>
+                )
+              })}
             </div>
           </div>
 
