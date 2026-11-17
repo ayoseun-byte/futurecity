@@ -154,7 +154,26 @@ export interface AdminAuditLogRow {
   targetId: string
   targetName: string
   details: string
+  metadata?: Record<string, unknown> | null
   timestamp: string
+}
+
+export interface OnChainRetryRecord {
+  id: string
+  entityType: 'psp' | 'merchant' | string
+  entityId: string
+  organizationId?: string | null
+  targetName?: string
+  network: string
+  payload: Record<string, unknown>
+  attempts: number
+  maxAttempts: number
+  lastError: string
+  status: string
+  nextRetryAt?: number
+  alertedAt?: string
+  createdAt?: string
+  updatedAt?: string
 }
 
 export interface AdminUbo {
@@ -869,4 +888,31 @@ export async function fetchPublicTokens(chain?: string): Promise<SupportedToken[
     'none'
   )
   return res.data || []
+}
+
+export async function fetchAdminOnChainRetries(status?: string): Promise<OnChainRetryRecord[]> {
+  const config = getApiConfig()
+  if (!config.adminKey) return []
+  const query = status ? `?status=${encodeURIComponent(status)}` : ''
+  const res = await requestApi<{ retries: OnChainRetryRecord[]; count: number }>(
+    config,
+    'GET',
+    `/api/v1/admin/onchain-retries${query}`,
+    undefined,
+    'admin'
+  )
+  return res.retries || []
+}
+
+export async function retryAdminOnChainRegistration(
+  id: string
+): Promise<{ status: string; retryId: string; chainEnabled?: boolean; error?: string }> {
+  const config = getApiConfig()
+  return requestApi<{ status: string; retryId: string; chainEnabled?: boolean; error?: string }>(
+    config,
+    'POST',
+    `/api/v1/admin/onchain-retries/${encodeURIComponent(id)}/retry`,
+    {},
+    'admin'
+  )
 }

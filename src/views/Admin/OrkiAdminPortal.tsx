@@ -12,6 +12,8 @@ import {
   fetchAdminFeeChangeRequests,
   reviewAdminFeeChangeRequest,
   fetchAdminAuditLogs,
+  fetchAdminOnChainRetries,
+  retryAdminOnChainRegistration,
   fetchAdminUsers,
   createAdminUser,
   generateAdminUserKey,
@@ -26,6 +28,7 @@ import {
   type AdminMerchantRow,
   type AdminTransactionRow,
   type AdminAuditLogRow,
+  type OnChainRetryRecord,
   type FeeChangeRequest,
   type AdminUser,
   type AdminSession,
@@ -109,6 +112,8 @@ export const OrkiAdminPortal: React.FC<OrkiAdminPortalProps> = ({
 
   // Audit Logs State
   const [auditLogs, setAuditLogs] = useState<AdminAuditLogRow[]>([])
+  const [onChainRetries, setOnChainRetries] = useState<OnChainRetryRecord[]>([])
+  const [retryingId, setRetryingId] = useState<string | null>(null)
   const [auditLoading, setAuditLoading] = useState(false)
   const [auditCategoryFilter, setAuditCategoryFilter] = useState('all')
 
@@ -332,6 +337,39 @@ export const OrkiAdminPortal: React.FC<OrkiAdminPortalProps> = ({
   }, [loadInitialData])
 
   // 2. Tab-specific lazy loaders
+  const loadAuditAndRetries = useCallback(async () => {
+    setAuditLoading(true)
+    try {
+      const [auditRes, retries] = await Promise.all([
+        fetchAdminAuditLogs(auditCategoryFilter),
+        fetchAdminOnChainRetries().catch(() => []),
+      ])
+      setAuditLogs(auditRes.data)
+      setOnChainRetries(retries)
+    } catch (err) {
+      setApiError(err instanceof Error ? err.message : 'Failed to load audit logs.')
+    } finally {
+      setAuditLoading(false)
+    }
+  }, [auditCategoryFilter])
+
+  const handleManualOnChainRetry = async (retryIdOrAuditId: string) => {
+    setRetryingId(retryIdOrAuditId)
+    setApiError(null)
+    try {
+      const outcome = await retryAdminOnChainRegistration(retryIdOrAuditId)
+      setApiSuccess(
+        `On-chain registration retry succeeded (${outcome.retryId}); chain re-enabled.`
+      )
+      await loadAuditAndRetries()
+    } catch (err) {
+      setApiError(err instanceof Error ? err.message : 'Manual on-chain registration retry failed.')
+      await loadAuditAndRetries()
+    } finally {
+      setRetryingId(null)
+    }
+  }
+
   useEffect(() => {
     if (activeTab === 'merchants') {
       setMerchantsLoading(true)
@@ -346,11 +384,7 @@ export const OrkiAdminPortal: React.FC<OrkiAdminPortalProps> = ({
         .catch((err) => setApiError(err instanceof Error ? err.message : 'Failed to load transactions.'))
         .finally(() => setTransactionsLoading(false))
     } else if (activeTab === 'audit') {
-      setAuditLoading(true)
-      fetchAdminAuditLogs(auditCategoryFilter)
-        .then((res) => setAuditLogs(res.data))
-        .catch((err) => setApiError(err instanceof Error ? err.message : 'Failed to load audit logs.'))
-        .finally(() => setAuditLoading(false))
+      void loadAuditAndRetries()
     } else if (activeTab === 'chains') {
       void loadChainsAndTokens()
     } else if (activeTab === 'users') {
@@ -1434,6 +1468,8 @@ export const OrkiAdminPortal: React.FC<OrkiAdminPortalProps> = ({
                 className="px-3 py-1.5 border border-slate-200 rounded-xl text-xs bg-white text-slate-700"
               >
                 <option value="all">All Audit Categories</option>
+                <option value="ALERT">Alerts (Failed Registrations)</option>
+                <option value="ONCHAIN_REGISTRATION">On-Chain Registration Recovery</option>
                 <option value="STAGE_7_APPROVAL">Stage 7 Approvals</option>
                 <option value="RATE_GOVERNANCE">Rate Governance</option>
                 <option value="SECURITY">Security & Credentials</option>
@@ -1445,6 +1481,67 @@ export const OrkiAdminPortal: React.FC<OrkiAdminPortalProps> = ({
             </span>
           </div>
 
+          {onChainRetries.length > 0 && (
+            <div className="bg-rose-50/70 rounded-2xl border border-rose-200 p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="text-xs font-bold text-rose-900">
+                    Active On-Chain Registration Retries & Alerts ({onChainRetries.length})
+                  </h4>
+                  <p className="text-[11px] text-rose-700">
+                    Failing chains are immediately disabled for the merchant/PSP while retrying in Redis (max 20 attempts).
+                  </p>
+                </div>
+              </div>
+              <div className="space-y-2">
+                {onChainRetries.map((rec) => (
+                  <div
+                    key={rec.id}
+                    className="bg-white rounded-xl border border-rose-200 p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs"
+                  >
+                    <div className="space-y-1 min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span
+                          className={`font-mono font-bold px-2 py-0.5 rounded text-[10px] uppercase ${
+                            rec.status === 'alerted'
+                              ? 'bg-rose-100 text-rose-800'
+                              : 'bg-amber-100 text-amber-800'
+                          }`}
+                        >
+                          {rec.status === 'alerted' ? 'ALERT · MAX RETRIES' : 'RETRYING'}
+                        </span>
+                        <span className="font-bold text-slate-900">
+                          {rec.entityType.toUpperCase()} · {rec.targetName || rec.entityId}
+                        </span>
+                        <span className="font-mono text-[10px] bg-slate-100 text-slate-700 px-2 py-0.5 rounded">
+                          chain: {rec.network} (disabled)
+                        </span>
+                        <span className="text-[11px] text-slate-500">
+                          Attempts: {rec.attempts}/{rec.maxAttempts}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-rose-700 break-words">{rec.lastError}</p>
+                      <details className="text-[10px] text-slate-500">
+                        <summary className="cursor-pointer hover:text-slate-700">Retry Payload Data</summary>
+                        <pre className="mt-1 p-2 bg-slate-50 border border-slate-200 rounded overflow-x-auto">
+                          {JSON.stringify(rec.payload, null, 2)}
+                        </pre>
+                      </details>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={retryingId === rec.id}
+                      onClick={() => void handleManualOnChainRetry(rec.id)}
+                      className="px-3 py-1.5 rounded-lg bg-slate-900 text-white text-xs font-semibold hover:bg-slate-800 disabled:opacity-50 flex-shrink-0"
+                    >
+                      {retryingId === rec.id ? 'Retrying...' : 'Retry Registration'}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
             <div className="divide-y divide-slate-100">
               {auditLoading ? (
@@ -1452,26 +1549,62 @@ export const OrkiAdminPortal: React.FC<OrkiAdminPortalProps> = ({
               ) : auditLogs.length === 0 ? (
                 <div className="py-12 text-center text-slate-400 text-xs">No audit events recorded yet.</div>
               ) : (
-                auditLogs.map((log) => (
-                  <div key={log.id} className="p-4 hover:bg-slate-50/60 transition flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-                    <div className="space-y-1">
-                      <div className="flex items-center space-x-2">
-                        <span className="font-mono font-bold text-slate-900 bg-slate-100 px-2 py-0.5 rounded text-[10px]">
-                          {log.action}
-                        </span>
-                        <span className="text-slate-400">·</span>
-                        <span className="font-semibold text-slate-700">{log.actor}</span>
-                        <span className="text-slate-400">→</span>
-                        <span className="font-bold text-onion">{log.targetName}</span>
+                auditLogs.map((log) => {
+                  const meta = log.metadata && typeof log.metadata === 'object' ? log.metadata : null
+                  const canRetry = Boolean(meta?.canAdminRetry)
+                  const retryTargetId = typeof meta?.retryId === 'string' && meta.retryId ? meta.retryId : log.id
+                  return (
+                    <div key={log.id} className="p-4 hover:bg-slate-50/60 transition flex flex-col sm:flex-row sm:items-start justify-between gap-3 text-xs">
+                      <div className="space-y-1 min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span
+                            className={`font-mono font-bold px-2 py-0.5 rounded text-[10px] ${
+                              log.category === 'ALERT'
+                                ? 'bg-rose-100 text-rose-800'
+                                : 'bg-slate-100 text-slate-900'
+                            }`}
+                          >
+                            {log.action}
+                          </span>
+                          <span className="text-slate-400">·</span>
+                          <span className="font-semibold text-slate-700">{log.actor}</span>
+                          <span className="text-slate-400">→</span>
+                          <span className="font-bold text-onion">{log.targetName}</span>
+                          {typeof meta?.network === 'string' && (
+                            <span className="font-mono text-[10px] bg-slate-100 text-slate-700 px-2 py-0.5 rounded">
+                              {meta.network}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-slate-600 text-[11px]">{log.details}</p>
+                        {meta && (
+                          <details className="text-[10px] text-slate-500">
+                            <summary className="cursor-pointer hover:text-slate-700">Event Metadata</summary>
+                            <pre className="mt-1 p-2 bg-slate-50 border border-slate-200 rounded overflow-x-auto">
+                              {JSON.stringify(meta, null, 2)}
+                            </pre>
+                          </details>
+                        )}
                       </div>
-                      <p className="text-slate-600 text-[11px]">{log.details}</p>
-                    </div>
 
-                    <div className="text-right flex-shrink-0 text-[11px] text-slate-400">
-                      {new Date(log.timestamp).toLocaleString()}
+                      <div className="flex sm:flex-col items-end gap-2 flex-shrink-0">
+                        <div className="text-right text-[11px] text-slate-400">
+                          {new Date(log.timestamp).toLocaleString()}
+                        </div>
+                        {canRetry && (
+                          <button
+                            type="button"
+                            disabled={retryingId === retryTargetId}
+                            onClick={() => void handleManualOnChainRetry(retryTargetId)}
+                            className="px-3 py-1 rounded-lg bg-rose-600 text-white text-[11px] font-semibold hover:bg-rose-700 disabled:opacity-50"
+                          >
+                            {retryingId === retryTargetId ? 'Retrying...' : 'Retry Registration'}
+                          </button>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                ))
+                  )
+                })
               )}
             </div>
           </div>

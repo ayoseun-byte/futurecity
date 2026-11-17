@@ -49,6 +49,14 @@ type OnboardingState = {
   activatedAt?: string | null
 }
 
+type ChainRegistrationResult = {
+  status?: string
+  txHash?: string | null
+  signature?: string | null
+  message?: string | null
+  error?: string | null
+}
+
 type WalletActivationResponse = {
   status: string
   merchantStatus?: string
@@ -60,6 +68,8 @@ type WalletActivationResponse = {
     solana?: string | null
     evmSigner?: string
   }
+  onChainRegistration?: ChainRegistrationResult | null
+  solanaOnChainRegistration?: ChainRegistrationResult | null
   message?: string
 }
 
@@ -1002,69 +1012,176 @@ function WalletSetup({
 
       {/* Activation Result */}
       {activationResult ? (
-        <div className="space-y-4 rounded-2xl border border-emerald-800/70 bg-emerald-950/30 p-5 text-sm text-emerald-100">
-          <div className="flex items-center gap-2 font-semibold text-emerald-300">
-            <Check className="h-5 w-5" />
-            <span>
-              Merchant Wallets & Passkey Verified — Account Active
-            </span>
-          </div>
+        (() => {
+          const baseStatus = activationResult.onChainRegistration?.status?.toLowerCase()
+          const solStatus = activationResult.solanaOnChainRegistration?.status?.toLowerCase()
+          const isFailedLike = (s?: string) =>
+            Boolean(s && ['failed', 'error', 'prepared', 'pending_retry'].includes(s))
+          const hasPartialChainFailure =
+            isFailedLike(baseStatus) ||
+            isFailedLike(solStatus) ||
+            Boolean(activationResult.onChainRegistration?.error) ||
+            Boolean(activationResult.solanaOnChainRegistration?.error)
 
-          <p className="text-xs leading-5 text-emerald-100/80">
-            Your ZeroDev EVM Smart Account{' '}
-            {solanaAddress ? 'and Solana wallet are' : 'is'} now bound
-            to your merchant profile and ready for atomic split settlements.
-            Your PSP has been notified via signed webhook that your Orki rail is active.
-          </p>
+          return (
+            <div
+              className={`space-y-4 rounded-2xl border p-5 text-sm ${
+                hasPartialChainFailure
+                  ? 'border-amber-700/70 bg-amber-950/30 text-amber-100'
+                  : 'border-emerald-800/70 bg-emerald-950/30 text-emerald-100'
+              }`}
+            >
+              <div
+                className={`flex items-center gap-2 font-semibold ${
+                  hasPartialChainFailure ? 'text-amber-300' : 'text-emerald-300'
+                }`}
+              >
+                {hasPartialChainFailure ? (
+                  <AlertTriangle className="h-5 w-5 shrink-0" />
+                ) : (
+                  <Check className="h-5 w-5 shrink-0" />
+                )}
+                <span>
+                  {hasPartialChainFailure
+                    ? 'Wallets Verified — One Chain Registration Needs Retry'
+                    : 'Merchant Wallets & Passkey Verified — Account Active'}
+                </span>
+              </div>
 
-          {recoveryVaultUrl && (
-            <div className="rounded-xl border border-emerald-800/50 bg-slate-950/60 p-3 text-xs">
-              <p className="font-semibold text-emerald-200">
-                Sovereign Recovery Vault Link
+              <p className="text-xs leading-5 opacity-85">
+                {activationResult.message ||
+                  `Your ZeroDev EVM Smart Account ${
+                    solanaAddress ? 'and Solana wallet are' : 'is'
+                  } now bound to your merchant profile and ready for atomic split settlements.`}
               </p>
 
-              <p className="mt-1 text-slate-400">
-                Save this link outside Orki. Because your EVM wallet is a
-                ZeroDev on-chain smart account, you always retain sovereign recovery access:
-              </p>
+              {(activationResult.onChainRegistration || activationResult.solanaOnChainRegistration) && (
+                <div className="space-y-1.5 rounded-xl border border-slate-800/80 bg-slate-950/60 p-3 text-xs">
+                  {activationResult.onChainRegistration && (
+                    <div className="flex items-start justify-between gap-2">
+                      <span className="text-slate-400">Base (EVM) Registration</span>
+                      <span className="text-right font-mono">
+                        <span
+                          className={
+                            isFailedLike(baseStatus) ? 'text-amber-300' : 'text-emerald-300'
+                          }
+                        >
+                          {activationResult.onChainRegistration.status || 'unknown'}
+                        </span>
+                        {(activationResult.onChainRegistration.error ||
+                          activationResult.onChainRegistration.message) && (
+                          <span className="block text-[11px] font-sans text-slate-400">
+                            {activationResult.onChainRegistration.error ||
+                              activationResult.onChainRegistration.message}
+                          </span>
+                        )}
+                      </span>
+                    </div>
+                  )}
+                  {activationResult.solanaOnChainRegistration && (
+                    <div className="flex items-start justify-between gap-2">
+                      <span className="text-slate-400">Solana Registration</span>
+                      <span className="text-right font-mono">
+                        <span
+                          className={
+                            isFailedLike(solStatus) ? 'text-amber-300' : 'text-emerald-300'
+                          }
+                        >
+                          {activationResult.solanaOnChainRegistration.status || 'unknown'}
+                        </span>
+                        {(activationResult.solanaOnChainRegistration.error ||
+                          activationResult.solanaOnChainRegistration.message) && (
+                          <span className="block text-[11px] font-sans text-slate-400">
+                            {activationResult.solanaOnChainRegistration.error ||
+                              activationResult.solanaOnChainRegistration.message}
+                          </span>
+                        )}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
 
-              <div className="mt-2 flex items-center justify-between gap-2 rounded-lg bg-slate-900 px-2.5 py-1.5 font-mono text-[11px] text-slate-200">
-                <span className="truncate">{recoveryVaultUrl}</span>
+              {recoveryVaultUrl && (
+                <div className="rounded-xl border border-emerald-800/50 bg-slate-950/60 p-3 text-xs">
+                  <p className="font-semibold text-emerald-200">
+                    Sovereign Recovery Vault Link
+                  </p>
 
-                <div className="flex shrink-0 items-center gap-1.5">
+                  <p className="mt-1 text-slate-400">
+                    Save this link outside Orki. Because your EVM wallet is a
+                    ZeroDev on-chain smart account, you always retain sovereign recovery access:
+                  </p>
+
+                  <div className="mt-2 flex items-center justify-between gap-2 rounded-lg bg-slate-900 px-2.5 py-1.5 font-mono text-[11px] text-slate-200">
+                    <span className="truncate">{recoveryVaultUrl}</span>
+
+                    <div className="flex shrink-0 items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          copyText(recoveryVaultUrl, 'recovery')
+                        }
+                        className="rounded px-1.5 py-0.5 text-slate-300 hover:bg-slate-800 hover:text-white"
+                      >
+                        {copiedKey === 'recovery' ? 'Copied' : 'Copy'}
+                      </button>
+
+                      <a
+                        href={recoveryVaultUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-onion-300 hover:underline"
+                      >
+                        <ExternalLink className="h-3 w-3" />
+                      </a>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div className="space-y-2 pt-1">
+                {isConnected ? (
                   <button
                     type="button"
-                    onClick={() =>
-                      copyText(recoveryVaultUrl, 'recovery')
-                    }
-                    className="rounded px-1.5 py-0.5 text-slate-300 hover:bg-slate-800 hover:text-white"
+                    onClick={() => void handleSignAndActivate()}
+                    disabled={!canActivate || saving}
+                    className={`flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-40 ${
+                      hasPartialChainFailure
+                        ? 'bg-amber-600 text-white hover:bg-amber-500'
+                        : 'border border-slate-700 bg-slate-900 text-slate-200 hover:bg-slate-800'
+                    }`}
                   >
-                    {copiedKey === 'recovery' ? 'Copied' : 'Copy'}
+                    {saving ? (
+                      <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Fingerprint className="h-3.5 w-3.5" />
+                    )}
+                    <span>
+                      {saving
+                        ? 'Re-sending on-chain registration…'
+                        : hasPartialChainFailure
+                          ? 'Retry Merchant On-Chain Registration'
+                          : 'Re-run On-Chain Registration'}
+                    </span>
                   </button>
+                ) : (
+                  <p className="text-center text-[11px] text-slate-400">
+                    Connect Web3Auth above if you need to re-run on-chain merchant registration.
+                  </p>
+                )}
 
-                  <a
-                    href={recoveryVaultUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 text-onion-300 hover:underline"
-                  >
-                    <ExternalLink className="h-3 w-3" />
-                  </a>
-                </div>
+                <Link
+                  to="/merchant"
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-500"
+                >
+                  <span>Return to Merchant Dashboard</span>
+                  <ArrowRight className="h-4 w-4" />
+                </Link>
               </div>
             </div>
-          )}
-
-          <div className="pt-1">
-            <Link
-              to="/merchant"
-              className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-500"
-            >
-              <span>Return to Merchant Dashboard</span>
-              <ArrowRight className="h-4 w-4" />
-            </Link>
-          </div>
-        </div>
+          )
+        })()
       ) : (
         isConnected && (
           <button
