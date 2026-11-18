@@ -16,7 +16,6 @@ import {
 } from 'lucide-react'
 import { AUTH_CONNECTION, WALLET_CONNECTORS } from '@web3auth/modal'
 import {
-  useWeb3Auth,
   useWeb3AuthConnect,
   useWeb3AuthDisconnect,
   useWeb3AuthUser,
@@ -209,8 +208,8 @@ function SetupShell({ children }: { children: React.ReactNode }) {
               <LockKeyhole className="h-5 w-5" />
             </div>
             <div>
-              <p className="text-sm font-semibold text-white">Orki Non-Custodial Wallet & Passkey Setup</p>
-              <p className="text-xs text-slate-400">Web3Auth MPC + ZeroDev Kernel v3.3 Smart Account (Base & Solana)</p>
+              <p className="text-sm font-semibold text-white">Orki Account & Passkey Setup</p>
+              <p className="text-xs text-slate-400">Non-custodial multi-chain settlement accounts (Base & Solana)</p>
             </div>
           </div>
           <Link
@@ -223,7 +222,7 @@ function SetupShell({ children }: { children: React.ReactNode }) {
         {children}
       </section>
       <p className="mx-auto mt-5 max-w-xl text-center text-xs text-slate-500">
-        Your onboarding session is private. Wallets are derived client-side using your merchant email and passkey MFA.
+        Your setup session is encrypted and private. Settlement accounts are derived under your verified business email and device passkey.
       </p>
     </main>
   )
@@ -299,7 +298,7 @@ export const PasskeyCeremonyPage: React.FC = () => {
       <SetupShell>
         <MessagePanel
           title="Setup is not configured"
-          message="The FutureCity app needs its PSP backend URL configured before it can continue."
+          message="This setup portal is temporarily unavailable because the service endpoint is not configured. Please contact support."
         />
       </SetupShell>
     )
@@ -308,8 +307,8 @@ export const PasskeyCeremonyPage: React.FC = () => {
     return (
       <SetupShell>
         <MessagePanel
-          title="Wallet setup is not configured"
-          message="This deployment is missing its Web3Auth client ID (VITE_WEB3AUTH_CLIENT_ID). Contact your PSP to continue."
+          title="Wallet setup unavailable"
+          message="Wallet authentication is currently unavailable for this environment. Please contact your payment provider."
         />
       </SetupShell>
     )
@@ -451,14 +450,6 @@ function WalletSetup({
     isConnected,
   } = useWeb3AuthConnect()
 
-  // Web3Auth v11: obtain the provider from connection.
-  const {
-    web3Auth,
-    connection,
-  } = useWeb3Auth()
-
-  const ethereumProvider = connection?.ethereumProvider
-
   const {
     disconnect,
     loading: disconnecting,
@@ -513,39 +504,14 @@ function WalletSetup({
     onboarding.solanaWalletAddress ||
     undefined
 
-  // Fetch Web3Auth user information after authentication.
+  // Fetch user profile information after authentication.
   useEffect(() => {
     if (isConnected && !userInfo) {
-      void getUserInfo().catch((reason) => {
-        console.error('Could not retrieve Web3Auth user info:', reason)
+      void getUserInfo().catch(() => {
+        // Ignore transient profile hydration failure before session completes.
       })
     }
   }, [isConnected, userInfo, getUserInfo])
-
-  // Temporary provider diagnostics.
-  useEffect(() => {
-    if (!isConnected) return
-
-    console.log('Web3Auth provider diagnostics:', {
-      status: web3Auth?.status,
-      connected: isConnected,
-      connectionAvailable: Boolean(connection),
-      ethereumProviderAvailable: Boolean(ethereumProvider),
-      ethereumProviderType: typeof ethereumProvider,
-      requestType: typeof (
-        ethereumProvider as {
-          request?: unknown
-        } | undefined
-      )?.request,
-      evmSignerAddress,
-    })
-  }, [
-    isConnected,
-    web3Auth,
-    connection,
-    ethereumProvider,
-    evmSignerAddress,
-  ])
 
   const passkeyName = (
     registeredEmail ||
@@ -554,13 +520,13 @@ function WalletSetup({
     'Orki Merchant Passkey'
   ).trim()
 
-  // Create or load the ZeroDev Kernel passkey smart account.
+  // Create or load the ZeroDev passkey smart account.
   const enrollPasskeyAccount = async (
     mode: WebAuthnMode = WebAuthnMode.Register,
   ): Promise<{ address: string; account: any } | null> => {
     if (!zeroDevProjectId) {
       setZeroDevError(
-        'VITE_ZERODEV_PROJECT_ID is not configured in your environment.',
+        'Passkey wallet service is currently unavailable. Please contact support.',
       )
       return null
     }
@@ -665,11 +631,10 @@ function WalletSetup({
         return
       }
 
-      // 3. Require the actual EVM signer address.
-      // Do not substitute the Kernel smart account address here.
+      // 3. Require the signing key address.
       if (!evmSignerAddress) {
         setZeroDevError(
-          'Web3Auth is connected, but the EVM signer address is not available yet. Please wait and retry.',
+          'Your sign-in session is still initializing your signing key. Please wait a moment and retry.',
         )
         return
       }
@@ -766,24 +731,25 @@ function WalletSetup({
     <div className="space-y-6">
       <div>
         <p className="text-xs font-semibold uppercase tracking-[0.14em] text-onion-300">
-          Merchant Self-Custody Ceremony
+          Account & Passkey Setup
         </p>
 
         <h1 className="mt-1 text-xl font-bold text-white">
-          Set up wallets for{' '}
+          Set up settlement accounts for{' '}
           {onboarding.legalBusinessName || 'Your business'}
         </h1>
 
         <p className="mt-2 text-sm leading-6 text-slate-400">
-          Authenticate with your merchant email to derive your non-custodial{' '}
+          Authenticate with your authorized business email and enroll a device passkey
+          to activate your non-custodial{' '}
           <strong className="font-semibold text-slate-200">
-            ZeroDev ERC-4337 Smart Account on Base
+            Base
           </strong>{' '}
           and{' '}
           <strong className="font-semibold text-slate-200">
-            Solana Embedded Wallet
-          </strong>
-          , secured by mandatory WebAuthn Passkey MFA.
+            Solana
+          </strong>{' '}
+          settlement accounts.
         </p>
       </div>
 
@@ -799,7 +765,7 @@ function WalletSetup({
 
             {registeredEmail ? (
               <p className="mt-1 text-slate-400">
-                Your wallet will be bound to{' '}
+                Your wallets will be bound to{' '}
                 <span className="font-mono font-semibold text-white">
                   {registeredEmail}
                 </span>{' '}
@@ -811,7 +777,7 @@ function WalletSetup({
                   htmlFor="merchant-setup-email"
                   className="block text-slate-400"
                 >
-                  Enter your authorised merchant email to initialize Web3Auth:
+                  Enter your authorized business email to continue:
                 </label>
 
                 <input
@@ -843,10 +809,10 @@ function WalletSetup({
             )}
 
             {connecting
-              ? 'Authenticating with Web3Auth…'
+              ? 'Signing you in…'
               : registeredEmail
-                ? `Continue with ${registeredEmail} + Passkey`
-                : 'Connect with Email & Passkey'}
+                ? `Continue with ${registeredEmail}`
+                : 'Continue with Email'}
           </button>
 
           <button
@@ -860,7 +826,7 @@ function WalletSetup({
           >
             <Wallet className="h-3.5 w-3.5" />
             <span>
-              Open Web3Auth Modal (Google / Apple with your merchant email)
+              Continue with Google or Apple using your business email
             </span>
           </button>
         </div>
@@ -888,8 +854,8 @@ function WalletSetup({
                 }`}
               >
                 {passkeyEnrolled
-                  ? 'Hardware Passkey Active'
-                  : 'Signer Authenticated'}
+                  ? 'Passkey Active'
+                  : 'Identity Verified'}
               </span>
             </div>
 
@@ -928,16 +894,16 @@ function WalletSetup({
             </div>
           )}
 
-          {/* Derived Wallet Addresses */}
+          {/* Settlement Addresses (ZeroDev Base & Solana only) + 3-dot address readiness indicator */}
           <div className="space-y-3 rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
             <AddressRow
-              label="EVM Smart Account (ZeroDev Kernel v3.3 · ERC-4337)"
-              badge="Primary EVM Settlement"
+              label="ZeroDev Address (Base)"
+              badge="Primary Base Settlement"
               value={
                 enrollingPasskey
-                  ? 'Registering passkey and creating Kernel Smart Account…'
+                  ? 'Creating your Base smart account…'
                   : zeroDevSmartAccount ||
-                    'Created when you enroll your passkey'
+                    'Generated when you enroll your passkey'
               }
               loading={enrollingPasskey}
               onCopy={
@@ -950,16 +916,16 @@ function WalletSetup({
 
             <div className="border-t border-slate-800/80 pt-3">
               <AddressRow
-                label="Solana Embedded Wallet (Web3Auth Ed25519)"
+                label="Solana Address"
                 badge={
                   solanaAddress
                     ? 'Primary Solana Settlement'
-                    : 'Required / Multi-Chain'
+                    : 'Generating'
                 }
                 value={
                   solanaAddress ||
                   (isConnected
-                    ? 'Loading Solana address…'
+                    ? 'Generating Solana address…'
                     : 'Not derived')
                 }
                 loading={isConnected && !solanaAddress}
@@ -972,22 +938,41 @@ function WalletSetup({
               />
             </div>
 
-            <div className="border-t border-slate-800/80 pt-3">
-              <AddressRow
-                label="Web3Auth Signer (attestation)"
-                badge="Attestation Signer"
-                value={
-                  evmSignerAddress ||
-                  'No EVM signer returned'
-                }
-                onCopy={
-                  evmSignerAddress
-                    ? () => copyText(evmSignerAddress, 'eoa')
-                    : undefined
-                }
-                copied={copiedKey === 'eoa'}
-              />
-            </div>
+            {(() => {
+              const readiness = [
+                { key: 'zerodev', label: 'ZeroDev', ready: Boolean(zeroDevSmartAccount) },
+                { key: 'solana', label: 'Solana', ready: Boolean(solanaAddress) },
+                { key: 'signer', label: 'Signer', ready: Boolean(evmSignerAddress) },
+              ]
+              const readyCount = readiness.filter((item) => item.ready).length
+              return (
+                <div className="flex items-center justify-between border-t border-slate-800/80 pt-2.5">
+                  <div className="flex items-center gap-2" aria-label={`${readyCount} of 3 addresses generated`}>
+                    <div className="flex items-center gap-1.5">
+                      {readiness.map((item) => (
+                        <span
+                          key={item.key}
+                          title={`${item.label}: ${item.ready ? 'Generated' : 'Pending'}`}
+                          className={`h-2 w-2 rounded-full transition-colors ${
+                            item.ready
+                              ? 'bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.7)]'
+                              : 'bg-slate-700'
+                          }`}
+                        />
+                      ))}
+                    </div>
+                    <span className="text-[11px] font-medium text-slate-400">
+                      {readyCount === 3
+                        ? 'All 3 wallet addresses generated'
+                        : `${readyCount} of 3 addresses generated`}
+                    </span>
+                  </div>
+                  <span className="font-mono text-[10px] text-slate-500">
+                    {readyCount}/3
+                  </span>
+                </div>
+              )
+            })()}
           </div>
 
           {zeroDevError && (
@@ -1053,9 +1038,9 @@ function WalletSetup({
 
               <p className="text-xs leading-5 opacity-85">
                 {activationResult.message ||
-                  `Your ZeroDev EVM Smart Account ${
-                    solanaAddress ? 'and Solana wallet are' : 'is'
-                  } now bound to your merchant profile and ready for atomic split settlements.`}
+                  `Your Base ${
+                    solanaAddress ? 'and Solana settlement accounts are' : 'settlement account is'
+                  } now bound to your merchant profile and ready for payments.`}
               </p>
 
               {(activationResult.onChainRegistration || activationResult.solanaOnChainRegistration) && (
@@ -1112,8 +1097,8 @@ function WalletSetup({
                   </p>
 
                   <p className="mt-1 text-slate-400">
-                    Save this link outside Orki. Because your EVM wallet is a
-                    ZeroDev on-chain smart account, you always retain sovereign recovery access:
+                    Save this link in a secure location outside Orki so you retain
+                    independent recovery access to your on-chain Base account:
                   </p>
 
                   <div className="mt-2 flex items-center justify-between gap-2 rounded-lg bg-slate-900 px-2.5 py-1.5 font-mono text-[11px] text-slate-200">
@@ -1170,7 +1155,7 @@ function WalletSetup({
                   </button>
                 ) : (
                   <p className="text-center text-[11px] text-slate-400">
-                    Connect Web3Auth above if you need to re-run on-chain merchant registration.
+                    Sign in above if you need to re-run on-chain account registration.
                   </p>
                 )}
 
@@ -1216,13 +1201,12 @@ function WalletSetup({
 
             <div>
               <h2 className="text-sm font-semibold text-white">
-                ZeroDev Native Hardware Passkey (Base ERC-4337)
+                Hardware Passkey Security
               </h2>
 
               <p className="mt-1 text-xs leading-5 text-slate-400">
                 Register a biometric passkey (Face ID, Touch ID, or Windows Hello)
-                to serve as the sudo validator for your Base smart contract wallet,
-                powered by ZeroDev Kernel v3.3.
+                to secure and authorize your Base settlement account.
               </p>
             </div>
           </div>

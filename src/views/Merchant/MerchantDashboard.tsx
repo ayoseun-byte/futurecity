@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom'
 import type { Merchant, Paylink, SettlementMode, Transaction } from '../../types'
 import { StatusBadge } from '../../components/StatusBadge'
 import { resolveMonotonicStep } from '../../services/onboardingStepService'
-import { CreatePaylinkModal } from './CreatePaylinkModal'
 import { CheckoutSnippetModal } from './CheckoutSnippetModal'
 import { OffRampModal } from './OffRampModal'
 import { TransferModal } from './TransferModal'
@@ -19,7 +18,6 @@ import {
 import {
   ArrowRightLeft,
   Send,
-  Plus,
   Lock,
   ChevronRight,
   ChevronDown,
@@ -283,11 +281,9 @@ interface MerchantDashboardProps {
 export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
   merchant,
   onUpdateMerchant,
-  onPaylinkCreated,
   onLaunchCheckout,
 }) => {
   const navigate = useNavigate()
-  const [isPaylinkModalOpen, setIsPaylinkModalOpen] = useState(false)
   const [snippetPaylink, setSnippetPaylink] = useState<Paylink | null>(null)
   const [isOffRampModalOpen, setIsOffRampModalOpen] = useState(false)
   const [isTransferModalOpen, setIsTransferModalOpen] = useState(false)
@@ -1060,37 +1056,6 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
     }
   }
 
-  const handlePaylinkCreated = async (paylink: Paylink) => {
-    try {
-      const created = await requestApi<{
-        id: string
-        slug: string
-        title: string
-        checkoutUrl: string
-        status: Paylink['status']
-      }>(merchantApiConfig(), 'POST', '/api/v1/merchant/paylinks', {
-        title: paylink.title,
-        description: paylink.description,
-        amountType: paylink.amountType,
-        amount: paylink.amount,
-        currency: paylink.currency,
-        settlementMode: paylink.settlementMode,
-        allowedChains: paylink.allowedChains,
-      }, 'merchant')
-      onPaylinkCreated({
-        ...paylink,
-        id: created.id,
-        slug: created.slug,
-        title: created.title,
-        checkoutUrl: created.checkoutUrl,
-        status: created.status,
-      })
-      await refreshDashboardData()
-    } catch (reason) {
-      setApiError(reason instanceof Error ? reason.message : 'Paylink could not be created.')
-    }
-  }
-
   const copyToClipboard = (text: string, id: string) => {
     navigator.clipboard.writeText(text)
     setCopiedId(id)
@@ -1711,17 +1676,6 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
               </div>
             </div>
           </div>
-
-          <div className="mt-4 pt-3 border-t border-slate-100">
-            <button
-              onClick={() => setIsPaylinkModalOpen(true)}
-              disabled={!isSetupComplete}
-              className="w-full py-1.5 px-3 mat-btn-primary text-xs font-medium flex items-center justify-center space-x-1.5 shadow-xs disabled:opacity-50"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>Create New Paylink</span>
-            </button>
-          </div>
         </div>
       </div>
 
@@ -2004,14 +1958,6 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
               Hosted checkout links with built-in 3-wallet split settlement.
             </p>
           </div>
-          <button
-            onClick={() => setIsPaylinkModalOpen(true)}
-            disabled={!isSetupComplete}
-            className="mat-btn-primary px-3.5 py-2 text-xs font-medium flex items-center space-x-1.5 disabled:opacity-50"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Create Paylink</span>
-          </button>
         </div>
 
         <div className="overflow-x-auto">
@@ -2660,13 +2606,6 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
       )}
 
       {/* OPERATIONAL MODALS */}
-      <CreatePaylinkModal
-        isOpen={isPaylinkModalOpen}
-        onClose={() => setIsPaylinkModalOpen(false)}
-        onPaylinkCreated={(link) => { void handlePaylinkCreated(link) }}
-        merchantDefaultSettlement={merchant.settlementMode}
-      />
-
       <CheckoutSnippetModal
         paylink={snippetPaylink}
         onClose={() => setSnippetPaylink(null)}
