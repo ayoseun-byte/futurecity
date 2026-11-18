@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import type { Merchant, Paylink, Transaction } from '../../types'
 import { StatusBadge } from '../../components/StatusBadge'
+import { PspNotificationsPanel } from '../../components/PspNotificationsPanel'
 import {
   ArrowLeft,
   Building,
@@ -26,7 +27,7 @@ import {
 import { getApiConfig, requestApi, saveApiConfig } from '../../services/apiConfig'
 import { resubmitMerchantKybParticulars } from '../../services/pspMerchantService'
 
-type PspMerchantTab = 'overview' | 'compliance' | 'wallets' | 'paylinks' | 'transactions' | 'sessions' | 'raw'
+type PspMerchantTab = 'overview' | 'compliance' | 'wallets' | 'paylinks' | 'transactions' | 'notifications' | 'sessions' | 'raw'
 
 interface MerchantDetailPageProps {
   merchants: Merchant[]
@@ -47,6 +48,7 @@ export const MerchantDetailPage: React.FC<MerchantDetailPageProps> = ({
   const [statusBusy, setStatusBusy] = useState(false)
   const [statusError, setStatusError] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<PspMerchantTab>('overview')
+  const [unreadNotificationsCount, setUnreadNotificationsCount] = useState(0)
 
   const merchant = merchants.find((m) => m.id === id)
 
@@ -607,6 +609,21 @@ export const MerchantDetailPage: React.FC<MerchantDetailPageProps> = ({
             Transactions ({merchantTransactions.length})
           </button>
           <button
+            onClick={() => setActiveTab('notifications')}
+            className={`py-2 px-3 border-b-2 transition whitespace-nowrap inline-flex items-center space-x-1.5 ${
+              activeTab === 'notifications'
+                ? 'border-slate-900 text-slate-900'
+                : 'border-transparent text-slate-500 hover:text-slate-700'
+            }`}
+          >
+            <span>Notifications</span>
+            {unreadNotificationsCount > 0 && (
+              <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-onion-100 text-onion-900">
+                {unreadNotificationsCount}
+              </span>
+            )}
+          </button>
+          <button
             onClick={() => setActiveTab('sessions')}
             className={`py-2 px-3 border-b-2 transition whitespace-nowrap ${
               activeTab === 'sessions'
@@ -1033,6 +1050,13 @@ export const MerchantDetailPage: React.FC<MerchantDetailPageProps> = ({
               </div>
             )}
           </div>
+        )}
+
+        {activeTab === 'notifications' && (
+          <PspNotificationsPanel
+            merchantId={merchant.id || merchant.externalId}
+            onUnreadCountChange={setUnreadNotificationsCount}
+          />
         )}
 
         {/* TAB 6: SESSIONS */}

@@ -17,6 +17,7 @@ import {
 } from '../../services/pspMerchantService'
 import { StatusBadge } from '../../components/StatusBadge'
 import { MerchantConcernBadge } from '../../components/MerchantConcernBadge'
+import { PspNotificationsPanel } from '../../components/PspNotificationsPanel'
 import { AddMerchantModal } from './AddMerchantModal'
 import { BulkMerchantUploadModal } from './BulkMerchantUploadModal'
 import {
@@ -43,6 +44,7 @@ import {
   Calendar,
   Fingerprint,
   ShieldAlert,
+  Bell,
 } from 'lucide-react'
 
 const AVAILABLE_WEBHOOK_EVENTS = [
@@ -106,7 +108,8 @@ export const OrgDashboard: React.FC<OrgDashboardProps> = ({
   onRefreshDashboard,
 }) => {
   const navigate = useNavigate()
-  const [activeTab, setActiveTab] = useState<'merchants' | 'webhooks' | 'logs' | 'transactions' | 'config'>('merchants')
+  const [activeTab, setActiveTab] = useState<'merchants' | 'webhooks' | 'logs' | 'notifications' | 'transactions' | 'config'>('merchants')
+  const [unreadNotificationsCount, setUnreadNotificationsCount] = useState(0)
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
   const [isAddModalOpen, setIsAddModalOpen] = useState(false)
@@ -520,6 +523,24 @@ export const OrgDashboard: React.FC<OrgDashboardProps> = ({
         >
           <Activity className="w-4 h-4" />
           <span>Webhook Delivery Logs ({deliveries.length})</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('notifications')}
+          className={`flex items-center space-x-2 px-4 py-3 text-xs font-semibold border-b-2 transition ${
+            activeTab === 'notifications'
+              ? 'border-onion-800 text-onion-900 bg-onion-50/50'
+              : 'border-transparent text-slate-500 hover:text-slate-800'
+          }`}
+        >
+          <Bell className="w-4 h-4" />
+          <span>Notifications</span>
+          {unreadNotificationsCount > 0 && (
+            <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-onion-100 text-onion-900">
+              {unreadNotificationsCount}
+            </span>
+          )}
         </button>
 
         <button
@@ -1269,6 +1290,15 @@ export const OrgDashboard: React.FC<OrgDashboardProps> = ({
           </div>
         </div>
         </>
+      )}
+
+      {/* NOTIFICATIONS TAB */}
+      {activeTab === 'notifications' && (
+        <PspNotificationsPanel
+          merchants={merchants}
+          onUnreadCountChange={setUnreadNotificationsCount}
+          onSelectMerchant={(id) => onSelectMerchantForDashboard(id)}
+        />
       )}
 
       {/* TAB 5: PSP RATES & CONFIG */}
