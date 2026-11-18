@@ -1276,7 +1276,7 @@ export const OrkiAdminPortal: React.FC<OrkiAdminPortalProps> = ({
                     <th className="py-3.5 px-4">Gross Amount</th>
                     <th className="py-3.5 px-4">3-Way Split Distribution</th>
                     <th className="py-3.5 px-4">Status & Time</th>
-                    <th className="py-3.5 px-4 text-right">Explorer</th>
+                    <th className="py-3.5 px-4 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -1294,7 +1294,11 @@ export const OrkiAdminPortal: React.FC<OrkiAdminPortalProps> = ({
                     </tr>
                   ) : (
                     transactionsList.map((tx) => (
-                      <tr key={tx.id} className="hover:bg-slate-50/60 transition-colors">
+                      <tr
+                        key={tx.id}
+                        onClick={() => navigate(`/admin/transactions/${encodeURIComponent(tx.id)}`)}
+                        className="hover:bg-slate-50/60 transition-colors cursor-pointer"
+                      >
                         <td className="py-3.5 px-4">
                           <p className="font-mono font-bold text-slate-900">{tx.id}</p>
                           <p className="text-[10px] font-mono text-slate-400 truncate max-w-[120px]">
@@ -1345,20 +1349,31 @@ export const OrkiAdminPortal: React.FC<OrkiAdminPortalProps> = ({
                           <p className="text-[10px] text-slate-400 mt-1">{new Date(tx.createdAt).toLocaleTimeString()}</p>
                         </td>
 
-                        <td className="py-3.5 px-4 text-right">
-                          {tx.explorerUrl ? (
-                            <a
-                              href={tx.explorerUrl}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="inline-flex items-center space-x-1 text-onion hover:text-onion-700 font-bold"
+                        <td className="py-3.5 px-4 text-right whitespace-nowrap">
+                          <div className="inline-flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                navigate(`/admin/transactions/${encodeURIComponent(tx.id)}`)
+                              }}
+                              className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 font-semibold text-[11px] transition"
                             >
-                              <span>View</span>
-                              <ExternalLink className="w-3 h-3" />
-                            </a>
-                          ) : (
-                            <span className="text-slate-400 text-[10px]">Simulated</span>
-                          )}
+                              View Details
+                            </button>
+                            {tx.explorerUrl && (
+                              <a
+                                href={tx.explorerUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                onClick={(e) => e.stopPropagation()}
+                                className="inline-flex items-center space-x-1 text-onion hover:text-onion-700 font-bold"
+                                title="View on block explorer"
+                              >
+                                <ExternalLink className="w-3.5 h-3.5" />
+                              </a>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     ))

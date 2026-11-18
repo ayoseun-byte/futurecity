@@ -1120,6 +1120,7 @@ export const OrgDashboard: React.FC<OrgDashboardProps> = ({
                   <th className="px-5 py-3 text-right">Fee Split</th>
                   <th className="px-5 py-3 text-left">Status</th>
                   <th className="px-5 py-3 text-right">Date</th>
+                  <th className="px-5 py-3 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -1127,7 +1128,11 @@ export const OrgDashboard: React.FC<OrgDashboardProps> = ({
                   const merchantName =
                     orgMerchants.find((m) => m.id === transaction.merchantId)?.legalBusinessName || transaction.merchantId
                   return (
-                    <tr key={transaction.id} className="hover:bg-slate-50/70 transition">
+                    <tr
+                      key={transaction.id}
+                      onClick={() => navigate(`/psp/transactions/${encodeURIComponent(transaction.id)}`, { state: { transaction } })}
+                      className="hover:bg-slate-50/70 transition cursor-pointer"
+                    >
                       <td className="px-5 py-3 font-mono text-slate-700">
                         <div>{transaction.id}</div>
                       </td>
@@ -1149,12 +1154,24 @@ export const OrgDashboard: React.FC<OrgDashboardProps> = ({
                       <td className="px-5 py-3 text-right font-mono text-slate-500 whitespace-nowrap">
                         {new Date(transaction.createdAt).toLocaleString()}
                       </td>
+                      <td className="px-5 py-3 text-right whitespace-nowrap">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            navigate(`/psp/transactions/${encodeURIComponent(transaction.id)}`, { state: { transaction } })
+                          }}
+                          className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 font-semibold text-[11px] transition"
+                        >
+                          View Details
+                        </button>
+                      </td>
                     </tr>
                   )
                 })}
                 {orgTransactions.length === 0 && (
                   <tr>
-                    <td colSpan={7} className="px-5 py-8 text-center text-slate-400">
+                    <td colSpan={8} className="px-5 py-8 text-center text-slate-400">
                       {dashboardLoading ? 'Loading transactions…' : 'No transactions recorded yet.'}
                     </td>
                   </tr>

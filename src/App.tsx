@@ -25,6 +25,7 @@ import { Web3AuthShell } from './context/Web3AuthShell'
 import { OrkiAdminPortal } from './views/Admin/OrkiAdminPortal'
 import { AdminMerchantDetailPage } from './views/Admin/AdminMerchantDetailPage'
 import { AdminPspDetailPage } from './views/Admin/AdminPspDetailPage'
+import { TransactionDetailPage } from './views/Transactions/TransactionDetailPage'
 import { PasskeyCeremonyPage } from './views/Onboarding/PasskeyCeremonyPage'
 import { HostedTosPage } from './views/Onboarding/HostedTosPage'
 import { LegalDocumentPage } from './views/Legal/LegalDocumentPage'
@@ -386,6 +387,18 @@ function MainRoutes() {
         }
       />
 
+      {/* PSP Full-Page Transaction Detail */}
+      <Route
+        path="/psp/transactions/:id"
+        element={
+          <ProtectedRoute allowedRoles={['org']}>
+            <PspLayout>
+              <TransactionDetailPage role="org" transactions={transactions} />
+            </PspLayout>
+          </ProtectedRoute>
+        }
+      />
+
       {/* Legacy /org aliases for backwards compatibility */}
       <Route path="/org" element={<Navigate to="/psp" replace />} />
       <Route path="/org/merchants/:id" element={<OrgMerchantRedirect />} />
@@ -428,6 +441,18 @@ function MainRoutes() {
                   </a>
                 </div>
               )}
+            </MerchantLayout>
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Merchant Full-Page Transaction Detail */}
+      <Route
+        path="/merchant/transactions/:id"
+        element={
+          <ProtectedRoute allowedRoles={['merchant']}>
+            <MerchantLayout>
+              <TransactionDetailPage role="merchant" transactions={transactions} />
             </MerchantLayout>
           </ProtectedRoute>
         }
@@ -549,6 +574,18 @@ function MainRoutes() {
           <ProtectedRoute allowedRoles={['admin']}>
             <AdminLayout>
               <AdminMerchantDetailPage />
+            </AdminLayout>
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Admin Full-Page Transaction Detail */}
+      <Route
+        path="/admin/transactions/:id"
+        element={
+          <ProtectedRoute allowedRoles={['admin']}>
+            <AdminLayout>
+              <TransactionDetailPage role="admin" transactions={transactions} />
             </AdminLayout>
           </ProtectedRoute>
         }

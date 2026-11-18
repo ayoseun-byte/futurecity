@@ -876,29 +876,51 @@ export const AdminMerchantDetailPage: React.FC = () => {
                       <th className="py-2.5 px-3">Net Settlement</th>
                       <th className="py-2.5 px-3">Status</th>
                       <th className="py-2.5 px-3">Timestamp</th>
+                      <th className="py-2.5 px-3 text-right">Details</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {filteredTransactions.map((tx, i) => (
-                      <tr key={i} className="hover:bg-slate-50/50">
-                        <td className="py-2.5 px-3 font-mono font-medium text-slate-800">
-                          {String(tx.tx_hash || 'tx_demo_0x...').substring(0, 16)}…
-                        </td>
-                        <td className="py-2.5 px-3 font-mono text-slate-600">{String(tx.chain || 'base')}</td>
-                        <td className="py-2.5 px-3 font-mono font-bold text-slate-900">${Number(tx.gross_amount || 0).toFixed(2)}</td>
-                        <td className="py-2.5 px-3 font-mono text-emerald-700">${Number(tx.orki_fee_amount || 0).toFixed(2)}</td>
-                        <td className="py-2.5 px-3 font-mono text-indigo-700">${Number(tx.psp_markup_amount || 0).toFixed(2)}</td>
-                        <td className="py-2.5 px-3 font-mono font-bold text-slate-900">${Number(tx.net_amount || 0).toFixed(2)}</td>
-                        <td className="py-2.5 px-3">
-                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800">
-                            {String(tx.status || 'completed').toUpperCase()}
-                          </span>
-                        </td>
-                        <td className="py-2.5 px-3 text-slate-600">
-                          {tx.created_at ? new Date(String(tx.created_at)).toLocaleString() : '—'}
-                        </td>
-                      </tr>
-                    ))}
+                    {filteredTransactions.map((tx, i) => {
+                      const txId = typeof tx.id === 'string' ? tx.id : ''
+                      return (
+                        <tr
+                          key={txId || i}
+                          onClick={() => txId && navigate(`/admin/transactions/${encodeURIComponent(txId)}`)}
+                          className={`hover:bg-slate-50/50 ${txId ? 'cursor-pointer' : ''}`}
+                        >
+                          <td className="py-2.5 px-3 font-mono font-medium text-slate-800">
+                            {String(tx.tx_hash || 'tx_demo_0x...').substring(0, 16)}…
+                          </td>
+                          <td className="py-2.5 px-3 font-mono text-slate-600">{String(tx.chain || 'base')}</td>
+                          <td className="py-2.5 px-3 font-mono font-bold text-slate-900">${Number(tx.gross_amount || 0).toFixed(2)}</td>
+                          <td className="py-2.5 px-3 font-mono text-emerald-700">${Number(tx.orki_fee_amount || 0).toFixed(2)}</td>
+                          <td className="py-2.5 px-3 font-mono text-indigo-700">${Number(tx.psp_markup_amount || 0).toFixed(2)}</td>
+                          <td className="py-2.5 px-3 font-mono font-bold text-slate-900">${Number(tx.net_amount || 0).toFixed(2)}</td>
+                          <td className="py-2.5 px-3">
+                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800">
+                              {String(tx.status || 'completed').toUpperCase()}
+                            </span>
+                          </td>
+                          <td className="py-2.5 px-3 text-slate-600">
+                            {tx.created_at ? new Date(String(tx.created_at)).toLocaleString() : '—'}
+                          </td>
+                          <td className="py-2.5 px-3 text-right">
+                            {txId && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  navigate(`/admin/transactions/${encodeURIComponent(txId)}`)
+                                }}
+                                className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 font-semibold text-[11px] transition"
+                              >
+                                View Details
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      )
+                    })}
                   </tbody>
                 </table>
               </div>

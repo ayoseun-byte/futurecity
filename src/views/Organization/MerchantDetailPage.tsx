@@ -979,33 +979,55 @@ export const MerchantDetailPage: React.FC<MerchantDetailPageProps> = ({
                       <th className="py-2.5 px-3 font-mono">Merchant Net</th>
                       <th className="py-2.5 px-3">Status</th>
                       <th className="py-2.5 px-3">Timestamp</th>
+                      <th className="py-2.5 px-3 text-right">Details</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {filteredTransactions.map((tx, i) => (
-                      <tr key={i} className="hover:bg-slate-50/50">
-                        <td className="py-2.5 px-3 font-mono text-slate-700">
-                          {String((tx as any).tx_hash || (tx as any).txHash || '0x...').substring(0, 16)}…
-                        </td>
-                        <td className="py-2.5 px-3 font-mono font-bold text-slate-900">
-                          ${Number((tx as any).gross_amount || (tx as any).grossAmount || 0).toFixed(2)}
-                        </td>
-                        <td className="py-2.5 px-3 font-mono text-indigo-700">
-                          ${Number((tx as any).psp_markup_amount || (tx as any).pspMarkupAmount || 0).toFixed(2)}
-                        </td>
-                        <td className="py-2.5 px-3 font-mono font-bold text-emerald-700">
-                          ${Number((tx as any).net_amount || (tx as any).netAmount || 0).toFixed(2)}
-                        </td>
-                        <td className="py-2.5 px-3">
-                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800">
-                            {String(tx.status || 'completed').toUpperCase()}
-                          </span>
-                        </td>
-                        <td className="py-2.5 px-3 text-slate-600">
-                          {tx.createdAt || (tx as any).created_at ? new Date(String(tx.createdAt || (tx as any).created_at)).toLocaleString() : '—'}
-                        </td>
-                      </tr>
-                    ))}
+                    {filteredTransactions.map((tx, i) => {
+                      const txId = typeof tx.id === 'string' ? tx.id : ''
+                      return (
+                        <tr
+                          key={txId || i}
+                          onClick={() => txId && navigate(`/psp/transactions/${encodeURIComponent(txId)}`, { state: { transaction: tx } })}
+                          className={`hover:bg-slate-50/50 ${txId ? 'cursor-pointer' : ''}`}
+                        >
+                          <td className="py-2.5 px-3 font-mono text-slate-700">
+                            {String((tx as any).tx_hash || (tx as any).txHash || '0x...').substring(0, 16)}…
+                          </td>
+                          <td className="py-2.5 px-3 font-mono font-bold text-slate-900">
+                            ${Number((tx as any).gross_amount || (tx as any).grossAmount || 0).toFixed(2)}
+                          </td>
+                          <td className="py-2.5 px-3 font-mono text-indigo-700">
+                            ${Number((tx as any).psp_markup_amount || (tx as any).pspMarkupAmount || 0).toFixed(2)}
+                          </td>
+                          <td className="py-2.5 px-3 font-mono font-bold text-emerald-700">
+                            ${Number((tx as any).net_amount || (tx as any).netAmount || 0).toFixed(2)}
+                          </td>
+                          <td className="py-2.5 px-3">
+                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800">
+                              {String(tx.status || 'completed').toUpperCase()}
+                            </span>
+                          </td>
+                          <td className="py-2.5 px-3 text-slate-600">
+                            {tx.createdAt || (tx as any).created_at ? new Date(String(tx.createdAt || (tx as any).created_at)).toLocaleString() : '—'}
+                          </td>
+                          <td className="py-2.5 px-3 text-right">
+                            {txId && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  navigate(`/psp/transactions/${encodeURIComponent(txId)}`, { state: { transaction: tx } })
+                                }}
+                                className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 font-semibold text-[11px] transition"
+                              >
+                                View Details
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      )
+                    })}
                   </tbody>
                 </table>
               </div>
