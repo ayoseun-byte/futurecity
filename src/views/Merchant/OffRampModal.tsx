@@ -7,11 +7,8 @@ import {
   ArrowRight,
   AlertCircle,
   Landmark,
-  Copy,
-  Check,
   ShieldCheck,
   Share2,
-  Coins,
 } from 'lucide-react'
 import { getApiConfig, requestApi } from '../../services/apiConfig'
 import {
@@ -63,11 +60,10 @@ export const OffRampModal: React.FC<OffRampModalProps> = ({
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [statusData, setStatusData] = useState<OfframpStatusResponse | null>(initialStatus)
-  const [dueSessionUrl, setDueSessionUrl] = useState<string | null>(null)
+  const [hostedSessionUrl, setHostedSessionUrl] = useState<string | null>(null)
   const [signedAgreementId, setSignedAgreementId] = useState('')
-  const [copiedId, setCopiedId] = useState<string | null>(null)
 
-  // Bridge Liquidation Address setup form
+  // Orki Bank Settlement Payout Account setup form
   const [bankCurrency, setBankCurrency] = useState<'usd' | 'eur' | 'mxn' | 'brl'>('usd')
   const [paymentRail, setPaymentRail] = useState('ach')
   const [accountOwnerName, setAccountOwnerName] = useState('')
@@ -79,7 +75,7 @@ export const OffRampModal: React.FC<OffRampModalProps> = ({
   const [country, setCountry] = useState('USA')
   const [selectedChains, setSelectedChains] = useState<string[]>(['base', 'solana'])
 
-  // Due Quote / Payout State
+  // Orki Instant Quote / Payout State
   const [amount, setAmount] = useState('100.00')
   const [sourceCurrency] = useState('USDC')
   const [destinationCurrency, setDestinationCurrency] = useState('USD')
@@ -102,7 +98,7 @@ export const OffRampModal: React.FC<OffRampModalProps> = ({
       setStatusData(fresh)
       onStatusUpdated?.(fresh)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load off-ramp status.')
+      setError(err instanceof Error ? err.message : 'Failed to load Orki fiat settlement status.')
     } finally {
       setLoading(false)
     }
@@ -116,12 +112,6 @@ export const OffRampModal: React.FC<OffRampModalProps> = ({
       setNotice(null)
     }
   }, [isOpen, loadStatus])
-
-  const handleCopy = (value: string, id: string) => {
-    void navigator.clipboard.writeText(value)
-    setCopiedId(id)
-    window.setTimeout(() => setCopiedId(null), 1800)
-  }
 
   const handleShareKyb = async (provider?: OfframpProvider, agreementOverride?: string) => {
     setBusyAction(provider ? `share:${provider}` : 'share:all')
@@ -137,20 +127,16 @@ export const OffRampModal: React.FC<OffRampModalProps> = ({
       })
       setStatusData(res.status)
       onStatusUpdated?.(res.status)
-      setNotice(
-        provider
-          ? `${provider === 'bridge' ? 'Bridge' : 'Due'} KYB sharing triggered cleanly.`
-          : 'KYB sharing triggered for active off-ramp providers.',
-      )
+      setNotice('Orki settlement verification sync initiated cleanly.')
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not share Sumsub KYB data.')
+      setError(err instanceof Error ? err.message : 'Could not sync Orki settlement verification.')
     } finally {
       setBusyAction(null)
     }
   }
 
-  const handleCreateBridgeTos = async () => {
-    setBusyAction('bridge:tos')
+  const handleCreateSettlementTos = async () => {
+    setBusyAction('tos')
     setError(null)
     setNotice(null)
     try {
@@ -160,17 +146,17 @@ export const OffRampModal: React.FC<OffRampModalProps> = ({
       await loadStatus()
       if (res.tosUrl) {
         window.open(res.tosUrl, '_blank', 'noopener,noreferrer')
-        setNotice('Bridge Terms of Service opened in a new tab. After accepting, paste signed_agreement_id or return to complete KYB sync.')
+        setNotice('Orki Settlement Terms opened in a new tab. After accepting, return or paste your agreement token to complete sync.')
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not create Bridge Terms of Service link.')
+      setError(err instanceof Error ? err.message : 'Could not create Orki Settlement Terms link.')
     } finally {
       setBusyAction(null)
     }
   }
 
-  const handleStartDueVerification = async () => {
-    setBusyAction('due:session')
+  const handleStartHostedVerification = async () => {
+    setBusyAction('hosted:session')
     setError(null)
     try {
       const config = getApiConfig()
@@ -183,11 +169,11 @@ export const OffRampModal: React.FC<OffRampModalProps> = ({
       )
       const url = res.redirectUrl || res.url || statusData?.due.completionUrl
       if (url) {
-        setDueSessionUrl(url)
+        setHostedSessionUrl(url)
         window.open(url, '_blank', 'noopener,noreferrer')
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not initiate Due KYB session.')
+      setError(err instanceof Error ? err.message : 'Could not initiate Orki verification session.')
     } finally {
       setBusyAction(null)
     }
@@ -201,9 +187,9 @@ export const OffRampModal: React.FC<OffRampModalProps> = ({
     )
   }
 
-  const handleCreateLiquidationAddresses = async (e: React.FormEvent) => {
+  const handleLinkBankPayoutAccount = async (e: React.FormEvent) => {
     e.preventDefault()
-    setBusyAction('bridge:liquidation')
+    setBusyAction('bank:link')
     setError(null)
     setNotice(null)
     try {
@@ -223,10 +209,10 @@ export const OffRampModal: React.FC<OffRampModalProps> = ({
         currencies: ['usdc'],
       })
       const createdCount = Array.isArray(res.created) ? res.created.length : 0
-      setNotice(`Provisioned ${createdCount} Bridge liquidation address(es) routed to your bank account.`)
+      setNotice(`Bank payout account linked across ${createdCount || selectedChains.length} settlement rail(s).`)
       await loadStatus()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create Bridge liquidation addresses.')
+      setError(err instanceof Error ? err.message : 'Failed to link fiat settlement bank account.')
     } finally {
       setBusyAction(null)
     }
@@ -237,7 +223,7 @@ export const OffRampModal: React.FC<OffRampModalProps> = ({
       setError('Please enter a valid positive numeric amount.')
       return
     }
-    setBusyAction('due:quote')
+    setBusyAction('quote')
     setError(null)
     try {
       const config = getApiConfig()
@@ -255,7 +241,7 @@ export const OffRampModal: React.FC<OffRampModalProps> = ({
       )
       setQuote(res)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to compute FX conversion quote.')
+      setError(err instanceof Error ? err.message : 'Failed to compute Orki FX conversion quote.')
     } finally {
       setBusyAction(null)
     }
@@ -265,7 +251,7 @@ export const OffRampModal: React.FC<OffRampModalProps> = ({
     e.preventDefault()
     if (!quote || !ibanOrAcct.trim()) return
 
-    setBusyAction('due:transfer')
+    setBusyAction('transfer')
     setError(null)
     try {
       const config = getApiConfig()
@@ -285,7 +271,7 @@ export const OffRampModal: React.FC<OffRampModalProps> = ({
       setTransferResult(res)
       await loadStatus()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Off-ramp settlement execution failed.')
+      setError(err instanceof Error ? err.message : 'Orki off-ramp settlement execution failed.')
     } finally {
       setBusyAction(null)
     }
@@ -293,9 +279,9 @@ export const OffRampModal: React.FC<OffRampModalProps> = ({
 
   if (!isOpen) return null
 
-  const bridgeEnabled = Boolean(statusData?.providersEnabled.bridge)
-  const dueEnabled = Boolean(statusData?.providersEnabled.due)
-  const liquidationAddresses = statusData?.liquidationAddresses || []
+  const bankRailEnabled = Boolean(statusData?.providersEnabled.bridge)
+  const instantRailEnabled = Boolean(statusData?.providersEnabled.due)
+  const linkedPayoutRails = statusData?.liquidationAddresses || []
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
@@ -307,9 +293,9 @@ export const OffRampModal: React.FC<OffRampModalProps> = ({
               <Landmark className="w-4 h-4 text-onion" />
             </div>
             <div>
-              <h3 className="text-sm font-bold text-slate-900 leading-tight">Auto-Offramp KYB & Fiat Settlement</h3>
+              <h3 className="text-sm font-bold text-slate-900 leading-tight">Orki Fiat Settlement &amp; Off-Ramp</h3>
               <p className="text-[11px] text-slate-500">
-                Config-driven Layer-2 rails (`USE_BRIDGE={String(bridgeEnabled)}` • `USE_DUE={String(dueEnabled)}`)
+                Automated USDC-to-fiat bank payout configuration and instant conversion
               </p>
             </div>
           </div>
@@ -319,7 +305,7 @@ export const OffRampModal: React.FC<OffRampModalProps> = ({
               onClick={() => void loadStatus()}
               disabled={loading || busyAction !== null}
               className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-200/50 transition"
-              title="Refresh off-ramp state"
+              title="Refresh Orki settlement status"
             >
               <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
             </button>
@@ -349,13 +335,13 @@ export const OffRampModal: React.FC<OffRampModalProps> = ({
             </div>
           )}
 
-          {/* Top Summary & One-Click Sumsub Sharing */}
+          {/* Orki Fiat Settlement Verification Summary */}
           <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="space-y-1">
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
                   <ShieldCheck className="w-4 h-4 text-onion" />
-                  <span>Auto-Offramp Eligibility</span>
+                  <span>Orki Settlement Verification</span>
                 </span>
                 <span
                   className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase border ${
@@ -364,14 +350,14 @@ export const OffRampModal: React.FC<OffRampModalProps> = ({
                       : 'bg-amber-50 text-amber-800 border-amber-200'
                   }`}
                 >
-                  {statusData?.offrampEligible ? 'Eligible' : 'KYB Sharing / Review Needed'}
+                  {statusData?.offrampEligible ? 'Eligible' : 'Verification Needed'}
                 </span>
               </div>
               <p className="text-[11px] text-slate-500">
-                Shares your verified Sumsub KYB profile with active settlement partners before switching `auto_offramp`.
+                Complete Orki settlement verification before enabling automated fiat bank payouts.
               </p>
             </div>
-            {(bridgeEnabled || dueEnabled) && (
+            {(bankRailEnabled || instantRailEnabled) && (
               <button
                 type="button"
                 onClick={() => void handleShareKyb()}
@@ -383,34 +369,34 @@ export const OffRampModal: React.FC<OffRampModalProps> = ({
                 ) : (
                   <Share2 className="w-3.5 h-3.5" />
                 )}
-                <span>Share Sumsub KYB</span>
+                <span>Sync Orki Verification</span>
               </button>
             )}
           </div>
 
-          {!bridgeEnabled && !dueEnabled && (
+          {!bankRailEnabled && !instantRailEnabled && (
             <div className="p-4 rounded-xl border border-amber-200 bg-amber-50 text-xs text-amber-800">
-              Both `USE_BRIDGE` and `USE_DUE` are currently disabled on the backend configuration. Enable at least one off-ramp rail to provision fiat settlement.
+              Automated fiat settlement is not yet enabled on your account. Contact Orki support to enable fiat off-ramp payouts.
             </div>
           )}
 
-          {/* BRIDGE SECTION (Shown only when USE_BRIDGE=true) */}
-          {bridgeEnabled && statusData && (
+          {/* Automated Bank Payout Setup */}
+          {bankRailEnabled && statusData && (
             <div className="p-4 rounded-xl border border-slate-200 bg-white space-y-4">
               <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                 <div>
                   <div className="flex items-center gap-2">
                     <h4 className="text-xs font-bold uppercase tracking-wider text-slate-900">
-                      Bridge Off-Ramp & Liquidation Addresses
+                      Orki Bank Payout Account
                     </h4>
                     <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase border ${statusTone(statusData.bridge.status)}`}>
                       {statusData.bridge.status}
                     </span>
                   </div>
                   <p className="text-[11px] text-slate-500 mt-0.5">
-                    {statusData.bridge.customerId
-                      ? `Customer ID: ${statusData.bridge.customerId}`
-                      : 'Accept Bridge Terms of Service, share Sumsub KYB applicant, and provision per-chain liquidation addresses.'}
+                    {statusData.bridge.eligible
+                      ? 'Your Orki automated bank payout verification is approved.'
+                      : 'Accept Orki Settlement Terms and sync verification to link a payout bank account.'}
                   </p>
                 </div>
                 {statusData.bridge.kycUrl && !statusData.bridge.eligible && (
@@ -420,7 +406,7 @@ export const OffRampModal: React.FC<OffRampModalProps> = ({
                     rel="noopener noreferrer"
                     className="px-2.5 py-1.5 rounded-lg border border-slate-200 text-[11px] font-semibold text-slate-700 hover:bg-slate-50 inline-flex items-center gap-1"
                   >
-                    <span>Bridge KYC Link</span>
+                    <span>Orki Verification Link</span>
                     <ExternalLink className="w-3 h-3" />
                   </a>
                 )}
@@ -428,19 +414,18 @@ export const OffRampModal: React.FC<OffRampModalProps> = ({
 
               {statusData.bridge.lastError && (
                 <div className="p-2.5 rounded-lg bg-red-50 border border-red-200 text-[11px] text-red-700">
-                  {statusData.bridge.lastError}
+                  Orki verification attention required. Please retry verification sync or contact support.
                 </div>
               )}
 
-              {/* Step 1: ToS & Sumsub Push */}
               {!statusData.bridge.eligible && (
                 <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200/80 space-y-3">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="text-xs text-slate-700">
-                      <span className="font-semibold">1. Bridge ToS & KYB Sync:</span>{' '}
+                      <span className="font-semibold">1. Orki Settlement Terms:</span>{' '}
                       {statusData.bridge.signedAgreementId
-                        ? `ToS Accepted (${statusData.bridge.signedAgreementId.slice(0, 14)}...)`
-                        : 'Generate and accept the Bridge Terms of Service first.'}
+                        ? 'Terms accepted'
+                        : 'Accept Orki Settlement Terms to enable bank account linking.'}
                     </div>
                     <div className="flex items-center gap-2">
                       {statusData.bridge.tosUrl && (
@@ -450,17 +435,17 @@ export const OffRampModal: React.FC<OffRampModalProps> = ({
                           rel="noopener noreferrer"
                           className="px-2.5 py-1.5 rounded-lg bg-white border border-slate-300 text-[11px] font-semibold text-slate-700 hover:bg-slate-100 inline-flex items-center gap-1"
                         >
-                          <span>Open ToS</span>
+                          <span>Open Terms</span>
                           <ExternalLink className="w-3 h-3" />
                         </a>
                       )}
                       <button
                         type="button"
-                        onClick={() => void handleCreateBridgeTos()}
+                        onClick={() => void handleCreateSettlementTos()}
                         disabled={busyAction !== null}
                         className="px-3 py-1.5 rounded-lg bg-slate-900 text-white text-[11px] font-semibold hover:bg-slate-800 transition disabled:opacity-50"
                       >
-                        {busyAction === 'bridge:tos' ? 'Opening…' : 'Generate ToS Link'}
+                        {busyAction === 'tos' ? 'Opening…' : 'Review Settlement Terms'}
                       </button>
                     </div>
                   </div>
@@ -470,7 +455,7 @@ export const OffRampModal: React.FC<OffRampModalProps> = ({
                       type="text"
                       value={signedAgreementId}
                       onChange={(e) => setSignedAgreementId(e.target.value)}
-                      placeholder={statusData.bridge.signedAgreementId || 'Paste Bridge signed_agreement_id to push Sumsub KYB'}
+                      placeholder="Optional agreement confirmation ID"
                       className="flex-1 px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-mono focus:ring-2 focus:ring-onion focus:outline-none"
                     />
                     <button
@@ -479,226 +464,196 @@ export const OffRampModal: React.FC<OffRampModalProps> = ({
                       disabled={busyAction !== null}
                       className="px-3.5 py-1.5 rounded-lg bg-onion text-white text-xs font-semibold hover:bg-onion-700 transition disabled:opacity-50"
                     >
-                      {busyAction === 'share:bridge' ? 'Syncing…' : 'Sync Sumsub → Bridge'}
+                      {busyAction === 'share:bridge' ? 'Syncing…' : 'Sync Verification'}
                     </button>
                   </div>
                 </div>
               )}
 
-              {/* Active Liquidation Addresses */}
-              <div className="space-y-2.5">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
-                    <Coins className="w-3.5 h-3.5 text-onion" />
-                    <span>Provisioned Liquidation Addresses ({liquidationAddresses.length})</span>
+              {linkedPayoutRails.length > 0 && (
+                <div className="space-y-2">
+                  <span className="text-xs font-semibold text-slate-700">
+                    Connected Bank Payout Rails ({linkedPayoutRails.length})
                   </span>
-                </div>
-
-                {liquidationAddresses.length > 0 ? (
                   <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden">
-                    {liquidationAddresses.map((liq) => (
-                      <div key={liq.id} className="px-3 py-2.5 bg-white flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
-                        <div className="space-y-0.5 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <span className="font-bold uppercase text-slate-900">{liq.chain}</span>
-                            <span className="text-[11px] font-mono uppercase text-slate-500">
-                              {liq.currency} → {liq.destinationCurrency} ({liq.destinationPaymentRail || 'fiat'})
-                            </span>
-                            <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase border ${statusTone(liq.status)}`}>
-                              {liq.status}
-                            </span>
-                          </div>
-                          <p className="font-mono text-[11px] text-slate-600 truncate">{liq.address}</p>
+                    {linkedPayoutRails.map((rail) => (
+                      <div key={rail.id} className="px-3 py-2.5 bg-white flex items-center justify-between text-xs">
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold uppercase text-slate-900">{rail.chain}</span>
+                          <span className="text-[11px] font-mono uppercase text-slate-500">
+                            {rail.currency} → {rail.destinationCurrency} ({rail.destinationPaymentRail || 'fiat'})
+                          </span>
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => handleCopy(liq.address, `modal-liq-${liq.id}`)}
-                          className="self-start sm:self-center px-2.5 py-1 rounded-lg border border-slate-200 text-[11px] font-medium text-slate-700 hover:bg-slate-50 inline-flex items-center gap-1 shrink-0"
-                        >
-                          {copiedId === `modal-liq-${liq.id}` ? (
-                            <>
-                              <Check className="w-3 h-3 text-emerald-600" />
-                              <span className="text-emerald-700">Copied</span>
-                            </>
-                          ) : (
-                            <>
-                              <Copy className="w-3 h-3" />
-                              <span>Copy</span>
-                            </>
-                          )}
-                        </button>
+                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase border ${statusTone(rail.status)}`}>
+                          {rail.status}
+                        </span>
                       </div>
                     ))}
                   </div>
-                ) : (
-                  <p className="text-[11px] text-slate-500">
-                    No Bridge liquidation addresses provisioned yet.
-                  </p>
-                )}
+                </div>
+              )}
 
-                {/* Provision Bank + Liquidation Addresses Form */}
-                {statusData.bridge.eligible && (
-                  <form onSubmit={handleCreateLiquidationAddresses} className="p-3.5 rounded-xl bg-slate-50 border border-slate-200/80 space-y-3">
-                    <div className="text-xs font-bold text-slate-800">
-                      Link Bank Account & Provision Liquidation Addresses
+              {statusData.bridge.eligible && (
+                <form onSubmit={handleLinkBankPayoutAccount} className="p-3.5 rounded-xl bg-slate-50 border border-slate-200/80 space-y-3">
+                  <div className="text-xs font-bold text-slate-800">
+                    Link Fiat Settlement Bank Account
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                    <div>
+                      <label className="block text-[10px] font-semibold text-slate-500 mb-1">Fiat Currency</label>
+                      <select
+                        value={bankCurrency}
+                        onChange={(e) => {
+                          const next = e.target.value as 'usd' | 'eur' | 'mxn' | 'brl'
+                          setBankCurrency(next)
+                          setPaymentRail(next === 'eur' ? 'sepa' : 'ach')
+                          setCountry(next === 'eur' ? 'DEU' : 'USA')
+                        }}
+                        className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs"
+                      >
+                        <option value="usd">USD</option>
+                        <option value="eur">EUR</option>
+                        <option value="mxn">MXN</option>
+                        <option value="brl">BRL</option>
+                      </select>
                     </div>
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
-                      <div>
-                        <label className="block text-[10px] font-semibold text-slate-500 mb-1">Fiat Currency</label>
-                        <select
-                          value={bankCurrency}
-                          onChange={(e) => {
-                            const next = e.target.value as 'usd' | 'eur' | 'mxn' | 'brl'
-                            setBankCurrency(next)
-                            setPaymentRail(next === 'eur' ? 'sepa' : 'ach')
-                            setCountry(next === 'eur' ? 'DEU' : 'USA')
-                          }}
-                          className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs"
-                        >
-                          <option value="usd">USD</option>
-                          <option value="eur">EUR</option>
-                          <option value="mxn">MXN</option>
-                          <option value="brl">BRL</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-[10px] font-semibold text-slate-500 mb-1">Payout Rail</label>
-                        <select
-                          value={paymentRail}
-                          onChange={(e) => setPaymentRail(e.target.value)}
-                          className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs"
-                        >
-                          {bankCurrency === 'usd' && <option value="ach">ACH</option>}
-                          {bankCurrency === 'usd' && <option value="wire">Wire</option>}
-                          {bankCurrency === 'eur' && <option value="sepa">SEPA</option>}
-                          {bankCurrency === 'mxn' && <option value="spei">SPEI</option>}
-                          {bankCurrency === 'brl' && <option value="pix">PIX</option>}
-                        </select>
-                      </div>
-                      <div className="col-span-2">
-                        <label className="block text-[10px] font-semibold text-slate-500 mb-1">Account Owner Name</label>
+                    <div>
+                      <label className="block text-[10px] font-semibold text-slate-500 mb-1">Payout Rail</label>
+                      <select
+                        value={paymentRail}
+                        onChange={(e) => setPaymentRail(e.target.value)}
+                        className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs"
+                      >
+                        {bankCurrency === 'usd' && <option value="ach">ACH</option>}
+                        {bankCurrency === 'usd' && <option value="wire">Wire</option>}
+                        {bankCurrency === 'eur' && <option value="sepa">SEPA</option>}
+                        {bankCurrency === 'mxn' && <option value="spei">SPEI</option>}
+                        {bankCurrency === 'brl' && <option value="pix">PIX</option>}
+                      </select>
+                    </div>
+                    <div className="col-span-2">
+                      <label className="block text-[10px] font-semibold text-slate-500 mb-1">Account Owner Name</label>
+                      <input
+                        type="text"
+                        required
+                        value={accountOwnerName}
+                        onChange={(e) => setAccountOwnerName(e.target.value)}
+                        placeholder="Acme Global Ltd"
+                        className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+                    <input
+                      type="text"
+                      value={bankName}
+                      onChange={(e) => setBankName(e.target.value)}
+                      placeholder="Bank Name (optional)"
+                      className="px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs"
+                    />
+                    {bankCurrency === 'eur' ? (
+                      <>
                         <input
                           type="text"
                           required
-                          value={accountOwnerName}
-                          onChange={(e) => setAccountOwnerName(e.target.value)}
-                          placeholder="Acme Global Ltd"
-                          className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs"
+                          value={iban}
+                          onChange={(e) => setIban(e.target.value)}
+                          placeholder="IBAN"
+                          className="px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-mono"
                         />
-                      </div>
-                    </div>
+                        <input
+                          type="text"
+                          value={bic}
+                          onChange={(e) => setBic(e.target.value)}
+                          placeholder="BIC / SWIFT"
+                          className="px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-mono"
+                        />
+                      </>
+                    ) : (
+                      <>
+                        <input
+                          type="text"
+                          required={bankCurrency === 'usd'}
+                          value={routingNumber}
+                          onChange={(e) => setRoutingNumber(e.target.value)}
+                          placeholder="Routing Number (021000021)"
+                          className="px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-mono"
+                        />
+                        <input
+                          type="text"
+                          required={bankCurrency === 'usd'}
+                          value={accountNumber}
+                          onChange={(e) => setAccountNumber(e.target.value)}
+                          placeholder="Account Number"
+                          className="px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-mono"
+                        />
+                      </>
+                    )}
+                  </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
-                      <input
-                        type="text"
-                        value={bankName}
-                        onChange={(e) => setBankName(e.target.value)}
-                        placeholder="Bank Name (optional)"
-                        className="px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs"
-                      />
-                      {bankCurrency === 'eur' ? (
-                        <>
-                          <input
-                            type="text"
-                            required
-                            value={iban}
-                            onChange={(e) => setIban(e.target.value)}
-                            placeholder="IBAN"
-                            className="px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-mono"
-                          />
-                          <input
-                            type="text"
-                            value={bic}
-                            onChange={(e) => setBic(e.target.value)}
-                            placeholder="BIC / SWIFT"
-                            className="px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-mono"
-                          />
-                        </>
-                      ) : (
-                        <>
-                          <input
-                            type="text"
-                            required={bankCurrency === 'usd'}
-                            value={routingNumber}
-                            onChange={(e) => setRoutingNumber(e.target.value)}
-                            placeholder="Routing Number (021000021)"
-                            className="px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-mono"
-                          />
-                          <input
-                            type="text"
-                            required={bankCurrency === 'usd'}
-                            value={accountNumber}
-                            onChange={(e) => setAccountNumber(e.target.value)}
-                            placeholder="Account Number"
-                            className="px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-mono"
-                          />
-                        </>
-                      )}
+                  <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                    <div className="flex items-center gap-1.5 flex-wrap text-[11px]">
+                      <span className="text-slate-500 font-medium">Chains:</span>
+                      {['base', 'solana', 'ethereum', 'arbitrum'].map((chain) => {
+                        const active = selectedChains.includes(chain)
+                        return (
+                          <button
+                            key={chain}
+                            type="button"
+                            onClick={() => toggleChain(chain)}
+                            className={`px-2 py-0.5 rounded-md border font-semibold uppercase ${
+                              active
+                                ? 'bg-onion/10 border-onion text-onion'
+                                : 'bg-white border-slate-300 text-slate-500'
+                            }`}
+                          >
+                            {chain}
+                          </button>
+                        )
+                      })}
                     </div>
-
-                    <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
-                      <div className="flex items-center gap-1.5 flex-wrap text-[11px]">
-                        <span className="text-slate-500 font-medium">Chains:</span>
-                        {['base', 'solana', 'ethereum', 'arbitrum'].map((chain) => {
-                          const active = selectedChains.includes(chain)
-                          return (
-                            <button
-                              key={chain}
-                              type="button"
-                              onClick={() => toggleChain(chain)}
-                              className={`px-2 py-0.5 rounded-md border font-semibold uppercase ${
-                                active
-                                  ? 'bg-onion/10 border-onion text-onion'
-                                  : 'bg-white border-slate-300 text-slate-500'
-                              }`}
-                            >
-                              {chain}
-                            </button>
-                          )
-                        })}
-                      </div>
-                      <button
-                        type="submit"
-                        disabled={busyAction !== null}
-                        className="px-3.5 py-1.5 rounded-lg bg-slate-900 text-white text-xs font-semibold hover:bg-slate-800 transition disabled:opacity-50"
-                      >
-                        {busyAction === 'bridge:liquidation' ? 'Provisioning…' : 'Create Liquidation Addresses'}
-                      </button>
-                    </div>
-                  </form>
-                )}
-              </div>
+                    <button
+                      type="submit"
+                      disabled={busyAction !== null}
+                      className="px-3.5 py-1.5 rounded-lg bg-slate-900 text-white text-xs font-semibold hover:bg-slate-800 transition disabled:opacity-50"
+                    >
+                      {busyAction === 'bank:link' ? 'Linking…' : 'Link Bank Account'}
+                    </button>
+                  </div>
+                </form>
+              )}
             </div>
           )}
 
-          {/* DUE SECTION (Shown only when USE_DUE=true) */}
-          {dueEnabled && statusData && (
+          {/* Orki Instant Off-Ramp & Verification */}
+          {instantRailEnabled && statusData && (
             <div className="p-4 rounded-xl border border-slate-200 bg-white space-y-4">
               <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                 <div>
                   <div className="flex items-center gap-2">
                     <h4 className="text-xs font-bold uppercase tracking-wider text-slate-900">
-                      Due KYB Sharing & Fiat Settlement
+                      Orki Instant Fiat Off-Ramp
                     </h4>
                     <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase border ${statusTone(statusData.due.status)}`}>
                       {statusData.due.status}
                     </span>
                   </div>
                   <p className="text-[11px] text-slate-500 mt-0.5">
-                    {statusData.due.accountId
-                      ? `Due Account: ${statusData.due.accountId}${statusData.due.sharingStatus ? ` • Sumsub Share: ${statusData.due.sharingStatus}` : ''}`
-                      : 'Shares your reusable Sumsub token directly with Due (/v1/kyc/sharing/sumsub).'}
+                    {statusData.due.eligible
+                      ? 'Orki instant fiat payout is verified and ready.'
+                      : 'Complete Orki verification to convert USDC balances directly into fiat payouts.'}
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
-                  {(dueSessionUrl || statusData.due.completionUrl) && (
+                  {(hostedSessionUrl || statusData.due.completionUrl) && (
                     <a
-                      href={dueSessionUrl || statusData.due.completionUrl || '#'}
+                      href={hostedSessionUrl || statusData.due.completionUrl || '#'}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="px-2.5 py-1.5 rounded-lg border border-slate-200 text-[11px] font-semibold text-slate-700 hover:bg-slate-50 inline-flex items-center gap-1"
                     >
-                      <span>Open Due</span>
+                      <span>Open Orki Verification</span>
                       <ExternalLink className="w-3 h-3" />
                     </a>
                   )}
@@ -709,7 +664,7 @@ export const OffRampModal: React.FC<OffRampModalProps> = ({
                       disabled={busyAction !== null}
                       className="px-2.5 py-1.5 rounded-lg bg-slate-900 text-white text-[11px] font-semibold hover:bg-slate-800 transition disabled:opacity-50"
                     >
-                      {busyAction === 'share:due' ? 'Sharing…' : 'Share → Due'}
+                      {busyAction === 'share:due' ? 'Syncing…' : 'Sync Verification'}
                     </button>
                   )}
                 </div>
@@ -717,22 +672,22 @@ export const OffRampModal: React.FC<OffRampModalProps> = ({
 
               {statusData.due.lastError && (
                 <div className="p-2.5 rounded-lg bg-red-50 border border-red-200 text-[11px] text-red-700">
-                  {statusData.due.lastError}
+                  Orki verification requires attention. Please start hosted verification or retry sync.
                 </div>
               )}
 
               {!statusData.due.eligible ? (
                 <div className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-xl bg-slate-50 border border-slate-200/80 text-xs">
                   <span className="text-slate-600">
-                    Need hosted completion or Terms acceptance in Due?
+                    Complete hosted Orki fiat verification to activate instant payouts.
                   </span>
                   <button
                     type="button"
-                    onClick={() => void handleStartDueVerification()}
+                    onClick={() => void handleStartHostedVerification()}
                     disabled={busyAction !== null}
                     className="px-3 py-1.5 rounded-lg bg-onion text-white text-xs font-semibold hover:bg-onion-700 transition inline-flex items-center gap-1.5 disabled:opacity-50"
                   >
-                    <span>{busyAction === 'due:session' ? 'Opening…' : 'Start Due Hosted Session'}</span>
+                    <span>{busyAction === 'hosted:session' ? 'Opening…' : 'Start Orki Verification'}</span>
                     <ExternalLink className="w-3.5 h-3.5" />
                   </button>
                 </div>
@@ -786,7 +741,7 @@ export const OffRampModal: React.FC<OffRampModalProps> = ({
                       disabled={busyAction !== null}
                       className="px-3 py-2 bg-slate-900 text-white rounded-lg text-xs font-semibold hover:bg-slate-800 transition disabled:opacity-50"
                     >
-                      {busyAction === 'due:quote' ? 'Quoting…' : quote ? 'Refresh Quote' : 'Get FX Quote'}
+                      {busyAction === 'quote' ? 'Quoting…' : quote ? 'Refresh Quote' : 'Get FX Quote'}
                     </button>
                   </div>
 
@@ -817,7 +772,7 @@ export const OffRampModal: React.FC<OffRampModalProps> = ({
                         disabled={busyAction !== null || !ibanOrAcct.trim()}
                         className="w-full py-2 bg-onion text-white rounded-lg text-xs font-bold hover:bg-onion-700 transition inline-flex items-center justify-center gap-1.5 disabled:opacity-50"
                       >
-                        <span>{busyAction === 'due:transfer' ? 'Submitting…' : 'Confirm Due Off-Ramp'}</span>
+                        <span>{busyAction === 'transfer' ? 'Submitting…' : 'Confirm Orki Off-Ramp'}</span>
                         <ArrowRight className="w-3.5 h-3.5" />
                       </button>
                     </div>

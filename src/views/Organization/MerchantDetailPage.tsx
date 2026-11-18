@@ -791,11 +791,16 @@ export const MerchantDetailPage: React.FC<MerchantDetailPageProps> = ({
                   <div className="flex justify-between items-center">
                     <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Layer 2: Fiat Settlement Verification</span>
                     <span className="font-mono text-[11px] font-bold text-slate-700 bg-slate-100 px-2 py-0.5 rounded">
-                      {String((backendDetail?.kybLayers as Record<string, any>)?.layer2?.dueKybStatus || 'not_started')}
+                      {String(
+                        (backendDetail?.kybLayers as Record<string, any>)?.layer2?.offrampKybStatus ||
+                        (backendDetail?.kybLayers as Record<string, any>)?.layer2?.status ||
+                        (backendDetail?.kybLayers as Record<string, any>)?.layer2?.dueKybStatus ||
+                        'not_started'
+                      )}
                     </span>
                   </div>
                   <p className="text-[11px] text-slate-500 leading-relaxed">
-                    Licensed financial institution check. Required before automated AED fiat bank off-ramp can activate.
+                    Orki fiat settlement verification check. Required before automated fiat bank off-ramp can activate.
                   </p>
                 </div>
               </div>

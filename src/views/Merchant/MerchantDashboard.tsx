@@ -44,8 +44,6 @@ import {
   RefreshCw,
   AlertCircle,
   Code2,
-  Landmark,
-  Share2,
 } from 'lucide-react'
 
 interface MerchantMetrics {
@@ -311,7 +309,6 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
   const [dashboardTransactions, setDashboardTransactions] = useState<Transaction[]>([])
   const [dashboardDataLoaded, setDashboardDataLoaded] = useState(false)
   const [offrampStatus, setOfframpStatus] = useState<OfframpStatusResponse | null>(null)
-  const [offrampBusy, setOfframpBusy] = useState(false)
   const [offrampNotice, setOfframpNotice] = useState<string | null>(null)
   const [notice, setNotice] = useState<{ title?: string; sections?: { heading: string; content: string }[] } | null>(null)
   const [termsData, setTermsData] = useState<{ tos?: { token?: string; entityName?: string; status?: string; documentLinks?: { tos?: string; privacyPolicy?: string } }; title?: string; clauses?: string[] } | null>(null)
@@ -977,7 +974,6 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
     if (!signedAgreementId || !config.merchantSession) return
 
     let cancelled = false
-    setOfframpBusy(true)
     shareOfframpKyb(config, {
       provider: 'bridge',
       signedAgreementId,
@@ -986,7 +982,7 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
       .then((res) => {
         if (cancelled) return
         setOfframpStatus(res.status)
-        setOfframpNotice('Bridge Terms of Service accepted and Sumsub KYB synced cleanly.')
+        setOfframpNotice('Orki Settlement Terms accepted and fiat verification synced cleanly.')
         setIsOffRampModalOpen(true)
         params.delete('signed_agreement_id')
         const nextSearch = params.toString()
@@ -995,35 +991,14 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
       })
       .catch((reason) => {
         if (!cancelled) {
-          setApiError(reason instanceof Error ? reason.message : 'Failed to complete Bridge KYB sync after ToS.')
+          setApiError(reason instanceof Error ? reason.message : 'Failed to complete Orki fiat settlement verification after accepting terms.')
         }
-      })
-      .finally(() => {
-        if (!cancelled) setOfframpBusy(false)
       })
 
     return () => {
       cancelled = true
     }
   }, [merchantApiConfig])
-
-  const handleShareOfframpKybQuick = async () => {
-    setOfframpBusy(true)
-    setApiError(null)
-    setOfframpNotice(null)
-    try {
-      const config = merchantApiConfig()
-      const res = await shareOfframpKyb(config, {
-        redirectUri: `${window.location.origin}${window.location.pathname}`,
-      })
-      setOfframpStatus(res.status)
-      setOfframpNotice('Sumsub KYB sharing initiated across enabled off-ramp rails.')
-    } catch (reason) {
-      setApiError(reason instanceof Error ? reason.message : 'Could not share Sumsub KYB data.')
-    } finally {
-      setOfframpBusy(false)
-    }
-  }
 
   const handleToggleSettlementMode = async (newMode: SettlementMode) => {
     setApiBusy(true)
@@ -1044,7 +1019,7 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
       }
 
       if (outcome.error === 'offramp_not_eligible') {
-        setOfframpNotice(outcome.message || 'Auto-offramp requires KYB sharing/approval on enabled rails.')
+        setOfframpNotice('Automatic fiat off-ramp requires completing Orki settlement verification first.')
         setIsOffRampModalOpen(true)
       } else {
         setApiError(outcome.message || 'Settlement mode could not be changed.')
@@ -1462,6 +1437,23 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
         </div>
       )}
 
+      {offrampNotice && (
+        <div className="p-3.5 bg-emerald-50 border border-emerald-200 rounded-2xl flex items-center justify-between gap-3 text-xs text-emerald-800">
+          <div className="flex items-center space-x-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span>{offrampNotice}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setOfframpNotice(null)}
+            className="text-emerald-600 hover:text-emerald-900"
+            aria-label="Dismiss notice"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
       {/* FINANCIAL KPI TILES (Material 3 Cards) */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {/* CARD 1: CRYPTO BALANCE (With Assets Breakdown Dropdown) */}
@@ -1681,160 +1673,6 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
 
       {/* CARD 4: PAYMENT RAILS & CURRENCIES (Merchant-level acceptance preferences + on-chain whitelist sync) */}
       <PaymentRailsCard disabled={!isSetupComplete} />
-
-      {/* CARD 5: AUTO-OFFRAMP COMPLIANCE & LIQUIDATION ADDRESSES (Config-switched Bridge / Due) */}
-      <div className="mat-card p-6 space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
-          <div className="space-y-1">
-            <div className="flex items-center space-x-2 flex-wrap">
-              <Landmark className="w-4 h-4 text-onion-700" />
-              <h3 className="text-base font-bold text-slate-900 tracking-tight">
-                Auto-Offramp KYB & Liquidation Addresses
-              </h3>
-              <span
-                className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase border ${
-                  offrampStatus?.providersEnabled.bridge
-                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                    : 'bg-slate-100 text-slate-500 border-slate-200'
-                }`}
-              >
-                Bridge: {offrampStatus?.providersEnabled.bridge ? 'ON' : 'OFF'}
-              </span>
-              <span
-                className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase border ${
-                  offrampStatus?.providersEnabled.due
-                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                    : 'bg-slate-100 text-slate-500 border-slate-200'
-                }`}
-              >
-                Due: {offrampStatus?.providersEnabled.due ? 'ON' : 'OFF'}
-              </span>
-            </div>
-            <p className="text-xs text-slate-500">
-              Switching settlement to auto off-ramp automatically triggers Sumsub KYB sharing and exposes per-chain liquidation deposit addresses when Bridge is enabled.
-            </p>
-          </div>
-          <div className="flex items-center gap-2 shrink-0">
-            <button
-              type="button"
-              onClick={() => void handleShareOfframpKybQuick()}
-              disabled={!isSetupComplete || offrampBusy || (!offrampStatus?.providersEnabled.bridge && !offrampStatus?.providersEnabled.due)}
-              className="px-3 py-1.5 rounded-xl border border-slate-200 bg-white text-slate-700 text-xs font-semibold hover:bg-slate-50 transition inline-flex items-center gap-1.5 disabled:opacity-50"
-            >
-              <Share2 className="w-3.5 h-3.5" />
-              <span>{offrampBusy ? 'Sharing…' : 'Share KYB'}</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setIsOffRampModalOpen(true)}
-              disabled={!isSetupComplete}
-              className="px-3.5 py-1.5 rounded-xl bg-onion text-white text-xs font-semibold hover:bg-onion-700 transition inline-flex items-center gap-1.5 disabled:opacity-50"
-            >
-              <span>Manage Off-Ramp</span>
-            </button>
-          </div>
-        </div>
-
-        {offrampNotice && (
-          <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center space-x-2 text-xs text-emerald-800">
-            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-            <span>{offrampNotice}</span>
-          </div>
-        )}
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
-          {offrampStatus?.providersEnabled.bridge && (
-            <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="font-bold text-slate-800">Bridge KYB & ToS</span>
-                <span className="px-2 py-0.5 rounded bg-white border border-slate-200 font-semibold uppercase text-[10px] text-slate-700">
-                  {offrampStatus.bridge.status}
-                </span>
-              </div>
-              <div className="flex justify-between text-slate-500">
-                <span>Customer ID:</span>
-                <span className="font-mono text-slate-800">{offrampStatus.bridge.customerId || '—'}</span>
-              </div>
-              <div className="flex justify-between text-slate-500">
-                <span>Liquidation Addresses:</span>
-                <span className="font-mono font-semibold text-slate-900">{offrampStatus.liquidationAddresses.length}</span>
-              </div>
-            </div>
-          )}
-
-          {offrampStatus?.providersEnabled.due && (
-            <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="font-bold text-slate-800">Due KYB Sharing</span>
-                <span className="px-2 py-0.5 rounded bg-white border border-slate-200 font-semibold uppercase text-[10px] text-slate-700">
-                  {offrampStatus.due.status}
-                </span>
-              </div>
-              <div className="flex justify-between text-slate-500">
-                <span>Due Account ID:</span>
-                <span className="font-mono text-slate-800">{offrampStatus.due.accountId || '—'}</span>
-              </div>
-              <div className="flex justify-between text-slate-500">
-                <span>Sumsub Share Status:</span>
-                <span className="font-mono font-semibold text-slate-900">{offrampStatus.due.sharingStatus || 'not_started'}</span>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {offrampStatus?.providersEnabled.bridge && (
-          <div className="space-y-2">
-            <div className="flex items-center justify-between text-xs font-semibold text-slate-700">
-              <span>Bridge Liquidation Addresses</span>
-              <button
-                type="button"
-                onClick={() => setIsOffRampModalOpen(true)}
-                className="text-[11px] font-semibold text-onion hover:underline"
-              >
-                + Provision / View All
-              </button>
-            </div>
-            {offrampStatus.liquidationAddresses.length > 0 ? (
-              <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden">
-                {offrampStatus.liquidationAddresses.map((liq) => (
-                  <div key={liq.id} className="px-3.5 py-2.5 bg-white flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-800 font-bold uppercase text-[10px]">
-                        {liq.chain}
-                      </span>
-                      <span className="font-mono text-[11px] text-slate-500 uppercase shrink-0">
-                        {liq.currency} → {liq.destinationCurrency}
-                      </span>
-                      <span className="font-mono text-[11px] text-slate-800 truncate">{liq.address}</span>
-                    </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      <span className="text-[10px] font-bold uppercase text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded">
-                        {liq.status}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => copyToClipboard(liq.address, `dash-liq-${liq.id}`)}
-                        className="p-1 text-slate-400 hover:text-slate-700 rounded hover:bg-slate-100"
-                        title="Copy liquidation address"
-                      >
-                        {copiedId === `dash-liq-${liq.id}` ? (
-                          <Check className="w-3.5 h-3.5 text-emerald-600" />
-                        ) : (
-                          <Copy className="w-3.5 h-3.5" />
-                        )}
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-xs text-slate-500">
-                No Bridge liquidation addresses created yet. Complete Bridge KYB and link a fiat bank account via Manage Off-Ramp.
-              </p>
-            )}
-          </div>
-        )}
-      </div>
 
       {/* METRICS & ANALYTICS DASHBOARD (Per Chain, Per Asset, Per Paylink) */}
       <div className="mat-card p-6 space-y-5">
@@ -2595,7 +2433,7 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
                       className="w-full py-2.5 px-3 border border-slate-200 hover:border-slate-300 bg-white hover:bg-slate-50 rounded-xl text-xs font-medium text-slate-700 transition flex items-center justify-center space-x-1.5"
                     >
                       <ExternalLink className="w-3.5 h-3.5 text-slate-500" />
-                      <span>Open Hosted Acceptance Page (Option A: Due / Orki Hosted)</span>
+                      <span>Open Hosted Acceptance Page (Orki Hosted)</span>
                     </button>
                   </div>
                 </>
