@@ -826,7 +826,7 @@ export const AdminMerchantDetailPage: React.FC = () => {
                         </td>
                         <td className="py-2.5 px-3 text-right">
                           <a
-                            href={`/checkout/${link.slug}`}
+                            href={`/pay/${encodeURIComponent(String(link.id || link.slug || ''))}`}
                             target="_blank"
                             rel="noreferrer"
                             className="text-onion hover:underline font-bold inline-flex items-center space-x-1"

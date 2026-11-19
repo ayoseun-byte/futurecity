@@ -5,7 +5,14 @@ import type { Merchant } from '../../types'
 import {
   addStoredMerchant,
 } from '../../services/storageService'
-import { clearAdminSessionToken, getApiConfig, requestApi, saveApiConfig } from '../../services/apiConfig'
+import {
+  clearAdminSessionToken,
+  clearAllMerchantSessions,
+  getApiConfig,
+  requestApi,
+  saveActiveMerchantId,
+  saveApiConfig,
+} from '../../services/apiConfig'
 import {
   Store,
   ArrowRight,
@@ -16,10 +23,46 @@ import {
   Fingerprint,
 } from 'lucide-react'
 
+function mapPspMerchantPayload(raw: Record<string, unknown>): Merchant {
+  const m = (raw.merchant as Record<string, unknown> | undefined) || raw
+  const id = String(m.id || '')
+  return {
+    id,
+    organizationId: String(m.organizationId || m.organization_id || ''),
+    externalId: String(m.externalId || m.external_id || id),
+    legalBusinessName: String(m.legalBusinessName || m.legal_business_name || id),
+    tradeLicenseNumber: String(m.tradeLicenseNumber || m.trade_license_number || ''),
+    jurisdiction: String(m.jurisdiction || ''),
+    representativeName: String(m.representativeName || m.representative_name || ''),
+    representativeEmail: String(m.representativeEmail || m.representative_email || ''),
+    status: String(m.status || 'pending').toLowerCase() as Merchant['status'],
+    nextStep: (m.nextStep ?? m.next_step) as Merchant['nextStep'],
+    settlementMode: ((m.settlementMode || m.settlement_mode || 'hold_as_received') as Merchant['settlementMode']),
+    baseWalletAddress: (m.baseWalletAddress || m.base_wallet_address || m.merchantWallet || m.merchant_wallet) as string | undefined,
+    solanaWalletAddress: (m.solanaWalletAddress || m.solana_wallet_address) as string | undefined,
+    orkiFeeBps: (m.orkiFeeBps ?? m.orki_fee_bps) as number | undefined,
+    pspFeeBps: (m.pspFeeBps ?? m.psp_fee_bps) as number | undefined,
+    noticeAcknowledgedAt: (m.noticeAcknowledgedAt ?? m.notice_acknowledged_at) as string | undefined,
+    termsAcceptedAt: (m.termsAcceptedAt ?? m.terms_accepted_at) as string | undefined,
+    kybInformationSubmittedAt: (m.kybInformationSubmittedAt ?? m.kyb_information_submitted_at) as string | undefined,
+    sumsubCompletedAt: (m.sumsubCompletedAt ?? m.sumsub_completed_at) as string | undefined,
+    passkeyRegisteredAt: (m.passkeyRegisteredAt ?? m.passkey_registered_at) as string | undefined,
+    verifiedAt: (m.verifiedAt ?? m.verified_at) as string | undefined,
+    activatedAt: (m.activatedAt ?? m.activated_at) as string | undefined,
+    createdAt: String(m.createdAt || m.created_at || new Date().toISOString()),
+  }
+}
+
 export const MerchantLoginView: React.FC = () => {
   const { login } = useAuth()
   const navigate = useNavigate()
+  const initialConfig = getApiConfig()
 
+  const [authMode, setAuthMode] = useState<'psp' | 'onboarding'>(
+    initialConfig.pspKey ? 'psp' : 'onboarding'
+  )
+  const [pspKeyInput, setPspKeyInput] = useState(initialConfig.pspKey || '')
+  const [merchantIdInput, setMerchantIdInput] = useState(initialConfig.merchantId || '')
   const [merchantSession, setMerchantSession] = useState('')
   const [loggingIn, setLoggingIn] = useState(false)
   const [loginError, setLoginError] = useState('')
@@ -30,6 +73,53 @@ export const MerchantLoginView: React.FC = () => {
     setLoggingIn(true)
 
     try {
+      if (authMode === 'psp') {
+        const trimmedKey = pspKeyInput.trim()
+        const trimmedMerchantId = merchantIdInput.trim()
+        if (!trimmedKey) {
+          throw new Error('Enter your PSP API Key (Authorization: Bearer sk_...).')
+        }
+        if (!trimmedMerchantId.startsWith('mrch_')) {
+          throw new Error('Enter a valid Merchant ID starting with mrch_... for the X-Merchant-Id header.')
+        }
+
+        const config = {
+          ...getApiConfig(),
+          adminKey: '',
+          feeApproverKey: '',
+          pspKey: trimmedKey,
+          merchantSession: '',
+          merchantId: trimmedMerchantId,
+        }
+        const payload = await requestApi<Record<string, unknown>>(
+          config,
+          'GET',
+          `/api/v1/psp/merchants/${encodeURIComponent(trimmedMerchantId)}`,
+          undefined,
+          'psp'
+        )
+        const merchant = mapPspMerchantPayload(payload)
+
+        clearAdminSessionToken()
+        clearAllMerchantSessions()
+        saveApiConfig(config)
+        saveActiveMerchantId(merchant.id || trimmedMerchantId)
+        addStoredMerchant(merchant)
+
+        login('merchant', merchant.id, {
+          id: merchant.id,
+          name: merchant.legalBusinessName,
+          email: merchant.representativeEmail,
+          organizationId: merchant.organizationId,
+          merchantId: merchant.id,
+          status: merchant.status,
+          merchantProfile: merchant,
+        })
+
+        navigate('/merchant')
+        return
+      }
+
       const rawSession = merchantSession.trim()
       const token = rawSession.includes('#')
         ? new URLSearchParams(rawSession.split('#', 2)[1]).get('session') || ''
@@ -92,7 +182,8 @@ export const MerchantLoginView: React.FC = () => {
       }
 
       clearAdminSessionToken()
-      saveApiConfig({ ...config, adminKey: '', feeApproverKey: '', pspKey: '' })
+      saveApiConfig({ ...config, adminKey: '', feeApproverKey: '', pspKey: '', merchantId: merchant.id })
+      saveActiveMerchantId(merchant.id)
       sessionStorage.setItem(`orki_merchant_session:${merchant.externalId}`, token)
       sessionStorage.setItem('orki_active_merchant_session', token)
       addStoredMerchant(merchant)
@@ -138,26 +229,97 @@ export const MerchantLoginView: React.FC = () => {
             </div>
           )}
 
+          <div className="grid grid-cols-2 gap-1.5 p-1 bg-slate-100 rounded-lg text-xs">
+            <button
+              type="button"
+              onClick={() => {
+                setAuthMode('psp')
+                setLoginError('')
+              }}
+              className={`py-1.5 px-2.5 rounded-md font-semibold transition ${
+                authMode === 'psp'
+                  ? 'bg-white text-slate-900 shadow-2xs'
+                  : 'text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              PSP API + Merchant ID
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setAuthMode('onboarding')
+                setLoginError('')
+              }}
+              className={`py-1.5 px-2.5 rounded-md font-semibold transition ${
+                authMode === 'onboarding'
+                  ? 'bg-white text-slate-900 shadow-2xs'
+                  : 'text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              Onboarding Token
+            </button>
+          </div>
+
           <form onSubmit={handleMerchantLogin} className="space-y-4">
-            <div>
-              <label className="block text-xs font-medium text-slate-700 mb-1">
-                Merchant Onboarding / Session Token
-              </label>
-              <div className="relative">
-                <Key className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
-                <input
-                  type="text"
-                  required
-                  placeholder="Paste onb_sec_... token or invitation link"
-                  value={merchantSession}
-                  onChange={(e) => setMerchantSession(e.target.value)}
-                  className="w-full pl-9 pr-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg font-mono placeholder:font-sans focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 transition"
-                />
+            {authMode === 'psp' ? (
+              <>
+                <div>
+                  <label className="block text-xs font-medium text-slate-700 mb-1">
+                    PSP Secret Key (<code className="font-mono text-[11px]">Bearer sk_...</code>)
+                  </label>
+                  <div className="relative">
+                    <Key className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                    <input
+                      type="password"
+                      required
+                      placeholder="sk_live_... or sk_test_..."
+                      value={pspKeyInput}
+                      onChange={(e) => setPspKeyInput(e.target.value)}
+                      className="w-full pl-9 pr-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg font-mono placeholder:font-sans focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 transition"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-700 mb-1">
+                    Merchant ID (<code className="font-mono text-[11px]">X-Merchant-Id</code>)
+                  </label>
+                  <div className="relative">
+                    <Store className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                    <input
+                      type="text"
+                      required
+                      placeholder="mrch_..."
+                      value={merchantIdInput}
+                      onChange={(e) => setMerchantIdInput(e.target.value)}
+                      className="w-full pl-9 pr-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg font-mono placeholder:font-sans focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 transition"
+                    />
+                  </div>
+                  <p className="mt-1 text-[11px] text-slate-400">
+                    Standard server-to-server PSP auth for post-onboarding merchant endpoints — does not require or consume onboarding session keys.
+                  </p>
+                </div>
+              </>
+            ) : (
+              <div>
+                <label className="block text-xs font-medium text-slate-700 mb-1">
+                  Merchant Onboarding / Session Token
+                </label>
+                <div className="relative">
+                  <Key className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                  <input
+                    type="text"
+                    required
+                    placeholder="Paste onb_sec_... token or invitation link"
+                    value={merchantSession}
+                    onChange={(e) => setMerchantSession(e.target.value)}
+                    className="w-full pl-9 pr-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg font-mono placeholder:font-sans focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 transition"
+                  />
+                </div>
+                <p className="mt-1 text-[11px] text-slate-400">
+                  Required during KYB, notice, terms, and wallet setup (capped at 20 onboarding sessions per merchant)
+                </p>
               </div>
-              <p className="mt-1 text-[11px] text-slate-400">
-                Found in your PSP onboarding invitation email
-              </p>
-            </div>
+            )}
 
             <button
               type="submit"

@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState } from 'react'
 import type { Merchant } from '../types'
-import { getApiConfig, saveApiConfig, clearAdminSessionToken, clearAllMerchantSessions } from '../services/apiConfig'
+import { getApiConfig, saveApiConfig, clearAdminSessionToken, clearAllMerchantSessions, clearActiveMerchantId } from '../services/apiConfig'
 
 export type UserRole = 'org' | 'merchant' | 'admin'
 
@@ -48,8 +48,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUser(null)
     clearAdminSessionToken()
     clearAllMerchantSessions()
+    clearActiveMerchantId()
     const config = getApiConfig()
-    saveApiConfig({ ...config, adminKey: '', feeApproverKey: '', pspKey: '', merchantSession: '' })
+    saveApiConfig({ ...config, adminKey: '', feeApproverKey: '', pspKey: '', merchantSession: '', merchantId: '' })
   }
 
   return (

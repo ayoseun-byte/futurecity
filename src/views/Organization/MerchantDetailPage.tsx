@@ -372,6 +372,15 @@ export const MerchantDetailPage: React.FC<MerchantDetailPageProps> = ({
 
           {/* Action Buttons */}
           <div className="flex items-center space-x-2.5 flex-wrap gap-2">
+            <Link
+              to={`/psp/merchants/${encodeURIComponent(merchant.id)}/console`}
+              className="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-black text-white text-xs font-semibold transition flex items-center space-x-1.5 shadow-xs"
+              title="Inspect Merchant Dashboard using PSP Key + X-Merchant-Id (post-onboarding server-to-server auth)"
+            >
+              <ExternalLink className="w-3.5 h-3.5" />
+              <span>Merchant Console (PSP Auth)</span>
+            </Link>
+
             <button
               onClick={handleGenerateOnboardingSession}
               disabled={sessionLoading}
@@ -953,7 +962,7 @@ export const MerchantDetailPage: React.FC<MerchantDetailPageProps> = ({
                         </td>
                         <td className="py-2.5 px-3 text-right">
                           <a
-                            href={`/checkout/${link.slug}`}
+                            href={`/pay/${encodeURIComponent(String(link.id || link.slug || ''))}`}
                             target="_blank"
                             rel="noreferrer"
                             className="text-onion hover:underline font-bold inline-flex items-center space-x-1"

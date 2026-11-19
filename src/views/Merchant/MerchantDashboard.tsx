@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import type { Merchant, Paylink, SettlementMode, Transaction } from '../../types'
 import { StatusBadge } from '../../components/StatusBadge'
 import { resolveMonotonicStep } from '../../services/onboardingStepService'
@@ -7,7 +7,14 @@ import { CheckoutSnippetModal } from './CheckoutSnippetModal'
 import { OffRampModal } from './OffRampModal'
 import { TransferModal } from './TransferModal'
 import PaymentRailsCard from './PaymentRailsCard'
-import { getApiConfig, requestApi, saveApiConfig } from '../../services/apiConfig'
+import {
+  getApiConfig,
+  requestApi,
+  resolveMerchantId,
+  saveActiveMerchantId,
+  saveApiConfig,
+  type ApiConfig,
+} from '../../services/apiConfig'
 import { resolveLocalCheckoutHref } from '../../services/pspConsoleService'
 import {
   fetchOfframpStatus,
@@ -282,6 +289,10 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
   onLaunchCheckout,
 }) => {
   const navigate = useNavigate()
+  const location = useLocation()
+  const transactionDetailBasePath = location.pathname.startsWith('/psp')
+    ? '/psp/transactions'
+    : '/merchant/transactions'
   const [snippetPaylink, setSnippetPaylink] = useState<Paylink | null>(null)
   const [isOffRampModalOpen, setIsOffRampModalOpen] = useState(false)
   const [isTransferModalOpen, setIsTransferModalOpen] = useState(false)
@@ -355,13 +366,23 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
   const resetKybToPrefill = () => {
     setKybData(getPrefilledKybData(merchant, signatory.title || 'Managing Director'))
   }
+  useEffect(() => {
+    if (merchant.id) {
+      saveActiveMerchantId(merchant.id)
+    }
+  }, [merchant.id])
+
   const merchantApiConfig = useCallback(() => {
     const config = getApiConfig()
     const cachedForMerchant = sessionStorage.getItem(`orki_merchant_session:${merchant.externalId}`)
     const resolved = (cachedForMerchant && cachedForMerchant.startsWith('onb_sec_')) ? cachedForMerchant : ''
 
-    return { ...config, merchantSession: resolved }
-  }, [merchant.externalId])
+    return {
+      ...config,
+      merchantSession: resolved,
+      merchantId: merchant.id || resolveMerchantId(config),
+    }
+  }, [merchant.externalId, merchant.id])
 
   const ensureMerchantSession = useCallback(async (forceRefresh = false): Promise<ReturnType<typeof getApiConfig>> => {
     const activeConfig = merchantApiConfig()
@@ -515,9 +536,12 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
     }
   }
 
-  const hasMerchantSession = Boolean(merchantApiConfig().merchantSession)
-  const visiblePaylinks = hasMerchantSession ? dashboardPaylinks : []
-  const visibleTransactions = hasMerchantSession ? dashboardTransactions : []
+  const currentMerchantConfig = merchantApiConfig()
+  const hasMerchantSession = Boolean(currentMerchantConfig.merchantSession)
+  const hasPspMerchantAuth = Boolean(currentMerchantConfig.pspKey && (merchant.id || '').startsWith('mrch_'))
+  const hasMerchantDashboardAuth = hasPspMerchantAuth || hasMerchantSession
+  const visiblePaylinks = hasMerchantDashboardAuth ? dashboardPaylinks : []
+  const visibleTransactions = hasMerchantDashboardAuth ? dashboardTransactions : []
   const asAmount = useCallback((value: string | number | undefined): number => {
     const amount = Number(value ?? 0)
     return Number.isFinite(amount) ? amount : 0
@@ -778,7 +802,8 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
   const refreshDashboardData = useCallback(async () => {
     if (isDataRefreshingRef.current) return
     const config = merchantApiConfig()
-    if (!config.merchantSession) return
+    const canUsePspMerchantAuth = Boolean(config.pspKey && (config.merchantId || '').startsWith('mrch_'))
+    if (!canUsePspMerchantAuth && !config.merchantSession) return
 
     isDataRefreshingRef.current = true
     try {
@@ -832,7 +857,49 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
       if (document.hidden || isRefreshingRef.current) return
       isRefreshingRef.current = true
       try {
-        let config = merchantApiConfig()
+        let config: ApiConfig = merchantApiConfig()
+        const current = merchantRef.current
+        const currentlyComplete =
+          (current.status?.toUpperCase() === 'ACTIVE') &&
+          !resolveMonotonicStep(current, current.nextStep)
+        const canUsePspMerchantAuth = Boolean(config.pspKey && (current.id || '').startsWith('mrch_'))
+
+        // Once onboarding is complete and the PSP API key + X-Merchant-Id are configured,
+        // inspect merchant status via PSP endpoints instead of calling onboarding/session routes
+        // (which would unnecessarily consume the 20-session onboarding allowance).
+        if (currentlyComplete && canUsePspMerchantAuth) {
+          const pspDetail = await requestApi<Record<string, unknown>>(
+            config,
+            'GET',
+            `/api/v1/psp/merchants/${encodeURIComponent(current.id)}`,
+            undefined,
+            'psp'
+          )
+          if (!active || !pspDetail) return
+          const record = ((pspDetail.merchant as Record<string, unknown> | undefined) || pspDetail)
+          const updates: Partial<Merchant> = {}
+          const status = typeof record.status === 'string' ? record.status.toLowerCase() : undefined
+          if (status && status !== current.status) {
+            updates.status = status as Merchant['status']
+          }
+          const mode = (record.settlementMode || record.settlement_mode) as SettlementMode | undefined
+          if (mode && mode !== current.settlementMode) {
+            updates.settlementMode = mode
+          }
+          const baseWallet = (record.baseWalletAddress || record.base_wallet_address || record.merchantWallet || record.merchant_wallet) as string | undefined
+          if (baseWallet !== undefined && (baseWallet || undefined) !== current.baseWalletAddress) {
+            updates.baseWalletAddress = baseWallet || undefined
+          }
+          const solWallet = (record.solanaWalletAddress || record.solana_wallet_address) as string | undefined
+          if (solWallet !== undefined && (solWallet || undefined) !== current.solanaWalletAddress) {
+            updates.solanaWalletAddress = solWallet || undefined
+          }
+          if (Object.keys(updates).length > 0) {
+            onUpdateMerchant(updates)
+          }
+          return
+        }
+
         if (!config.merchantSession) {
           try {
             config = await ensureMerchantSession()
@@ -862,7 +929,6 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
 
         if (!active) return
 
-        const current = merchantRef.current
         const updates: Partial<Merchant> = {}
 
         if (state.status && state.status !== current.status) {
@@ -971,7 +1037,11 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
     const params = new URLSearchParams(window.location.search)
     const signedAgreementId = params.get('signed_agreement_id')
     const config = merchantApiConfig()
-    if (!signedAgreementId || !config.merchantSession) return
+    const canAuth = Boolean(
+      (config.pspKey && (config.merchantId || '').startsWith('mrch_')) ||
+      config.merchantSession
+    )
+    if (!signedAgreementId || !canAuth) return
 
     let cancelled = false
     shareOfframpKyb(config, {
@@ -1086,44 +1156,73 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
               License: <span className="font-semibold text-slate-700">{merchant.tradeLicenseNumber}</span> · {merchant.jurisdiction} · Rep: {merchant.representativeName}
             </p>
             <div className="flex items-center gap-2 mt-2 flex-wrap">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1">
-                <Key className="w-3 h-3 text-slate-400" /> Session Key:
-              </span>
-              {merchantApiConfig().merchantSession ? (
+              {isSetupComplete && hasPspMerchantAuth ? (
                 <>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded flex items-center gap-1">
+                    <ShieldCheck className="w-3 h-3 text-emerald-600" /> PSP Server-to-Server Auth
+                  </span>
                   <code className="text-[11px] font-mono text-slate-700 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
-                    {merchantApiConfig().merchantSession.slice(0, 16)}…
+                    X-Merchant-Id: {merchant.id}
                   </code>
                   <button
                     type="button"
                     onClick={() => {
-                      navigator.clipboard.writeText(merchantApiConfig().merchantSession)
+                      navigator.clipboard.writeText(merchant.id)
                       setCopiedSessionKey(true)
                       setTimeout(() => setCopiedSessionKey(false), 2000)
                     }}
                     className="px-2 py-0.5 text-slate-600 hover:text-slate-900 rounded bg-white hover:bg-slate-50 border border-slate-200 transition inline-flex items-center gap-1 text-[11px] font-medium shadow-2xs"
-                    title="Copy active merchant onboarding session key (onb_sec_...)"
+                    title="Copy X-Merchant-Id header value"
                   >
                     {copiedSessionKey ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
-                    <span>{copiedSessionKey ? 'Copied Key!' : 'Copy Key'}</span>
+                    <span>{copiedSessionKey ? 'Copied ID!' : 'Copy Merchant ID'}</span>
                   </button>
+                  <span className="text-[11px] text-slate-500">
+                    No onboarding key needed after activation
+                  </span>
                 </>
               ) : (
-                <span className="text-[11px] font-mono text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
-                  No active session key
-                </span>
-              )}
+                <>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1">
+                    <Key className="w-3 h-3 text-slate-400" /> Onboarding Session Key:
+                  </span>
+                  {merchantApiConfig().merchantSession ? (
+                    <>
+                      <code className="text-[11px] font-mono text-slate-700 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+                        {merchantApiConfig().merchantSession.slice(0, 16)}…
+                      </code>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText(merchantApiConfig().merchantSession)
+                          setCopiedSessionKey(true)
+                          setTimeout(() => setCopiedSessionKey(false), 2000)
+                        }}
+                        className="px-2 py-0.5 text-slate-600 hover:text-slate-900 rounded bg-white hover:bg-slate-50 border border-slate-200 transition inline-flex items-center gap-1 text-[11px] font-medium shadow-2xs"
+                        title="Copy active merchant onboarding session key (onb_sec_...)"
+                      >
+                        {copiedSessionKey ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                        <span>{copiedSessionKey ? 'Copied Key!' : 'Copy Key'}</span>
+                      </button>
+                    </>
+                  ) : (
+                    <span className="text-[11px] font-mono text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+                      No active session key
+                    </span>
+                  )}
 
-              <button
-                type="button"
-                onClick={() => void handleReissueMerchantSession()}
-                disabled={isReissuingSession}
-                className="px-2.5 py-0.5 text-onion-800 hover:text-white hover:bg-onion rounded bg-onion-50 border border-onion-200 transition inline-flex items-center gap-1 text-[11px] font-bold shadow-2xs disabled:opacity-50"
-                title="Reissue a fresh single-merchant onboarding session token"
-              >
-                <RotateCw className={`w-3.5 h-3.5 ${isReissuingSession ? 'animate-spin' : ''}`} />
-                <span>{isReissuingSession ? 'Reissuing…' : 'Reissue Session Key'}</span>
-              </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleReissueMerchantSession()}
+                    disabled={isReissuingSession}
+                    className="px-2.5 py-0.5 text-onion-800 hover:text-white hover:bg-onion rounded bg-onion-50 border border-onion-200 transition inline-flex items-center gap-1 text-[11px] font-bold shadow-2xs disabled:opacity-50"
+                    title="Reissue a fresh single-merchant onboarding session token"
+                  >
+                    <RotateCw className={`w-3.5 h-3.5 ${isReissuingSession ? 'animate-spin' : ''}`} />
+                    <span>{isReissuingSession ? 'Reissuing…' : 'Reissue Session Key'}</span>
+                  </button>
+                </>
+              )}
             </div>
 
           </div>
@@ -1224,8 +1323,23 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
         </div>
       )}
 
-      {/* Active Merchant Onboarding Session Credentials Bar */}
-      {merchantApiConfig().merchantSession && (
+      {/* Active Merchant Auth / Credentials Bar */}
+      {isSetupComplete && hasPspMerchantAuth ? (
+        <div className="mat-card p-4 sm:p-5 border border-emerald-200/80 bg-emerald-50/40 space-y-2.5 shadow-2xs">
+          <div className="flex items-center justify-between flex-wrap gap-2 text-xs">
+            <span className="font-bold text-slate-900 flex items-center gap-1.5">
+              <ShieldCheck className="w-4 h-4 text-emerald-600" />
+              PSP Server-to-Server Auth Active (No Onboarding Session Key Required)
+            </span>
+            <span className="text-[11px] font-mono text-emerald-800 bg-white border border-emerald-200 px-2.5 py-0.5 rounded-full">
+              Authorization: Bearer {currentMerchantConfig.pspKey.slice(0, 12)}… · X-Merchant-Id: {merchant.id}
+            </span>
+          </div>
+          <p className="text-[11px] text-slate-600 leading-relaxed">
+            Post-onboarding <code className="font-mono text-slate-800">/api/v1/merchant/*</code> calls (metrics, balances, paylinks, preferences, transfers, transactions, and settlement operations) authenticate directly with the PSP API Key and <code className="font-mono text-slate-800">X-Merchant-Id</code> header — keeping the 20-use onboarding session quota untouched.
+          </p>
+        </div>
+      ) : merchantApiConfig().merchantSession ? (
         <div className="mat-card p-4 sm:p-5 border border-slate-200 bg-white space-y-3 shadow-2xs">
           <div className="flex items-center justify-between flex-wrap gap-2 text-xs">
             <span className="font-bold text-slate-800 flex items-center gap-1.5">
@@ -1275,7 +1389,7 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
             </button>
           </div>
         </div>
-      )}
+      ) : null}
 
       {/* GUIDED ONBOARDING STEPPER HERO (If not yet complete) */}
       {!isSetupComplete && (
@@ -1621,7 +1735,7 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
                   merchant.settlementMode === 'auto_offramp' ? 'hold_as_received' : 'auto_offramp'
                 )
               }
-              disabled={!hasMerchantSession || apiBusy}
+              disabled={!hasMerchantDashboardAuth || apiBusy}
               className={`w-11 h-6 flex items-center rounded-full p-1 cursor-pointer transition-colors ${
                 merchant.settlementMode === 'auto_offramp' ? 'bg-onion' : 'bg-slate-300'
               }`}
@@ -1921,7 +2035,7 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
                   <tr
                     key={tx.id}
                     className="hover:bg-slate-50/60 transition cursor-pointer"
-                    onClick={() => navigate(`/merchant/transactions/${encodeURIComponent(tx.id)}`, { state: { transaction: tx } })}
+                    onClick={() => navigate(`${transactionDetailBasePath}/${encodeURIComponent(tx.id)}`, { state: { transaction: tx } })}
                   >
                     <td className="px-6 py-3.5 font-mono text-slate-900">
                       <div>{tx.id}</div>
@@ -1942,7 +2056,7 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation()
-                          navigate(`/merchant/transactions/${encodeURIComponent(tx.id)}`, { state: { transaction: tx } })
+                          navigate(`${transactionDetailBasePath}/${encodeURIComponent(tx.id)}`, { state: { transaction: tx } })
                         }}
                         className="px-2.5 py-1 rounded bg-onion-50 text-onion-800 hover:bg-onion-100 border border-onion-200 text-xs font-medium transition"
                       >

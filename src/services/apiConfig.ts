@@ -4,9 +4,25 @@ export interface ApiConfig {
   feeApproverKey: string
   pspKey: string
   merchantSession: string
+  merchantId?: string
 }
 
 const STORAGE_KEY = 'orki_api_workbench_config'
+const ACTIVE_MERCHANT_ID_KEY = 'orki_active_merchant_id'
+
+const MERCHANT_ONBOARDING_PATHS = [
+  '/v1/merchant/onboarding',
+  '/v1/merchant/accept-usdc',
+  '/v1/merchant/notice',
+  '/v1/merchant/kyb-information',
+  '/v1/merchant/terms',
+  '/v1/merchant/sumsub/token',
+  '/v1/merchant/kyc/start',
+  '/v1/merchant/sumsub/complete',
+  '/v1/merchant/wallets',
+  '/v1/merchant/passkey/register',
+  '/v1/merchant/session/reissue',
+]
 
 const defaults: ApiConfig = {
   baseUrl: (import.meta.env.VITE_PSP_API_URL || import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000')
@@ -16,6 +32,7 @@ const defaults: ApiConfig = {
   feeApproverKey: '',
   pspKey: '',
   merchantSession: '',
+  merchantId: '',
 }
 
 export function getApiConfig(): ApiConfig {
@@ -54,6 +71,7 @@ export function clearAdminSessionToken(): void {
 
 export function clearAllMerchantSessions(): void {
   sessionStorage.removeItem('orki_active_merchant_session')
+  sessionStorage.removeItem(ACTIVE_MERCHANT_ID_KEY)
   const keysToRemove: string[] = []
   for (let i = 0; i < sessionStorage.length; i++) {
     const key = sessionStorage.key(i)
@@ -62,6 +80,55 @@ export function clearAllMerchantSessions(): void {
     }
   }
   keysToRemove.forEach((k) => sessionStorage.removeItem(k))
+}
+
+export function saveActiveMerchantId(merchantId: string): void {
+  const trimmed = merchantId.trim()
+  if (trimmed) {
+    sessionStorage.setItem(ACTIVE_MERCHANT_ID_KEY, trimmed)
+  } else {
+    sessionStorage.removeItem(ACTIVE_MERCHANT_ID_KEY)
+  }
+  const current = getApiConfig()
+  if ((current.merchantId || '') !== trimmed) {
+    saveApiConfig({ ...current, merchantId: trimmed })
+  }
+}
+
+export function clearActiveMerchantId(): void {
+  sessionStorage.removeItem(ACTIVE_MERCHANT_ID_KEY)
+  const current = getApiConfig()
+  if (current.merchantId) {
+    saveApiConfig({ ...current, merchantId: '' })
+  }
+}
+
+export function resolveMerchantId(config?: Partial<ApiConfig>): string {
+  if (config?.merchantId && config.merchantId.trim()) {
+    return config.merchantId.trim()
+  }
+
+  const saved = getApiConfig()
+  if (saved.merchantId && saved.merchantId.trim()) {
+    return saved.merchantId.trim()
+  }
+
+  const active = sessionStorage.getItem(ACTIVE_MERCHANT_ID_KEY)
+  if (active && active.trim()) {
+    return active.trim()
+  }
+
+  return ''
+}
+
+export function isMerchantOnboardingPath(cleanPath: string): boolean {
+  const normalizedPath = cleanPath.split('?')[0]
+  const stripped = normalizedPath.startsWith('/api/')
+    ? normalizedPath.slice(4)
+    : normalizedPath
+  return MERCHANT_ONBOARDING_PATHS.some(
+    (prefix) => stripped === prefix || stripped.startsWith(`${prefix}/`)
+  )
 }
 
 export function resolveMerchantSession(config?: Partial<ApiConfig>, merchantExternalId?: string): string {
@@ -103,10 +170,11 @@ export async function apiRequest(config: ApiConfig, method: string, path: string
   }
 
   const cleanPath = path.startsWith('/') ? path : `/${path}`
-  const isMerchantOnboardingRoute =
-    cleanPath.includes('/merchant/') &&
-    !cleanPath.includes('/conversions/quote') &&
-    !(cleanPath === '/api/v1/merchant/conversions' && method === 'POST')
+  const isMerchantCall = auth === 'merchant' || cleanPath.includes('/merchant/')
+  const isOnboardingRoute = isMerchantOnboardingPath(cleanPath)
+  const isPublicMerchantConversionRoute =
+    cleanPath.includes('/merchant/conversions/quote') ||
+    (cleanPath.split('?')[0] === '/api/v1/merchant/conversions' && method === 'POST')
 
   const headers: Record<string, string> = { Accept: 'application/json' }
   if (body && method !== 'GET') headers['Content-Type'] = 'application/json'
@@ -120,16 +188,38 @@ export async function apiRequest(config: ApiConfig, method: string, path: string
     headers['X-Fee-Approver-Key'] = config.feeApproverKey
   }
 
-  // Handle Merchant vs PSP Authentication
-  if (auth === 'merchant' || isMerchantOnboardingRoute) {
-    const sessionSecret = resolveMerchantSession(config)
-    if (!sessionSecret) {
-      throw new Error(
-        'Merchant onboarding session secret is missing. This route requires a merchant session Bearer token (starts with onb_sec_...). ' +
-        'Please execute POST /api/v1/psp/merchant-onboarding-sessions first to issue an onboarding session secret.'
-      )
+  // Handle Merchant vs PSP Authentication:
+  // - Strict onboarding endpoints require an onboarding session secret (onb_sec_...).
+  // - Post-onboarding /v1/merchant/* routes prefer PSP API Key + X-Merchant-Id (mrch_...),
+  //   with onb_sec_... session fallback for standalone merchant logins.
+  if (isMerchantCall) {
+    if (isOnboardingRoute) {
+      const sessionSecret = resolveMerchantSession(config)
+      if (!sessionSecret) {
+        throw new Error(
+          'Merchant onboarding session secret is missing. This onboarding route requires a merchant session Bearer token (starts with onb_sec_...). ' +
+          'Please execute POST /api/v1/psp/merchant-onboarding-sessions first to issue an onboarding session secret.'
+        )
+      }
+      headers.Authorization = `Bearer ${sessionSecret}`
+    } else {
+      const pspKey = (config.pspKey || '').trim()
+      const merchantId = resolveMerchantId(config)
+      if (pspKey && merchantId.startsWith('mrch_')) {
+        headers.Authorization = `Bearer ${pspKey}`
+        headers['X-Merchant-Id'] = merchantId
+      } else {
+        const sessionSecret = resolveMerchantSession(config)
+        if (sessionSecret) {
+          headers.Authorization = `Bearer ${sessionSecret}`
+        } else if (!isPublicMerchantConversionRoute) {
+          throw new Error(
+            'Merchant API authentication is missing. Provide a PSP API Key + X-Merchant-Id (mrch_...) for post-onboarding calls, ' +
+            'or an active merchant session Bearer token (onb_sec_...).'
+          )
+        }
+      }
     }
-    headers.Authorization = `Bearer ${sessionSecret}`
   } else if (auth === 'psp' && config.pspKey) {
     headers.Authorization = `Bearer ${config.pspKey}`
   }

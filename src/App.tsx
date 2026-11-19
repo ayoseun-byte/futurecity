@@ -79,6 +79,69 @@ function OrgMerchantRedirect() {
   return <Navigate to={id ? `/psp/merchants/${id}` : '/psp'} replace />
 }
 
+function PspMerchantConsoleRoute({
+  merchants,
+  onUpdateMerchantById,
+  onPaylinkCreated,
+  onLaunchCheckout,
+}: {
+  merchants: Merchant[]
+  onUpdateMerchantById: (merchantId: string, updated: Partial<Merchant>) => void
+  onPaylinkCreated: (paylink: Paylink) => void
+  onLaunchCheckout: (paylink: Paylink) => void
+}) {
+  const { id } = useParams<{ id: string }>()
+  const navigate = useNavigate()
+  const merchant = merchants.find((m) => m.id === id)
+
+  if (!merchant) {
+    return (
+      <div className="mat-card p-8 text-center max-w-md mx-auto space-y-4">
+        <div className="w-12 h-12 rounded-xl bg-amber-50 text-amber-600 border border-amber-200 flex items-center justify-center mx-auto">
+          <AlertCircle className="w-6 h-6" />
+        </div>
+        <div>
+          <h2 className="text-base font-bold text-slate-900">Merchant Not Found</h2>
+          <p className="text-xs text-slate-500 mt-1">
+            Return to the PSP Merchant Directory to select a merchant.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => navigate('/psp')}
+          className="mat-btn-primary py-2.5 px-4 text-xs font-semibold inline-flex items-center space-x-1.5"
+        >
+          <span>Back to PSP Portal</span>
+          <ArrowRight className="w-3.5 h-3.5" />
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <button
+          type="button"
+          onClick={() => navigate(`/psp/merchants/${encodeURIComponent(merchant.id)}`)}
+          className="text-xs font-semibold text-slate-600 hover:text-slate-900 inline-flex items-center gap-1"
+        >
+          <span>← Back to Merchant Overview</span>
+        </button>
+        <span className="text-[11px] font-mono text-slate-500">
+          PSP View · X-Merchant-Id: {merchant.id}
+        </span>
+      </div>
+      <MerchantDashboard
+        merchant={merchant}
+        onUpdateMerchant={(updated) => onUpdateMerchantById(merchant.id, updated)}
+        onPaylinkCreated={onPaylinkCreated}
+        onLaunchCheckout={onLaunchCheckout}
+      />
+    </div>
+  )
+}
+
 function MainRoutes() {
   const { user, isAuthenticated } = useAuth()
   const navigate = useNavigate()
@@ -273,11 +336,15 @@ function MainRoutes() {
     )
   }
 
-  const handleUpdateActiveMerchant = useCallback((updated: Partial<Merchant>, isEnforcedByAdmin = false) => {
-    const merchantId = activeMerchant?.id
+  const updateMerchantRecord = useCallback((
+    merchantId: string,
+    updated: Partial<Merchant>,
+    fallbackMerchant?: Merchant,
+    isEnforcedByAdmin = false
+  ) => {
     if (!merchantId) return
     setMerchants((current) => {
-      const existing = current.find((m) => m.id === merchantId) ?? activeMerchant
+      const existing = current.find((m) => m.id === merchantId) ?? fallbackMerchant
       if (!existing) return current
 
       const safeUpdates: Partial<Merchant> = { ...updated }
@@ -296,7 +363,12 @@ function MainRoutes() {
         ? current.map((merchant) => merchant.id === merchantId ? updatedMerchant : merchant)
         : [updatedMerchant, ...current]
     })
-  }, [activeMerchant])
+  }, [])
+
+  const handleUpdateActiveMerchant = useCallback((updated: Partial<Merchant>, isEnforcedByAdmin = false) => {
+    if (!activeMerchant?.id) return
+    updateMerchantRecord(activeMerchant.id, updated, activeMerchant, isEnforcedByAdmin)
+  }, [activeMerchant, updateMerchantRecord])
 
   const handlePaylinkCreated = (newPaylink: Paylink) => {
     setPaylinks([newPaylink, ...paylinks])
@@ -381,6 +453,27 @@ function MainRoutes() {
                 paylinks={paylinks}
                 transactions={transactions}
                 onToggleStatus={handleToggleMerchantStatus}
+              />
+            </PspLayout>
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/psp/merchants/:id/console"
+        element={
+          <ProtectedRoute allowedRoles={['org']}>
+            <PspLayout>
+              <PspMerchantConsoleRoute
+                merchants={merchants}
+                onUpdateMerchantById={(merchantId, updated) => updateMerchantRecord(merchantId, updated)}
+                onPaylinkCreated={handlePaylinkCreated}
+                onLaunchCheckout={(plk) => {
+                  const target = plk.checkoutUrl
+                    ? resolveLocalCheckoutHref(plk.checkoutUrl)
+                    : `/checkout/${plk.slug}`
+                  window.open(target, '_blank')
+                }}
               />
             </PspLayout>
           </ProtectedRoute>

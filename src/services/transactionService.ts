@@ -1,4 +1,4 @@
-import { getApiConfig, requestApi, resolveMerchantSession } from './apiConfig'
+import { getApiConfig, requestApi, resolveMerchantId, resolveMerchantSession } from './apiConfig'
 import type { Transaction } from '../types'
 
 export type TransactionViewerRole = 'admin' | 'org' | 'merchant'
@@ -178,8 +178,9 @@ export async function fetchTransactionDetail(
   }
 
   const merchantSession = resolveMerchantSession(config)
+  const merchantId = resolveMerchantId(config)
   const raw = await requestApi<Record<string, unknown>>(
-    { ...config, merchantSession },
+    { ...config, merchantSession, merchantId },
     'GET',
     `/api/v1/merchant/transactions/${encodedId}`,
     undefined,
