@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { apiRequest, isMerchantOnboardingPath, type ApiConfig } from './apiConfig'
+import { resolveLocalCheckoutHref } from './pspConsoleService'
 import { generateMerchantsForPsp } from './storageService'
 
 function createMemoryStorage(): Storage {
@@ -174,5 +175,26 @@ describe('apiConfig merchant auth routing', () => {
       expect(merchant.status).toBe('invited')
       expect(merchant.nextStep).toBe('OPT_IN')
     }
+  })
+
+  it('preserves explicit hosted checkout URLs instead of rewriting them to the portal origin', () => {
+    vi.stubGlobal('window', {
+      location: {
+        origin: 'https://portal-orki.netlify.app',
+        hostname: 'portal-orki.netlify.app',
+      },
+      setTimeout: globalThis.setTimeout.bind(globalThis),
+      clearTimeout: globalThis.clearTimeout.bind(globalThis),
+    })
+
+    expect(resolveLocalCheckoutHref('https://orki-pay-checkout.netlify.app/charge/chg_123')).toBe(
+      'https://orki-pay-checkout.netlify.app/charge/chg_123'
+    )
+    expect(resolveLocalCheckoutHref('http://localhost:3000/charge/chg_123')).toBe(
+      'https://portal-orki.netlify.app/charge/chg_123'
+    )
+    expect(resolveLocalCheckoutHref('/charge/chg_123')).toBe(
+      'https://portal-orki.netlify.app/charge/chg_123'
+    )
   })
 })

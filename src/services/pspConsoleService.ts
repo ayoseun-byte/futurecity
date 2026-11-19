@@ -110,12 +110,32 @@ export async function fetchMerchantSettings(
   return requestApi<MerchantSettings>(config, 'GET', `/api/v1/psp/merchants/${merchantId}`, undefined, 'psp')
 }
 
-/** Rewrite any backend checkoutUrl origin to the current unified Prototype-UI portal origin. */
+const LOCAL_CHECKOUT_HOSTS = new Set(['localhost', '127.0.0.1', '0.0.0.0'])
+
+/**
+ * Preserve explicit hosted checkout URLs returned by the backend (e.g. https://orki-pay-checkout.netlify.app/charge/...).
+ * Only fall back to VITE_CHECKOUT_URL or window.location.origin for relative paths or stale localhost URLs.
+ */
 export function resolveLocalCheckoutHref(checkoutUrl: string): string {
+  const trimmed = checkoutUrl.trim()
+  if (!trimmed) return window.location.origin
+
+  const configuredCheckoutBase = (import.meta.env.VITE_CHECKOUT_URL || '').trim().replace(/\/$/, '')
+  const fallbackOrigin = configuredCheckoutBase || window.location.origin
+
+  if (!/^https?:\/\//i.test(trimmed)) {
+    const normalizedPath = trimmed.startsWith('/') ? trimmed : `/${trimmed}`
+    return `${fallbackOrigin}${normalizedPath}`
+  }
+
   try {
-    const parsed = new URL(checkoutUrl, window.location.origin)
-    return `${window.location.origin}${parsed.pathname}${parsed.search}`
+    const parsed = new URL(trimmed)
+    const isCurrentHostLocal = LOCAL_CHECKOUT_HOSTS.has(window.location.hostname)
+    if (LOCAL_CHECKOUT_HOSTS.has(parsed.hostname) && (!isCurrentHostLocal || configuredCheckoutBase !== '')) {
+      return `${fallbackOrigin}${parsed.pathname}${parsed.search}${parsed.hash}`
+    }
+    return parsed.toString()
   } catch {
-    return checkoutUrl
+    return trimmed
   }
 }
