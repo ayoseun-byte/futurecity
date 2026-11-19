@@ -89,7 +89,7 @@ const endpoints: Endpoint[] = [
     ['GET', '/api/v1/merchant/onboarding', undefined],
     ['POST', '/api/v1/merchant/accept-usdc', '{}'],
     ['GET', '/api/v1/merchant/notice', undefined],
-    ['POST', '/api/v1/merchant/notice/acknowledge', JSON.stringify({ isAuthorisedSignatory: true, signatoryName: 'Ada Example', signatoryEmail: 'ada@example.com', signatoryTitle: 'Director' }, null, 2)],
+    ['POST', '/api/v1/merchant/notice/acknowledge', JSON.stringify({ isAuthorisedSignatory: true, signatoryName: 'Ada Example', signatoryEmail: 'ada@example.com', signatoryTitle: 'Director', merchantExternalId: 'EXT-MERCH-1001', legalBusinessName: 'Example Trading Ltd', tradeLicenseNumber: 'DMCC-1001', jurisdiction: 'Dubai DMCC', returnUrl: 'http://localhost:5173/merchant' }, null, 2), 'Merged Register Merchant + Notice Acknowledgement: when called with a PSP API key (or existing onboarding session), registers the merchant in Orki upon signatory notice consent, issues an onb_sec_... onboarding session secret, and advances nextStep to KYB_INFORMATION.'],
     ['POST', '/api/v1/merchant/kyb-information', JSON.stringify({ companyInfo: { companyName: 'Example Trading Ltd', registrationNumber: 'RC-001', country: 'NGA', incorporatedOn: '2020-01-01', type: 'Private company', legalAddress: 'Example address' } }, null, 2)],
     ['GET', '/api/v1/merchant/terms', undefined],
     ['POST', '/api/v1/merchant/sumsub/token', '{}'],

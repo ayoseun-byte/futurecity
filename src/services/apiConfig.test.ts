@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { apiRequest, isMerchantOnboardingPath, type ApiConfig } from './apiConfig'
+import { generateMerchantsForPsp } from './storageService'
 
 function createMemoryStorage(): Storage {
   const store = new Map<string, string>()
@@ -50,13 +51,14 @@ describe('apiConfig merchant auth routing', () => {
     fetchMock.mockReset()
   })
 
-  it('distinguishes strict onboarding routes from post-onboarding merchant routes', () => {
+  it('distinguishes strict onboarding routes from notice and post-onboarding merchant routes', () => {
     expect(isMerchantOnboardingPath('/api/v1/merchant/onboarding')).toBe(true)
     expect(isMerchantOnboardingPath('/api/v1/merchant/wallets/challenge')).toBe(true)
-    expect(isMerchantOnboardingPath('/api/v1/merchant/notice/acknowledge')).toBe(true)
     expect(isMerchantOnboardingPath('/api/v1/merchant/sumsub/token')).toBe(true)
     expect(isMerchantOnboardingPath('/api/v1/merchant/session/reissue')).toBe(true)
 
+    expect(isMerchantOnboardingPath('/api/v1/merchant/notice')).toBe(false)
+    expect(isMerchantOnboardingPath('/api/v1/merchant/notice/acknowledge')).toBe(false)
     expect(isMerchantOnboardingPath('/api/v1/merchant/metrics')).toBe(false)
     expect(isMerchantOnboardingPath('/api/v1/merchant/balances')).toBe(false)
     expect(isMerchantOnboardingPath('/api/v1/merchant/preferences')).toBe(false)
@@ -64,6 +66,33 @@ describe('apiConfig merchant auth routing', () => {
     expect(isMerchantOnboardingPath('/api/v1/merchant/settlement/offramp')).toBe(false)
     expect(isMerchantOnboardingPath('/api/v1/merchant/paylinks')).toBe(false)
     expect(isMerchantOnboardingPath('/api/v1/merchant/transactions/tx_123')).toBe(false)
+  })
+
+  it('allows GET /notice and POST /notice/acknowledge with PSP key so merchant registration runs on notice acceptance', async () => {
+    const preOrkiPspConfig: ApiConfig = {
+      baseUrl: 'https://api.example.com',
+      adminKey: '',
+      feeApproverKey: '',
+      pspKey: 'sk_test_psp_register_on_notice',
+      merchantSession: '',
+      merchantId: 'psp_roster_org_1_1234',
+    }
+
+    await apiRequest(preOrkiPspConfig, 'GET', '/api/v1/merchant/notice', undefined, 'merchant')
+    await apiRequest(
+      preOrkiPspConfig,
+      'POST',
+      '/api/v1/merchant/notice/acknowledge',
+      JSON.stringify({ isAuthorisedSignatory: true, merchantExternalId: 'EXT-1001' }),
+      'merchant'
+    )
+
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    for (const [, init] of fetchMock.mock.calls) {
+      const headers = init.headers as Record<string, string>
+      expect(headers.Authorization).toBe('Bearer sk_test_psp_register_on_notice')
+      expect(headers['X-Merchant-Id']).toBeUndefined()
+    }
   })
 
   it('requires an onboarding session secret (onb_sec_...) on onboarding routes even when pspKey is present', async () => {
@@ -132,5 +161,18 @@ describe('apiConfig merchant auth routing', () => {
     const headers = init.headers as Record<string, string>
     expect(headers.Authorization).toBe('Bearer onb_sec_standalone_1')
     expect(headers['X-Merchant-Id']).toBeUndefined()
+  })
+
+  it('generates 5 random pre-Orki roster merchants when a PSP is added in Admin', () => {
+    const merchants = generateMerchantsForPsp('psp_new01', 'AlphaPay')
+    expect(merchants).toHaveLength(5)
+    const names = new Set(merchants.map((m) => m.legalBusinessName))
+    expect(names.size).toBe(5)
+    for (const merchant of merchants) {
+      expect(merchant.organizationId).toBe('psp_new01')
+      expect(merchant.id.startsWith('psp_roster_')).toBe(true)
+      expect(merchant.status).toBe('invited')
+      expect(merchant.nextStep).toBe('OPT_IN')
+    }
   })
 })

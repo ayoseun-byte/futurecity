@@ -40,9 +40,10 @@ import {
   saveStoredPaylinks,
   getStoredTransactions,
   saveStoredTransactions,
+  ensureMerchantsForOrganization,
+  generateMerchantsForPsp,
 } from './services/storageService'
-import { createPspMerchant,
-fetchPspDashboard, type PspDashboardMetrics } from './services/pspMerchantService'
+import { fetchPspDashboard, type PspDashboardMetrics } from './services/pspMerchantService'
 import { resolveMonotonicStep } from './services/onboardingStepService'
 import { getApiConfig, requestApi } from './services/apiConfig'
 import { AlertCircle, ArrowRight } from 'lucide-react'
@@ -92,7 +93,7 @@ function PspMerchantConsoleRoute({
 }) {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
-  const merchant = merchants.find((m) => m.id === id)
+  const merchant = merchants.find((m) => m.id === id || m.externalId === id)
 
   if (!merchant) {
     return (
@@ -134,7 +135,12 @@ function PspMerchantConsoleRoute({
       </div>
       <MerchantDashboard
         merchant={merchant}
-        onUpdateMerchant={(updated) => onUpdateMerchantById(merchant.id, updated)}
+        onUpdateMerchant={(updated) => {
+          onUpdateMerchantById(merchant.id, updated)
+          if (updated.id && updated.id !== merchant.id) {
+            navigate(`/psp/merchants/${encodeURIComponent(updated.id)}/console`, { replace: true })
+          }
+        }}
         onPaylinkCreated={onPaylinkCreated}
         onLaunchCheckout={onLaunchCheckout}
       />
@@ -177,6 +183,8 @@ function MainRoutes() {
     const activeOrganization = storedOrganizations.find((organization) => organization.id === user.organizationId)
     if (!activeOrganization) return
 
+    const seededForOrg = ensureMerchantsForOrganization(activeOrganization.id, activeOrganization.name)
+
     setPspDashboardLoading(true)
     setPspDashboardError(null)
 
@@ -185,6 +193,10 @@ function MainRoutes() {
       if (dashboard === null) {
         setPspMetrics(null)
         setTransactions([])
+        setMerchants((current) => [
+          ...current.filter((merchant) => merchant.organizationId !== activeOrganization.id),
+          ...seededForOrg,
+        ])
         setPspDashboardError('Configure Orki Admin or PSP API key to sync live backend data.')
         return
       }
@@ -200,10 +212,23 @@ function MainRoutes() {
       }
 
       if (Array.isArray(dashboard.merchants)) {
-        setMerchants((current) => [
-          ...current.filter((merchant) => merchant.organizationId !== activeOrganization.id),
-          ...dashboard.merchants,
-        ])
+        const registeredExternalIds = new Set(dashboard.merchants.map((m) => m.externalId))
+        const registeredIds = new Set(dashboard.merchants.map((m) => m.id))
+        setMerchants((current) => {
+          const existingForOrg = current.filter((m) => m.organizationId === activeOrganization.id)
+          const pool = existingForOrg.length > 0 ? existingForOrg : seededForOrg
+          const unregisteredRoster = pool.filter(
+            (m) =>
+              !m.id.startsWith('mrch_') &&
+              !registeredIds.has(m.id) &&
+              !registeredExternalIds.has(m.externalId)
+          )
+          return [
+            ...current.filter((merchant) => merchant.organizationId !== activeOrganization.id),
+            ...dashboard.merchants,
+            ...unregisteredRoster,
+          ]
+        })
       }
     } catch (error: unknown) {
       setPspDashboardError(error instanceof Error ? error.message : 'Failed to load PSP dashboard data.')
@@ -233,7 +258,12 @@ function MainRoutes() {
   const activeOrg = organizations.find((o) => o.id === user?.organizationId)
 
   // Derive active merchant for merchant view based on auth user
-  const activeMerchant = merchants.find((m) => m.id === user?.merchantId) ?? user?.merchantProfile
+  const activeMerchant =
+    merchants.find(
+      (m) =>
+        m.id === user?.merchantId ||
+        (user?.merchantProfile?.externalId && m.externalId === user.merchantProfile.externalId)
+    ) ?? user?.merchantProfile
 
   // Organization Handlers
   const handleUpdateOrganization = (updated: Organization) => {
@@ -244,6 +274,11 @@ function MainRoutes() {
 
   const handleAddOrganization = (newOrg: Organization) => {
     setOrganizations([newOrg, ...organizations])
+    const generatedMerchants = generateMerchantsForPsp(newOrg.id, newOrg.name)
+    setMerchants((current) => [
+      ...generatedMerchants,
+      ...current.filter((merchant) => merchant.organizationId !== newOrg.id),
+    ])
   }
 
   const handleRequestFeeChange = async (
@@ -283,6 +318,8 @@ function MainRoutes() {
   }
 
   // Merchant Handlers
+  // Merchants added in the PSP roster start in local pre-Orki state (OPT_IN -> NOTICE)
+  // and are registered in Orki when the merchant reads and accepts the regulatory notice.
   const handleAddMerchant = async (newMerchantData: Partial<Merchant>) => {
     if (!activeOrg) throw new Error('No active PSP is selected.')
     if (
@@ -296,17 +333,26 @@ function MainRoutes() {
       throw new Error('All merchant registration fields are required.')
     }
 
-    const newMerchant = await createPspMerchant(activeOrg.id, {
+    const orgSlug = activeOrg.id.replace(/[^a-zA-Z0-9]/g, '').slice(-8) || 'org'
+    const newMerchant: Merchant = {
+      id: `psp_roster_${orgSlug}_${Date.now().toString(36)}`,
+      organizationId: activeOrg.id,
       externalId: newMerchantData.externalId,
       legalBusinessName: newMerchantData.legalBusinessName,
       tradeLicenseNumber: newMerchantData.tradeLicenseNumber,
       jurisdiction: newMerchantData.jurisdiction,
       representativeName: newMerchantData.representativeName,
       representativeEmail: newMerchantData.representativeEmail,
-    })
+      status: 'invited',
+      nextStep: 'OPT_IN',
+      settlementMode: 'hold_as_received',
+      createdAt: new Date().toISOString(),
+      volumeUsdc: 0,
+      balanceUsdc: 0,
+    }
     setMerchants((current) => [
       newMerchant,
-      ...current.filter((merchant) => merchant.id !== newMerchant.id),
+      ...current.filter((merchant) => merchant.id !== newMerchant.id && merchant.externalId !== newMerchant.externalId),
     ])
   }
 
@@ -413,7 +459,7 @@ function MainRoutes() {
                   dashboardError={pspDashboardError}
                   onAddMerchant={handleAddMerchant}
                   onBatchCreated={handleBatchCreated}
-                  onSelectMerchantForDashboard={(id) => navigate(`/psp/merchants/${id}`)}
+                  onSelectMerchantForDashboard={(id) => navigate(`/psp/merchants/${id}/console`)}
                   onRequestFeeChange={handleRequestFeeChange}
                   onRefreshDashboard={loadPspData}
                 />

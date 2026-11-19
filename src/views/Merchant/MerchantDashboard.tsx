@@ -367,7 +367,7 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
     setKybData(getPrefilledKybData(merchant, signatory.title || 'Managing Director'))
   }
   useEffect(() => {
-    if (merchant.id) {
+    if (merchant.id && merchant.id.startsWith('mrch_')) {
       saveActiveMerchantId(merchant.id)
     }
   }, [merchant.id])
@@ -575,27 +575,20 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
   }, [merchant.id, merchant.externalId, onUpdateMerchant])
 
   // Stepper handlers
+  // Step 1 (OPT_IN): Only transitions to NOTICE and loads the disclosure text.
+  // The merchant is NOT registered in Orki until they read and accept the notice.
   const handleStartOptIn = async () => {
     setApiBusy(true)
     setApiError(null)
     try {
-      const config = getApiConfig()
-      if (!config.pspKey) throw new Error('Set the PSP API key in the Backend API workbench before starting this demo merchant onboarding.')
-      const session = await requestApi<{ clientSecret: string }>(config, 'POST', '/api/v1/psp/merchant-onboarding-sessions', {
-        merchantExternalId: merchant.externalId,
-        legalBusinessName: merchant.legalBusinessName,
-        tradeLicenseNumber: merchant.tradeLicenseNumber,
-        jurisdiction: merchant.jurisdiction,
-        representativeName: merchant.representativeName,
-        representativeEmail: merchant.representativeEmail,
-        returnUrl: `${window.location.origin}/merchant`,
-        ttlMinutes: 60,
-      }, 'psp')
-      const sessionConfig = { ...config, merchantSession: session.clientSecret }
-      saveApiConfig(sessionConfig)
-      sessionStorage.setItem(`orki_merchant_session:${merchant.externalId}`, session.clientSecret)
-      await requestApi(sessionConfig, 'POST', '/api/v1/merchant/accept-usdc', {}, 'merchant')
-      const fetchedNotice = await requestApi<typeof notice>(sessionConfig, 'GET', '/api/v1/merchant/notice', undefined, 'merchant')
+      const config = merchantApiConfig()
+      if (!config.pspKey && !config.merchantSession) {
+        throw new Error('Set the PSP API key in the Backend API workbench before starting merchant onboarding.')
+      }
+      if (config.merchantSession && merchant.id.startsWith('mrch_')) {
+        await requestApi(config, 'POST', '/api/v1/merchant/accept-usdc', {}, 'merchant')
+      }
+      const fetchedNotice = await requestApi<typeof notice>(config, 'GET', '/api/v1/merchant/notice', undefined, 'merchant')
       setNotice(fetchedNotice)
       onUpdateMerchant({ nextStep: resolveMonotonicStep(merchant, 'NOTICE') })
       setShowNoticeModal(true)
@@ -609,7 +602,10 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
   const handleOpenNotice = async () => {
     setApiBusy(true); setApiError(null)
     try {
-      const config = await ensureMerchantSession()
+      const currentConfig = merchantApiConfig()
+      const config = (!merchant.id.startsWith('mrch_') && !currentConfig.merchantSession)
+        ? currentConfig
+        : await ensureMerchantSession()
       const value = await requestApi<typeof notice>(config, 'GET', '/api/v1/merchant/notice', undefined, 'merchant')
       setNotice(value)
       setShowNoticeModal(true)
@@ -628,18 +624,72 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
     finally { setApiBusy(false) }
   }
 
+  // Step 2 (NOTICE): Reading and acknowledging the regulatory notice registers the merchant in Orki,
+  // records signatory consent, issues the onboarding session secret (onb_sec_...), and advances to KYB_INFORMATION.
   const handleAcknowledgeNotice = async () => {
     setApiBusy(true)
     setApiError(null)
     try {
-      const config = await ensureMerchantSession()
-      await requestApi(config, 'POST', '/api/v1/merchant/notice/acknowledge', {
+      const currentConfig = merchantApiConfig()
+      const config = (!merchant.id.startsWith('mrch_') && !currentConfig.merchantSession)
+        ? currentConfig
+        : await ensureMerchantSession()
+
+      const ack = await requestApi<{
+        status: string
+        merchantId?: string
+        orkiMerchantId?: string
+        nextStep?: Merchant['nextStep']
+        clientSecret?: string | null
+        expiresAt?: string | null
+        onboardingSession?: {
+          clientSecret?: string
+          expiresAt?: string
+        } | null
+      }>(config, 'POST', '/api/v1/merchant/notice/acknowledge', {
         isAuthorisedSignatory: true,
         signatoryName: signatory.name,
         signatoryEmail: signatory.email,
         signatoryTitle: signatory.title,
+        merchantExternalId: merchant.externalId,
+        merchantName: merchant.legalBusinessName,
+        legalBusinessName: merchant.legalBusinessName,
+        tradeLicenseNumber: merchant.tradeLicenseNumber,
+        jurisdiction: merchant.jurisdiction,
+        representativeName: signatory.name || merchant.representativeName,
+        representativeEmail: signatory.email || merchant.representativeEmail,
+        returnUrl: `${window.location.origin}/merchant`,
+        ttlMinutes: 120,
       }, 'merchant')
-      onUpdateMerchant({ noticeAcknowledgedAt: new Date().toISOString(), nextStep: resolveMonotonicStep(merchant, 'KYB_INFORMATION') })
+
+      const registeredMerchantId = ack.orkiMerchantId || ack.merchantId || merchant.id
+      const issuedSecret = ack.clientSecret || ack.onboardingSession?.clientSecret
+      const issuedExpiresAt = ack.expiresAt || ack.onboardingSession?.expiresAt
+
+      if (issuedSecret) {
+        const baseConfig = getApiConfig()
+        saveApiConfig({
+          ...baseConfig,
+          merchantSession: issuedSecret,
+          merchantId: registeredMerchantId,
+        })
+        sessionStorage.setItem(`orki_merchant_session:${merchant.externalId}`, issuedSecret)
+        sessionStorage.setItem('orki_active_merchant_session', issuedSecret)
+        if (issuedExpiresAt) {
+          sessionStorage.setItem(`orki_merchant_session_expiry:${merchant.externalId}`, issuedExpiresAt)
+        }
+      }
+      if (registeredMerchantId.startsWith('mrch_')) {
+        saveActiveMerchantId(registeredMerchantId)
+      }
+
+      onUpdateMerchant({
+        id: registeredMerchantId,
+        noticeAcknowledgedAt: new Date().toISOString(),
+        representativeName: signatory.name || merchant.representativeName,
+        representativeEmail: signatory.email || merchant.representativeEmail,
+        nextStep: resolveMonotonicStep(merchant, 'KYB_INFORMATION'),
+      })
       setShowNoticeModal(false)
       openKybModal()
     } catch (reason) {
@@ -897,6 +947,12 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
           if (Object.keys(updates).length > 0) {
             onUpdateMerchant(updates)
           }
+          return
+        }
+
+        // Pre-Orki PSP roster merchants are not registered in Orki until they read and accept the notice.
+        // Do not mint an onboarding session or poll /v1/merchant/onboarding before registration.
+        if (!(current.id || '').startsWith('mrch_') && !config.merchantSession) {
           return
         }
 

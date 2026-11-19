@@ -13,7 +13,6 @@ const ACTIVE_MERCHANT_ID_KEY = 'orki_active_merchant_id'
 const MERCHANT_ONBOARDING_PATHS = [
   '/v1/merchant/onboarding',
   '/v1/merchant/accept-usdc',
-  '/v1/merchant/notice',
   '/v1/merchant/kyb-information',
   '/v1/merchant/terms',
   '/v1/merchant/sumsub/token',
@@ -170,11 +169,18 @@ export async function apiRequest(config: ApiConfig, method: string, path: string
   }
 
   const cleanPath = path.startsWith('/') ? path : `/${path}`
+  const normalizedCleanPath = cleanPath.split('?')[0]
+  const isNoticeReadRoute =
+    (normalizedCleanPath === '/api/v1/merchant/notice' || normalizedCleanPath === '/v1/merchant/notice') &&
+    method === 'GET'
+  const isNoticeAcknowledgeRoute =
+    normalizedCleanPath === '/api/v1/merchant/notice/acknowledge' ||
+    normalizedCleanPath === '/v1/merchant/notice/acknowledge'
   const isMerchantCall = auth === 'merchant' || cleanPath.includes('/merchant/')
   const isOnboardingRoute = isMerchantOnboardingPath(cleanPath)
   const isPublicMerchantConversionRoute =
     cleanPath.includes('/merchant/conversions/quote') ||
-    (cleanPath.split('?')[0] === '/api/v1/merchant/conversions' && method === 'POST')
+    (normalizedCleanPath === '/api/v1/merchant/conversions' && method === 'POST')
 
   const headers: Record<string, string> = { Accept: 'application/json' }
   if (body && method !== 'GET') headers['Content-Type'] = 'application/json'
@@ -189,16 +195,43 @@ export async function apiRequest(config: ApiConfig, method: string, path: string
   }
 
   // Handle Merchant vs PSP Authentication:
-  // - Strict onboarding endpoints require an onboarding session secret (onb_sec_...).
+  // - GET /v1/merchant/notice is readable before merchant registration (session, PSP key, or public).
+  // - POST /v1/merchant/notice/acknowledge merges merchant registration + notice consent (accepts PSP key or onb_sec_...).
+  // - Post-notice onboarding endpoints require an onboarding session secret (onb_sec_...).
   // - Post-onboarding /v1/merchant/* routes prefer PSP API Key + X-Merchant-Id (mrch_...),
   //   with onb_sec_... session fallback for standalone merchant logins.
   if (isMerchantCall) {
-    if (isOnboardingRoute) {
+    if (isNoticeReadRoute) {
+      const sessionSecret = resolveMerchantSession(config)
+      const pspKey = (config.pspKey || '').trim()
+      if (sessionSecret) {
+        headers.Authorization = `Bearer ${sessionSecret}`
+      } else if (pspKey) {
+        headers.Authorization = `Bearer ${pspKey}`
+      }
+    } else if (isNoticeAcknowledgeRoute) {
+      const sessionSecret = resolveMerchantSession(config)
+      const pspKey = (config.pspKey || '').trim()
+      const merchantId = resolveMerchantId(config)
+      if (sessionSecret) {
+        headers.Authorization = `Bearer ${sessionSecret}`
+      } else if (pspKey) {
+        headers.Authorization = `Bearer ${pspKey}`
+        if (merchantId.startsWith('mrch_')) {
+          headers['X-Merchant-Id'] = merchantId
+        }
+      } else {
+        throw new Error(
+          'Notice acknowledgement requires either a PSP API Key (to register the merchant upon notice consent) ' +
+          'or an active merchant onboarding session token (onb_sec_...).'
+        )
+      }
+    } else if (isOnboardingRoute) {
       const sessionSecret = resolveMerchantSession(config)
       if (!sessionSecret) {
         throw new Error(
           'Merchant onboarding session secret is missing. This onboarding route requires a merchant session Bearer token (starts with onb_sec_...). ' +
-          'Please execute POST /api/v1/psp/merchant-onboarding-sessions first to issue an onboarding session secret.'
+          'Please accept the regulatory notice first to register the merchant and issue an onboarding session secret.'
         )
       }
       headers.Authorization = `Bearer ${sessionSecret}`

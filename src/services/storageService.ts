@@ -104,13 +104,147 @@ export function saveStoredMerchants(merchants: Merchant[]): void {
   localStorage.setItem(STORAGE_KEYS.MERCHANTS, JSON.stringify(filtered))
 }
 
-export function generateMerchantsForPsp(_organizationId?: string, _orgName?: string): Merchant[] {
-  return []
+const RANDOM_MERCHANT_CANDIDATES: Array<{
+  legalBusinessName: string
+  tradeLicensePrefix: string
+  jurisdiction: string
+  representativeName: string
+  emailDomain: string
+}> = [
+  {
+    legalBusinessName: 'Almas Jewels & Bullion DMCC',
+    tradeLicensePrefix: 'DMCC',
+    jurisdiction: 'Dubai DMCC',
+    representativeName: 'Fatima Al-Mansoor',
+    emailDomain: 'almasbullion.ae',
+  },
+  {
+    legalBusinessName: 'Falcon Maritime Logistics LLC',
+    tradeLicensePrefix: 'DED',
+    jurisdiction: 'Dubai DED',
+    representativeName: 'Tariq Al-Hashimi',
+    emailDomain: 'falconmaritime.ae',
+  },
+  {
+    legalBusinessName: 'Oasis Cloud Infrastructure FZCO',
+    tradeLicensePrefix: 'IFZA',
+    jurisdiction: 'Dubai IFZA',
+    representativeName: 'Nadia El-Masri',
+    emailDomain: 'oasiscloud.io',
+  },
+  {
+    legalBusinessName: 'Crescent Capital Advisory Ltd',
+    tradeLicensePrefix: 'DIFC',
+    jurisdiction: 'DIFC',
+    representativeName: 'Omar Al-Suwaidi',
+    emailDomain: 'crescentadvisory.ae',
+  },
+  {
+    legalBusinessName: 'Maryah Digital Commerce Ltd',
+    tradeLicensePrefix: 'ADGM',
+    jurisdiction: 'Abu Dhabi ADGM',
+    representativeName: 'Layla Al-Ketbi',
+    emailDomain: 'maryahcommerce.ae',
+  },
+  {
+    legalBusinessName: 'Veridian Luxury Hospitality LLC',
+    tradeLicensePrefix: 'DED',
+    jurisdiction: 'Dubai DED',
+    representativeName: 'Zayd Al-Maktoum',
+    emailDomain: 'veridianhospitality.ae',
+  },
+  {
+    legalBusinessName: 'SilkRoad Commodities Trading DMCC',
+    tradeLicensePrefix: 'DMCC',
+    jurisdiction: 'Dubai DMCC',
+    representativeName: 'Rohan Malhotra',
+    emailDomain: 'silkroadcommodities.ae',
+  },
+  {
+    legalBusinessName: 'GulfStream Aviation Parts FZ-LLC',
+    tradeLicensePrefix: 'IFZA',
+    jurisdiction: 'Dubai IFZA',
+    representativeName: 'Kareem Nassar',
+    emailDomain: 'gulfstreamaviation.ae',
+  },
+  {
+    legalBusinessName: 'Bishopsgate FinTech Solutions Ltd',
+    tradeLicensePrefix: 'CH',
+    jurisdiction: 'United Kingdom',
+    representativeName: 'Eleanor Vance',
+    emailDomain: 'bishopsgatefintech.co.uk',
+  },
+  {
+    legalBusinessName: 'Marina Bay Global Exports Pte Ltd',
+    tradeLicensePrefix: 'UEN',
+    jurisdiction: 'Singapore',
+    representativeName: 'Marcus Tan',
+    emailDomain: 'marinabayexports.sg',
+  },
+  {
+    legalBusinessName: 'Qaryat Fine Art & Collectibles Ltd',
+    tradeLicensePrefix: 'ADGM',
+    jurisdiction: 'Abu Dhabi ADGM',
+    representativeName: 'Amira Khoury',
+    emailDomain: 'qaryatart.ae',
+  },
+  {
+    legalBusinessName: 'Atlas Medical Supplies FZCO',
+    tradeLicensePrefix: 'IFZA',
+    jurisdiction: 'Dubai IFZA',
+    representativeName: 'Dr. Bilal Haddad',
+    emailDomain: 'atlasmedical.ae',
+  },
+]
+
+export function generateMerchantsForPsp(organizationId = 'psp_default', orgName?: string): Merchant[] {
+  const cleanOrgPrefix = (orgName || organizationId)
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, '')
+    .slice(0, 4) || 'PSP'
+  const orgSlug = organizationId.replace(/[^a-zA-Z0-9]/g, '').slice(-8) || 'org'
+
+  // Shuffle candidate pool so each PSP gets 5 random pre-Orki merchants
+  const pool = [...RANDOM_MERCHANT_CANDIDATES]
+  for (let i = pool.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[pool[i], pool[j]] = [pool[j], pool[i]]
+  }
+
+  const now = Date.now()
+  return pool.slice(0, 5).map((candidate, index) => {
+    const randNum = Math.floor(100000 + Math.random() * 900000)
+    const extRand = Math.floor(1000 + Math.random() * 9000)
+    const firstName = candidate.representativeName.toLowerCase().replace(/[^a-z]/g, '').slice(0, 8) || 'rep'
+    return {
+      // Pre-Orki PSP roster ID (becomes mrch_... only when the merchant reads and accepts the notice)
+      id: `psp_roster_${orgSlug}_${index + 1}_${extRand}`,
+      organizationId,
+      externalId: `${cleanOrgPrefix}-MERCH-${extRand}`,
+      legalBusinessName: candidate.legalBusinessName,
+      tradeLicenseNumber: `${candidate.tradeLicensePrefix}-${randNum}`,
+      jurisdiction: candidate.jurisdiction,
+      representativeName: candidate.representativeName,
+      representativeEmail: `${firstName}@${candidate.emailDomain}`,
+      status: 'invited',
+      nextStep: 'OPT_IN',
+      settlementMode: 'hold_as_received',
+      createdAt: new Date(now - index * 3600_000).toISOString(),
+      volumeUsdc: 0,
+      balanceUsdc: 0,
+    }
+  })
 }
 
-export function ensureMerchantsForOrganization(organizationId: string, _orgName?: string): Merchant[] {
+export function ensureMerchantsForOrganization(organizationId: string, orgName?: string): Merchant[] {
   const storedMerchants = getStoredMerchants()
-  return storedMerchants.filter((m) => m.organizationId === organizationId)
+  const existing = storedMerchants.filter((m) => m.organizationId === organizationId)
+  if (existing.length > 0) {
+    return existing
+  }
+  const generated = generateMerchantsForPsp(organizationId, orgName)
+  saveStoredMerchants([...generated, ...storedMerchants])
+  return generated
 }
 
 export function ensureDemoDataForOrganization(organizationId: string, orgName?: string): void {

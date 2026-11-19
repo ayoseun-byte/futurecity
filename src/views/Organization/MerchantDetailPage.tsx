@@ -50,7 +50,7 @@ export const MerchantDetailPage: React.FC<MerchantDetailPageProps> = ({
   const [activeTab, setActiveTab] = useState<PspMerchantTab>('overview')
   const [unreadNotificationsCount, setUnreadNotificationsCount] = useState(0)
 
-  const merchant = merchants.find((m) => m.id === id)
+  const merchant = merchants.find((m) => m.id === id || m.externalId === id)
 
   // Track active onboarding session state (prefilled from sessionStorage if present)
   const [sessionData, setSessionData] = useState<{
@@ -91,7 +91,7 @@ export const MerchantDetailPage: React.FC<MerchantDetailPageProps> = ({
   const [resubmitSuccess, setResubmitSuccess] = useState<string | null>(null)
 
   useEffect(() => {
-    if (!merchant) return
+    if (!merchant || !merchant.id.startsWith('mrch_')) return
     const config = getApiConfig()
     if (!config.baseUrl) return
 
