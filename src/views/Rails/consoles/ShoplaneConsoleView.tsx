@@ -1,267 +1,446 @@
 import React from 'react'
-import { ExternalLink, ShoppingBag, Store } from 'lucide-react'
+import { ExternalLink, RefreshCw, ShoppingBag } from 'lucide-react'
 import {
   createCharge,
-  fetchMarkupSettings,
-  fetchMerchantSettings,
-  listCharges,
+  createPaymentLink,
+  listPaymentLinks,
   resolveLocalCheckoutHref,
 } from '../../../services/pspConsoleService'
-import type { ChargeSummary, MerchantSettings, MarkupSettings } from '../../../services/pspConsoleService'
-import { Button } from '../../../components/ui/Button'
-import { Badge } from '../../../components/ui/Badge'
-import { Card } from '../../../components/ui/Card'
-import { Field, TextInput } from '../../../components/ui/Field'
-import { JsonBlock } from '../../../components/ui/JsonBlock'
-import { EmptyState, ErrorBanner, Spinner } from '../../../components/ui/StateBlocks'
-import { getApiConfig, requestApi } from '../../../services/apiConfig'
+import type { PaymentLinkSummary } from '../../../services/pspConsoleService'
+import { ErrorBanner } from '../../../components/ui/StateBlocks'
+import { DemoPerspectiveShell, useLivePspMerchant } from './DemoConsoleChrome'
+import type { ApiExchange } from './DemoConsoleChrome'
 
-/**
- * Shoplane console — the commerce-platform integration style.
- *
- * Stands in for a commerce platform that is also a payment gateway: it creates
- * durable per-order charges and administers its merchant's settings.
- */
+const SHOPLANE_PRODUCTS = [
+  { sku: 'espresso', name: 'Harbour Roast Beans', detail: '250g whole bean, dark chocolate & hazelnut.', price: 1.0 },
+  { sku: 'cup', name: 'Stoneware Espresso Cup', detail: 'Wheel-thrown speckled clay, 90ml.', price: 1.5 },
+  { sku: 'tote', name: 'Waxed Canvas Tote', detail: 'Heavyweight 18oz cotton with internal pocket.', price: 2.0 },
+]
+
+const DROP_STOCK = 5
+
 export const ShoplaneConsoleView: React.FC = () => {
-  const [orders, setOrders] = React.useState<ChargeSummary[]>([])
-  const [markup, setMarkup] = React.useState<MarkupSettings | null>(null)
-  const [merchant, setMerchant] = React.useState<MerchantSettings | null>(null)
-  const [created, setCreated] = React.useState<ChargeSummary | null>(null)
-  const [loading, setLoading] = React.useState(true)
-  const [error, setError] = React.useState<string | null>(null)
-  const [busy, setBusy] = React.useState(false)
-  const [form, setForm] = React.useState({
-    merchantExternalId: '',
-    orderId: 'ORD-1001',
-    amount: '80',
-    currency: 'USDC',
-    description: '',
-  })
+  const {
+    pspName,
+    merchants,
+    selectedMerchantId,
+    setSelectedMerchantId,
+    manualExternalId,
+    setManualExternalId,
+    merchantExternalId,
+    merchantName,
+    loading: loadingMerchants,
+    reload: reloadMerchants,
+  } = useLivePspMerchant()
 
-  const load = React.useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const filters = form.merchantExternalId ? { merchantExternalId: form.merchantExternalId } : {}
-      const [page, markupSettings] = await Promise.all([
-        listCharges(filters),
-        fetchMarkupSettings(),
-      ])
-      setOrders(page.data ?? [])
-      setMarkup(markupSettings)
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause))
-    } finally {
-      setLoading(false)
+  const [cart, setCart] = React.useState<Record<string, number>>({})
+  const [shoplaneCheckoutOpen, setShoplaneCheckoutOpen] = React.useState(false)
+  const [orderId, setOrderId] = React.useState(() => `SHOP-${Math.floor(1000 + Math.random() * 9000)}`)
+  const [dropLink, setDropLink] = React.useState<PaymentLinkSummary | null>(null)
+  const [dropCreating, setDropCreating] = React.useState(false)
+  const [linksLoading, setLinksLoading] = React.useState(false)
+  const [busy, setBusy] = React.useState(false)
+  const [error, setError] = React.useState<string | null>(null)
+  const [exchanges, setExchanges] = React.useState<ApiExchange[]>([])
+
+  const pushExchange = React.useCallback((entry: Omit<ApiExchange, 'id' | 'timestamp'>) => {
+    setExchanges((prev) => [
+      {
+        ...entry,
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        timestamp: new Date().toLocaleTimeString(),
+      },
+      ...prev.slice(0, 14),
+    ])
+  }, [])
+
+  const loadDropLink = React.useCallback(async () => {
+    if (!merchantExternalId) {
+      setDropLink(null)
+      return
     }
-  }, [form.merchantExternalId])
+    setLinksLoading(true)
+    const path = `/api/v1/psp/payment-links?merchantExternalId=${encodeURIComponent(merchantExternalId)}`
+    try {
+      const page = await listPaymentLinks({ merchantExternalId })
+      const links = page.data || []
+      const existingDrop =
+        links.find((l) => l.description?.toLowerCase().includes('harbour at dawn')) || links[0] || null
+      setDropLink(existingDrop)
+      pushExchange({ title: 'Load store payment links', method: 'GET', path, status: 200, response: { count: links.length } })
+    } catch (cause) {
+      const msg = cause instanceof Error ? cause.message : String(cause)
+      pushExchange({ title: 'Load store payment links', method: 'GET', path, error: msg })
+    } finally {
+      setLinksLoading(false)
+    }
+  }, [merchantExternalId, pushExchange])
 
   React.useEffect(() => {
-    void load()
-  }, [load])
+    void loadDropLink()
+  }, [loadDropLink])
 
-  const createOrder = async () => {
-    setBusy(true)
-    setError(null)
-    try {
-      const charge = await createCharge({
-        merchantExternalId: form.merchantExternalId,
-        amount: form.amount,
-        currency: form.currency,
-        description: form.description || undefined,
-        orderMetadata: { orderId: form.orderId },
-      })
-      setCreated(charge)
-      await load()
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause))
-    } finally {
-      setBusy(false)
-    }
+  const cartEntries = SHOPLANE_PRODUCTS.filter((p) => (cart[p.sku] || 0) > 0).map((p) => ({
+    ...p,
+    qty: cart[p.sku],
+    lineTotal: (cart[p.sku] * p.price).toFixed(2),
+  }))
+
+  const cartTotal = cartEntries.reduce((sum, item) => sum + item.qty * item.price, 0).toFixed(2)
+
+  const addToBasket = (sku: string) => {
+    setCart((prev) => ({ ...prev, [sku]: (prev[sku] || 0) + 1 }))
   }
 
-  const loadMerchant = async () => {
-    if (!form.merchantExternalId.trim()) {
-      setError('Enter the merchant external ID first.')
+  const clearBasket = () => setCart({})
+
+  const openShoplanePaymentPage = () => {
+    setOrderId(`SHOP-${Math.floor(1000 + Math.random() * 9000)}`)
+    setShoplaneCheckoutOpen(true)
+  }
+
+  const payWithOrkiOnShoplane = async () => {
+    if (!merchantExternalId) {
+      setError('Select a live merchant first.')
       return
     }
     setBusy(true)
     setError(null)
+    const description = cartEntries.map((item) => `${item.qty} × ${item.name}`).join(', ')
+    const body = {
+      merchantExternalId,
+      amount: cartTotal,
+      currency: 'USD',
+      description: `${merchantName} order ${orderId}: ${description}`,
+      orderMetadata: {
+        orderId,
+        source: 'shoplane_hosted_payment_page',
+        items: cartEntries.map((i) => ({ sku: i.sku, name: i.name, qty: i.qty, price: i.price })),
+      },
+    }
+
     try {
-      const page = await requestApi<{ data: Array<{ id: string; external_id?: string; externalId?: string }> }>(
-        getApiConfig(),
-        'GET',
-        `/api/v1/psp/merchants?search=${encodeURIComponent(form.merchantExternalId.trim())}`,
-        undefined,
-        'psp',
-      )
-      const record = page.data.find((item) =>
-        (item.external_id ?? item.externalId) === form.merchantExternalId.trim()
-      )
-      if (!record) throw new Error('No merchant with that external ID exists under this PSP.')
-      setMerchant(await fetchMerchantSettings(record.id))
+      const created = await createCharge(body)
+      pushExchange({
+        title: `Create a charge for order ${orderId}`,
+        method: 'POST',
+        path: '/api/v1/psp/charges',
+        status: 201,
+        request: body,
+        response: created,
+      })
+      if (created.checkoutUrl) {
+        window.open(resolveLocalCheckoutHref(created.checkoutUrl), '_blank', 'noopener,noreferrer')
+      }
+      setShoplaneCheckoutOpen(false)
+      setCart({})
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause))
+      const msg = cause instanceof Error ? cause.message : String(cause)
+      setError(msg)
+      pushExchange({
+        title: `Create a charge for order ${orderId}`,
+        method: 'POST',
+        path: '/api/v1/psp/charges',
+        request: body,
+        error: msg,
+      })
     } finally {
       setBusy(false)
     }
   }
 
+  const createLimitedDropLink = async () => {
+    if (!merchantExternalId) {
+      setError('Select a live merchant first.')
+      return
+    }
+    setDropCreating(true)
+    setError(null)
+    const body = {
+      merchantExternalId,
+      pricing: 'fixed',
+      amount: '1.00',
+      currency: 'USD',
+      description: 'Harbour at dawn — signed risograph print (limited 5)',
+      salesLimitBy: 'items',
+      salesLimitMax: DROP_STOCK,
+    }
+    try {
+      const created = await createPaymentLink(body)
+      setDropLink(created)
+      pushExchange({
+        title: "Create limited print's payment link",
+        method: 'POST',
+        path: '/api/v1/psp/payment-links',
+        status: 201,
+        request: body,
+        response: created,
+      })
+    } catch (cause) {
+      const msg = cause instanceof Error ? cause.message : String(cause)
+      setError(msg)
+      pushExchange({
+        title: "Create limited print's payment link",
+        method: 'POST',
+        path: '/api/v1/psp/payment-links',
+        request: body,
+        error: msg,
+      })
+    } finally {
+      setDropCreating(false)
+    }
+  }
+
+  const dropSoldOut = dropLink?.status === 'sold_out'
+
   return (
-    <div className="space-y-5">
-      <header className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-            <ShoppingBag className="w-5 h-5 text-sky-600" />
-            Shoplane
-          </h2>
-          <p className="text-[11px] text-slate-500 mt-0.5">
-            Commerce platform that is also a payment gateway — creates order charges and administers merchant settings.
-          </p>
-        </div>
-        <div className="w-64">
-          <Field label="Merchant external id">
-            <TextInput
-              value={form.merchantExternalId}
-              placeholder="Enter a merchant external ID"
-              onChange={(event) => setForm((current) => ({ ...current, merchantExternalId: event.target.value }))}
-            />
-          </Field>
-        </div>
-      </header>
+    <>
+      <DemoPerspectiveShell
+        accentColor="#7A3B1D"
+        appName={merchantName}
+        navLabel="Shop"
+        merchantName={merchantName}
+        pspName={`Powered by Shoplane · ${pspName}`}
+        ribbon={
+          <>
+            You are a <strong className="text-white">shopper</strong> in <strong className="text-white">{merchantName}</strong>'s store,
+            hosted by <strong className="text-white">Shoplane</strong> ({pspName}). Checkout takes you to Shoplane's payment page, where Pay with Orki is one option.
+          </>
+        }
+        merchants={merchants}
+        selectedMerchantId={selectedMerchantId}
+        onSelectMerchant={setSelectedMerchantId}
+        manualExternalId={manualExternalId}
+        onManualExternalIdChange={setManualExternalId}
+        loadingMerchants={loadingMerchants}
+        onReloadMerchants={() => void reloadMerchants()}
+        exchanges={exchanges}
+        behindDescription="Shoplane's server calls to Orki. Adding items to the basket calls nothing: an order's charge is created on Shoplane's payment page only when the shopper picks Pay with Orki. The limited print is a reusable payment link."
+      >
+        {error && <div className="mb-4"><ErrorBanner message={error} onDismiss={() => setError(null)} /></div>}
 
-      {error && <ErrorBanner message={error} onDismiss={() => setError(null)} />}
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-        <Card title="Create an order payment">
-          <div className="space-y-3">
-            <Field label="Order ID">
-              <TextInput
-                value={form.orderId}
-                onChange={(event) => setForm((current) => ({ ...current, orderId: event.target.value }))}
-              />
-            </Field>
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Amount">
-                <TextInput
-                  value={form.amount}
-                  onChange={(event) => setForm((current) => ({ ...current, amount: event.target.value }))}
-                />
-              </Field>
-              <Field label="Currency">
-                <TextInput
-                  value={form.currency}
-                  onChange={(event) => setForm((current) => ({ ...current, currency: event.target.value }))}
-                />
-              </Field>
+        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_310px] gap-6 items-start">
+          {/* Left: Product Grid + Limited Edition Drop */}
+          <div className="space-y-6">
+            <div>
+              <h1 className="text-2xl font-bold text-slate-900 font-serif">Small things, made well</h1>
+              <p className="text-xs text-slate-600 mt-1">
+                Coffee, cups and canvas from {merchantName} by the harbour.
+              </p>
             </div>
-            <Field label="Description" hint="Optional order description.">
-              <TextInput
-                value={form.description}
-                placeholder="Order 1001"
-                onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))}
-              />
-            </Field>
-            <Button variant="primary" loading={busy} onClick={() => void createOrder()} className="w-full justify-center">
-              Create order charge
-            </Button>
-            <Button variant="secondary" loading={busy} onClick={() => void loadMerchant()} className="w-full justify-center">
-              <Store className="w-3.5 h-3.5 mr-1.5" />
-              Load merchant settings
-            </Button>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              {SHOPLANE_PRODUCTS.map((product) => (
+                <article
+                  key={product.sku}
+                  className="rounded-xl border border-slate-200 bg-white overflow-hidden flex flex-col shadow-sm"
+                >
+                  <div className="aspect-[4/3] bg-[#F6EEE8] grid place-items-center font-serif text-4xl font-bold text-[#7A3B1D]">
+                    {product.name.slice(0, 1).toUpperCase()}
+                  </div>
+                  <div className="p-3.5 flex flex-col flex-1 gap-1.5">
+                    <strong className="text-sm text-slate-900">{product.name}</strong>
+                    <span className="text-[11px] text-slate-500 leading-snug">{product.detail}</span>
+                    <span className="text-sm font-bold text-slate-900 mt-auto pt-2">${product.price.toFixed(2)}</span>
+                    <button
+                      type="button"
+                      onClick={() => addToBasket(product.sku)}
+                      className="mt-1.5 w-full rounded-lg bg-[#7A3B1D] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#612d15] transition"
+                    >
+                      Add to basket
+                    </button>
+                  </div>
+                </article>
+              ))}
+            </div>
+
+            {/* Limited Edition Drop */}
+            <article className="rounded-xl border border-slate-200 bg-white p-4 grid grid-cols-1 sm:grid-cols-[160px_minmax(0,1fr)] gap-4 items-center shadow-sm">
+              <div className="aspect-[4/3] rounded-lg bg-[#F6EEE8] grid place-items-center font-serif text-lg font-bold text-[#7A3B1D] text-center p-3">
+                Harbour
+                <br />
+                at dawn
+              </div>
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Limited edition</span>
+                  <button
+                    type="button"
+                    onClick={() => void loadDropLink()}
+                    className="inline-flex items-center gap-1 text-[11px] text-slate-500 hover:text-slate-800"
+                  >
+                    <RefreshCw className={`w-3 h-3 ${linksLoading ? 'animate-spin' : ''}`} />
+                    Refresh stock
+                  </button>
+                </div>
+                <div className="text-base font-bold text-slate-900">Harbour at dawn — signed risograph print</div>
+                <p className="text-xs text-slate-500">
+                  $1.00 each. One reusable payment link sells the whole edition of {DROP_STOCK}; it closes itself when the last print is bought.
+                </p>
+
+                {/* Stock Bar */}
+                <div className="flex gap-1 py-1" aria-hidden="true">
+                  {Array.from({ length: DROP_STOCK }, (_, idx) => (
+                    <span
+                      key={idx}
+                      className={`h-1.5 w-6 rounded-full ${dropSoldOut ? 'bg-slate-200' : 'bg-[#7A3B1D]'}`}
+                    />
+                  ))}
+                </div>
+
+                <div className="pt-1 flex items-center gap-3 flex-wrap">
+                  {dropLink?.checkoutUrl ? (
+                    <a
+                      href={dropSoldOut ? '#' : resolveLocalCheckoutHref(dropLink.checkoutUrl)}
+                      target={dropSoldOut ? undefined : '_blank'}
+                      rel="noreferrer"
+                      aria-disabled={dropSoldOut}
+                      className={`inline-flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-xs font-semibold text-white transition ${
+                        dropSoldOut ? 'bg-slate-300 pointer-events-none' : 'bg-[#7A3B1D] hover:bg-[#612d15]'
+                      }`}
+                    >
+                      {dropSoldOut ? 'Sold out' : 'Buy a print'}
+                      {!dropSoldOut && <ExternalLink className="w-3.5 h-3.5" />}
+                    </a>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => void createLimitedDropLink()}
+                      disabled={dropCreating || !merchantExternalId}
+                      className="rounded-lg bg-[#7A3B1D] px-3.5 py-2 text-xs font-semibold text-white hover:bg-[#612d15] disabled:opacity-50"
+                    >
+                      {dropCreating ? 'Creating drop link…' : 'Create limited drop link (5 prints)'}
+                    </button>
+                  )}
+                  {dropLink && (
+                    <span className="text-[11px] font-mono text-slate-500">
+                      Link {dropLink.id} · {dropLink.status}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </article>
           </div>
 
-          {created && (
-            <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-[11px] text-emerald-900 space-y-1">
-              <p className="font-semibold">Order {String(created.orderMetadata?.orderId ?? form.orderId)} created</p>
-              <p className="font-mono break-all">{created.chargeToken}</p>
-              {created.checkoutUrl && (
-                <a href={resolveLocalCheckoutHref(created.checkoutUrl)} target="_blank" rel="noreferrer" className="text-emerald-800 underline">
-                  Open customer checkout
-                </a>
+          {/* Right: Sticky Basket */}
+          <aside className="rounded-xl border border-slate-200 bg-white p-4 space-y-3 lg:sticky lg:top-4 shadow-sm">
+            <div className="flex items-center justify-between">
+              <h2 className="text-base font-bold text-slate-900 flex items-center gap-1.5">
+                <ShoppingBag className="w-4 h-4 text-[#7A3B1D]" />
+                Basket
+              </h2>
+              {cartEntries.length > 0 && (
+                <button type="button" onClick={clearBasket} className="text-[11px] text-slate-400 hover:text-slate-700">
+                  Clear
+                </button>
               )}
             </div>
-          )}
 
-          {markup && (
-            <div className="mt-4">
-              <p className="text-[10px] uppercase tracking-wide font-semibold text-slate-500 mb-1">Your markup</p>
-              <JsonBlock label="GET /api/v1/psp/settings/markup" value={markup} />
-            </div>
-          )}
-
-          {merchant && (
-            <div className="mt-4">
-              <p className="text-[10px] uppercase tracking-wide font-semibold text-slate-500 mb-1">Merchant settings</p>
-              <JsonBlock label="GET /api/v1/psp/merchants/{id}" value={merchant} />
-            </div>
-          )}
-        </Card>
-
-        <Card title="Orders" className="lg:col-span-2" padded={false}>
-          {loading ? (
-            <div className="p-5">
-              <Spinner label="Loading orders…" />
-            </div>
-          ) : orders.length === 0 ? (
-            <div className="p-5">
-              <EmptyState title="No orders yet" hint="Create an order payment with the form on the left." />
-            </div>
-          ) : (
-            <table className="w-full">
-              <thead className="border-b border-slate-200">
-                <tr>
-                  <th className="py-2.5 px-4 text-left text-[10px] uppercase tracking-wide font-semibold text-slate-500">
-                    Order
-                  </th>
-                  <th className="py-2.5 px-4 text-left text-[10px] uppercase tracking-wide font-semibold text-slate-500">
-                    Amount
-                  </th>
-                  <th className="py-2.5 px-4 text-left text-[10px] uppercase tracking-wide font-semibold text-slate-500">
-                    Status
-                  </th>
-                  <th className="py-2.5 px-4 text-left text-[10px] uppercase tracking-wide font-semibold text-slate-500">
-                    Checkout
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {orders.map((order) => (
-                  <tr key={order.chargeToken} className="hover:bg-slate-50">
-                    <td className="py-2.5 px-4">
-                      <p className="text-xs font-semibold text-slate-900">
-                        {String(order.orderMetadata?.orderId ?? order.description ?? order.chargeToken)}
-                      </p>
-                      <p className="font-mono text-[10px] text-slate-500 break-all">{order.chargeToken}</p>
-                    </td>
-                    <td className="py-2.5 px-4 text-xs font-mono tabular-nums text-slate-800">
-                      {order.amount} {order.currency}
-                    </td>
-                    <td className="py-2.5 px-4">
-                      <Badge tone={order.status === 'paid' ? 'success' : 'neutral'}>{order.status}</Badge>
-                    </td>
-                    <td className="py-2.5 px-4">
-                      {order.checkoutUrl ? (
-                        <a
-                          href={resolveLocalCheckoutHref(order.checkoutUrl)}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="inline-flex items-center gap-1 text-[11px] text-onion hover:underline"
-                        >
-                          <ExternalLink className="w-3 h-3" />
-                          Open
-                        </a>
-                      ) : (
-                        <span className="text-[11px] text-slate-400">Unavailable</span>
-                      )}
-                    </td>
-                  </tr>
+            {cartEntries.length === 0 ? (
+              <p className="text-xs text-slate-400 py-2">Your basket is empty.</p>
+            ) : (
+              <div className="space-y-1.5">
+                {cartEntries.map((item) => (
+                  <div key={item.sku} className="flex justify-between gap-2 text-xs text-slate-700">
+                    <span>
+                      {item.qty} × {item.name}
+                    </span>
+                    <span className="font-mono">${item.lineTotal}</span>
+                  </div>
                 ))}
-              </tbody>
-            </table>
-          )}
-        </Card>
-      </div>
-    </div>
+              </div>
+            )}
+
+            <div className="flex justify-between font-bold text-sm border-t border-slate-200 pt-2.5 text-slate-900">
+              <span>Total</span>
+              <span className="font-mono">${cartTotal}</span>
+            </div>
+
+            <button
+              type="button"
+              disabled={cartEntries.length === 0 || !merchantExternalId}
+              onClick={openShoplanePaymentPage}
+              className="w-full rounded-lg bg-[#7A3B1D] px-4 py-2 text-xs font-semibold text-white hover:bg-[#612d15] disabled:opacity-45 transition"
+            >
+              Checkout
+            </button>
+
+            <p className="text-[11px] text-slate-500 leading-relaxed">
+              Shoplane's server works out the total from its own prices, then takes you to Shoplane's payment page. The browser cannot change what you are charged.
+            </p>
+          </aside>
+        </div>
+      </DemoPerspectiveShell>
+
+      {/* Shoplane Hosted Payment Page Modal (mirrors psp-payment-page.blade.php) */}
+      {shoplaneCheckoutOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4">
+          <div className="w-full max-w-lg rounded-2xl bg-white shadow-xl border border-slate-200 overflow-hidden">
+            <div className="px-5 py-3 flex items-center justify-between text-white" style={{ backgroundColor: '#7A3B1D' }}>
+              <span className="font-bold text-sm">Shoplane · Secure payment</span>
+              <button
+                type="button"
+                onClick={() => setShoplaneCheckoutOpen(false)}
+                className="text-xs text-white/80 hover:text-white"
+              >
+                Back to store ✕
+              </button>
+            </div>
+
+            <div className="p-5 space-y-5 bg-[#FAF9F6]">
+              <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
+                <h3 className="text-base font-bold text-slate-900">
+                  Order {orderId} from {merchantName}
+                </h3>
+                <dl className="grid grid-cols-[1fr_auto] gap-y-1.5 gap-x-4 text-xs">
+                  {cartEntries.map((item) => (
+                    <React.Fragment key={item.sku}>
+                      <dt className="text-slate-500">
+                        {item.qty} × {item.name}
+                      </dt>
+                      <dd className="text-right font-mono text-slate-700">${item.lineTotal}</dd>
+                    </React.Fragment>
+                  ))}
+                  <dt className="text-slate-900 border-t border-slate-200 pt-2 font-bold">Total</dt>
+                  <dd className="text-right border-t border-slate-200 pt-2 font-bold text-slate-900 font-mono">
+                    ${cartTotal}
+                  </dd>
+                </dl>
+              </div>
+
+              <div className="space-y-2.5">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">Choose how to pay</h4>
+                <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-white p-3.5 opacity-55">
+                  <div>
+                    <div className="text-xs font-bold text-slate-800">Card</div>
+                    <div className="text-[11px] text-slate-500">Visa, Mastercard. Not part of this demo.</div>
+                  </div>
+                  <button type="button" disabled className="rounded-lg bg-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-500">
+                    Pay by card
+                  </button>
+                </div>
+                <div className="flex items-center justify-between rounded-xl border border-[#7A3B1D]/30 bg-white p-3.5">
+                  <div>
+                    <div className="text-xs font-bold text-slate-900">Pay with Orki</div>
+                    <div className="text-[11px] text-slate-500">
+                      Pay in crypto from your wallet. You go to Orki's page, then come back here.
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void payWithOrkiOnShoplane()}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-[#7A3B1D] px-3.5 py-2 text-xs font-semibold text-white hover:bg-[#612d15] disabled:opacity-50"
+                  >
+                    {busy ? 'Creating charge…' : 'Pay with Orki'}
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   )
 }

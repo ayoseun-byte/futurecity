@@ -54,6 +54,16 @@
     </svg>
   `;
 
+  function generateIdempotencyKey() {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+      return crypto.randomUUID();
+    }
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+      var r = (Math.random() * 16) | 0;
+      return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
+    });
+  }
+
   class OrkiCheckoutModal {
     constructor(options = {}) {
       this.options = Object.assign(
@@ -63,6 +73,9 @@
           paylinkId: null,
           chargeToken: null,
           paymentUrl: null,
+          checkoutHost: null,
+          createCharge: null,
+          onChargeCreated: () => {},
           onSuccess: () => {},
           onError: () => {},
           onClose: () => {},
@@ -71,17 +84,19 @@
       );
 
       this.overlay = null;
+      this.idempotencyKey = generateIdempotencyKey();
       this._messageListener = this._handleMessage.bind(this);
     }
 
     _resolveUrl() {
-      let url = INTERNAL_CHECKOUT_HOST;
+      const host = (this.options.checkoutHost || INTERNAL_CHECKOUT_HOST).replace(/\/$/, '');
+      let url = host;
       if (this.options.paymentUrl) {
         url = this.options.paymentUrl;
       } else if (this.options.chargeToken) {
-        url = `${INTERNAL_CHECKOUT_HOST}/charge/${this.options.chargeToken}`;
+        url = `${host}/pay/${this.options.chargeToken}`;
       } else if (this.options.paylinkId) {
-        url = `${INTERNAL_CHECKOUT_HOST}/pay/${this.options.paylinkId}`;
+        url = `${host}/pay/${this.options.paylinkId}`;
       }
 
       // Append redirectUrl if provided
@@ -93,7 +108,22 @@
       return url;
     }
 
-    open() {
+    async open() {
+      if (typeof this.options.createCharge === 'function') {
+        try {
+          const charge = await this.options.createCharge({ idempotencyKey: this.idempotencyKey });
+          if (!charge || typeof charge.checkoutUrl !== 'string') {
+            throw new Error('[OrkiWidget] createCharge must resolve to an object with checkoutUrl.');
+          }
+          this.options.paymentUrl = charge.checkoutUrl;
+          this.options.onChargeCreated(charge);
+          this.idempotencyKey = generateIdempotencyKey();
+        } catch (error) {
+          this.options.onError(error);
+          return;
+        }
+      }
+
       const targetUrl = this._resolveUrl();
 
       // If embedded is false, open in a new tab!

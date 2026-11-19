@@ -1,241 +1,394 @@
 import React from 'react'
-import { Copy, Code2 } from 'lucide-react'
-import { listCharges, listPaymentLinks } from '../../../services/pspConsoleService'
-import { Badge } from '../../../components/ui/Badge'
-import { Card } from '../../../components/ui/Card'
-import { JsonBlock } from '../../../components/ui/JsonBlock'
-import { EmptyState, ErrorBanner, Spinner } from '../../../components/ui/StateBlocks'
+import { Check, Copy, ExternalLink } from 'lucide-react'
+import { createCharge, resolveLocalCheckoutHref } from '../../../services/pspConsoleService'
+import { ErrorBanner } from '../../../components/ui/StateBlocks'
+import { DemoPerspectiveShell, useLivePspMerchant } from './DemoConsoleChrome'
+import type { ApiExchange } from './DemoConsoleChrome'
 
-interface EmbedTarget {
+const WIDGET_PRODUCTS = [
+  { sku: 'espresso', name: 'Harbour Roast Beans', detail: '250g whole bean, dark chocolate & hazelnut.', price: 1.0 },
+  { sku: 'cup', name: 'Stoneware Espresso Cup', detail: 'Wheel-thrown speckled clay, 90ml.', price: 1.5 },
+  { sku: 'tote', name: 'Waxed Canvas Tote', detail: 'Heavyweight 18oz cotton with internal pocket.', price: 2.0 },
+]
+
+interface CallbackLogItem {
   id: string
-  kind: 'charge' | 'payment_link'
-  currency: string
-  amount?: string | null
-  localPath: string
+  when: string
+  name: string
+  detail?: string
 }
 
-function toLocalCheckoutPath(urlOrId: string, kind: 'charge' | 'payment_link'): string {
-  if (urlOrId.startsWith('http://') || urlOrId.startsWith('https://')) {
-    try {
-      const parsed = new URL(urlOrId)
-      return parsed.pathname + parsed.search
-    } catch {
-      // fall through
-    }
-  }
-  return kind === 'charge' ? `/charge/${urlOrId}` : `/pay/${urlOrId}`
-}
-
-/**
- * Corner Shop with the checkout widget — embedded iframe & button script styles.
- *
- * The merchant's site embeds the live unified checkout in an iframe (or loads `/orki-widget.js`)
- * for either a single-use charge (`chg_...`) or a reusable payment link (`pay_...`).
- */
 export const CheckoutWidgetView: React.FC = () => {
-  const [targets, setTargets] = React.useState<EmbedTarget[]>([])
-  const [selectedId, setSelectedId] = React.useState<string>('')
-  const [loading, setLoading] = React.useState(true)
+  const {
+    pspName,
+    merchants,
+    selectedMerchantId,
+    setSelectedMerchantId,
+    manualExternalId,
+    setManualExternalId,
+    merchantExternalId,
+    merchantName,
+    loading: loadingMerchants,
+    reload: reloadMerchants,
+  } = useLivePspMerchant()
+
+  const [basket, setBasket] = React.useState<Record<string, number>>({ espresso: 1, cup: 0, tote: 0 })
+  const [displayMode, setDisplayMode] = React.useState<'new-tab' | 'popup' | 'iframe'>('new-tab')
+  const [busy, setBusy] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
-  const [copied, setCopied] = React.useState<'iframe' | 'script' | null>(null)
-  const [widgetEvents, setWidgetEvents] = React.useState<Array<{ time: string; type: string }>>([])
+  const [lastOrder, setLastOrder] = React.useState<{ chargeToken: string; checkoutUrl?: string | null; status: string } | null>(null)
+  const [callbacks, setCallbacks] = React.useState<CallbackLogItem[]>([])
+  const [exchanges, setExchanges] = React.useState<ApiExchange[]>([])
+  const [copiedClient, setCopiedClient] = React.useState(false)
 
-  React.useEffect(() => {
-    const onMessage = (event: MessageEvent) => {
-      if (event.data && typeof event.data.type === 'string' && event.data.type.startsWith('ORKI_')) {
-        setWidgetEvents((prev) => [
-          { time: new Date().toLocaleTimeString(), type: `${event.data.type} (${event.data.event || ''})` },
-          ...prev.slice(0, 9),
-        ])
-      }
-    }
-    window.addEventListener('message', onMessage)
-    return () => window.removeEventListener('message', onMessage)
-  }, [])
-
-  React.useEffect(() => {
-    let active = true
-    Promise.all([
-      listCharges().catch(() => ({ data: [] })),
-      listPaymentLinks().catch(() => ({ data: [] })),
+  const pushCallback = React.useCallback((name: string, detail?: string) => {
+    setCallbacks((prev) => [
+      { id: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, when: new Date().toLocaleTimeString(), name, detail },
+      ...prev.slice(0, 14),
     ])
-      .then(([chargesPage, linksPage]) => {
-        if (!active) return
-        const chargeItems: EmbedTarget[] = (chargesPage.data ?? [])
-          .filter((c) => Boolean(c.chargeToken))
-          .map((c) => ({
-            id: c.chargeToken,
-            kind: 'charge',
-            currency: c.currency,
-            amount: c.amount,
-            localPath: toLocalCheckoutPath(c.checkoutUrl || c.chargeToken, 'charge'),
-          }))
-        const linkItems: EmbedTarget[] = (linksPage.data ?? [])
-          .filter((l) => Boolean(l.checkoutUrl))
-          .map((l) => ({
-            id: l.id,
-            kind: 'payment_link',
-            currency: l.currency,
-            amount: l.amount,
-            localPath: toLocalCheckoutPath(l.checkoutUrl || l.id, 'payment_link'),
-          }))
-        const merged = [...chargeItems, ...linkItems]
-        setTargets(merged)
-        setSelectedId((current) => current || merged[0]?.id || '')
-      })
-      .catch((cause) => {
-        if (active) setError(cause instanceof Error ? cause.message : String(cause))
-      })
-      .finally(() => {
-        if (active) setLoading(false)
-      })
-    return () => {
-      active = false
-    }
   }, [])
 
-  const activeTarget = targets.find((t) => t.id === selectedId) ?? targets[0]
-  const origin = typeof window !== 'undefined' ? window.location.origin : ''
-  const embedSrc = activeTarget ? `${origin}${activeTarget.localPath}` : '<hosted checkout URL>'
+  const pushExchange = React.useCallback((entry: Omit<ApiExchange, 'id' | 'timestamp'>) => {
+    setExchanges((prev) => [
+      {
+        ...entry,
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        timestamp: new Date().toLocaleTimeString(),
+      },
+      ...prev.slice(0, 14),
+    ])
+  }, [])
 
-  const iframeSnippet = `<iframe
-  src="${embedSrc}"
-  title="Secure Orki checkout"
-  width="100%"
-  height="640"
-  frameborder="0"
-  allow="clipboard-read; clipboard-write"
-></iframe>`
+  const adjustQty = (sku: string, delta: number) => {
+    setBasket((prev) => ({
+      ...prev,
+      [sku]: Math.max(0, (prev[sku] || 0) + delta),
+    }))
+  }
 
-  const scriptSnippet = `<div id="orki-pay-button"></div>
-<script src="${origin}/orki-widget.js"></script>
+  const itemsInBasket = WIDGET_PRODUCTS.filter((p) => (basket[p.sku] || 0) > 0)
+  const totalAmount = itemsInBasket.reduce((sum, p) => sum + (basket[p.sku] || 0) * p.price, 0).toFixed(2)
+  const description = itemsInBasket.map((p) => `${basket[p.sku]} × ${p.name}`).join(', ')
+  const merchantSlug = merchantName.toLowerCase().replace(/[^a-z0-9]+/g, '') || 'cornershop'
+
+  const clientSnippet = `<div id="orki-checkout"></div>
+<script src="${window.location.origin}/orki-widget.js"></script>
 <script>
-  OrkiWidget.mount('#orki-pay-button', {
-    ${activeTarget?.kind === 'charge' ? `chargeToken: '${activeTarget.id}'` : `paylinkId: '${activeTarget?.id || 'pay_...'}'`},
-    embedded: true,
-    label: 'pay',
-    onSuccess: (payload) => console.log('Paid:', payload),
-    onError: (err) => console.error('Failed:', err),
+  OrkiCheckoutModal.open({
+    display: "${displayMode}",
+    buttonText: "Pay $${totalAmount}",
+    createCharge: async ({ idempotencyKey }) => {
+      const res = await fetch("/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Idempotency-Key": idempotencyKey },
+        body: JSON.stringify({ description: ${JSON.stringify(description || 'Empty basket')} })
+      });
+      return res.json(); // { checkoutUrl, chargeToken }
+    },
+    onChargeCreated: (charge) => console.log("Created", charge.chargeToken),
+    onSuccess: (payload) => console.log("Paid!", payload),
   });
 </script>`
 
-  const copyText = (text: string, which: 'iframe' | 'script') => {
-    navigator.clipboard.writeText(text)
-    setCopied(which)
-    setTimeout(() => setCopied(null), 2000)
+  const serverSnippet = `// On ${merchantName}'s server -> calls ${pspName} API:
+POST /api/v1/psp/charges
+Idempotency-Key: <forwarded from widget>
+{
+  "merchantExternalId": "${merchantExternalId || '<merchantExternalId>'}",
+  "amount": "${totalAmount}",
+  "currency": "USD",
+  "description": ${JSON.stringify(description || `${merchantName} order`)}
+}`
+
+  const triggerWidgetPay = async () => {
+    if (!merchantExternalId) {
+      setError('Select a live merchant first.')
+      return
+    }
+    if (Number(totalAmount) <= 0) return
+
+    setBusy(true)
+    setError(null)
+    pushCallback('onStartPayment', `Opening ${displayMode} checkout for $${totalAmount}`)
+
+    const ensureWidgetLoaded = () =>
+      new Promise<void>((resolve, reject) => {
+        const w = window as unknown as { OrkiCheckoutModal?: { open: (opts: Record<string, unknown>) => void } }
+        if (w.OrkiCheckoutModal) {
+          resolve()
+          return
+        }
+        const script = document.createElement('script')
+        script.src = '/orki-widget.js'
+        script.onload = () => resolve()
+        script.onerror = () => reject(new Error('Failed to load /orki-widget.js'))
+        document.body.appendChild(script)
+      })
+
+    try {
+      await ensureWidgetLoaded()
+      const w = window as unknown as {
+        OrkiCheckoutModal: {
+          open: (opts: {
+            display?: string
+            createCharge: (args: { idempotencyKey: string }) => Promise<{ checkoutUrl: string; chargeToken?: string }>
+            onChargeCreated?: (charge: { chargeToken?: string; checkoutUrl?: string; status?: string }) => void
+            onSuccess?: (payload: unknown) => void
+            onError?: (err: Error) => void
+            onClose?: () => void
+          }) => void
+        }
+      }
+
+      w.OrkiCheckoutModal.open({
+        display: displayMode,
+        createCharge: async ({ idempotencyKey }) => {
+          const body = {
+            merchantExternalId,
+            amount: totalAmount,
+            currency: 'USD',
+            description: description || `${merchantName} widget order`,
+            orderMetadata: {
+              source: 'checkout_widget',
+              idempotencyKey,
+              items: itemsInBasket.map((p) => ({ sku: p.sku, qty: basket[p.sku] })),
+            },
+          }
+          const created = await createCharge(body)
+          pushExchange({
+            title: `Widget createCharge (idempotencyKey: ${idempotencyKey.slice(0, 8)}…)`,
+            method: 'POST',
+            path: '/api/v1/psp/charges',
+            status: 201,
+            request: body,
+            response: created,
+          })
+          if (!created.checkoutUrl) {
+            throw new Error('Charge created without checkoutUrl')
+          }
+          return {
+            ...created,
+            checkoutUrl: resolveLocalCheckoutHref(created.checkoutUrl),
+          }
+        },
+        onChargeCreated: (charge) => {
+          setLastOrder({
+            chargeToken: charge.chargeToken || 'chg_...',
+            checkoutUrl: charge.checkoutUrl,
+            status: charge.status || 'open',
+          })
+          pushCallback('onChargeCreated', `Charge ${charge.chargeToken || ''} ready`)
+        },
+        onSuccess: (payload) => {
+          pushCallback('onSuccess', JSON.stringify(payload))
+        },
+        onError: (err) => {
+          setError(err.message)
+          pushCallback('onError', err.message)
+        },
+        onClose: () => {
+          pushCallback('onClose', 'Shopper closed checkout window')
+        },
+      })
+    } catch (cause) {
+      const msg = cause instanceof Error ? cause.message : String(cause)
+      setError(msg)
+      pushCallback('onError', msg)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const copyClientSnippet = async () => {
+    try {
+      await navigator.clipboard.writeText(clientSnippet)
+      setCopiedClient(true)
+      setTimeout(() => setCopiedClient(false), 1500)
+    } catch {
+      // ignore
+    }
   }
 
   return (
-    <div className="space-y-5">
-      <header>
-        <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-          <Code2 className="w-5 h-5 text-violet-600" />
-          Corner Shop — Embedded Checkout &amp; Pay Button Script
-        </h2>
-        <p className="text-[11px] text-slate-500 mt-0.5">
-          Embed the live unified checkout in an iframe or mount the Pay with Orki button script for any charge or payment link.
-        </p>
-      </header>
+    <DemoPerspectiveShell
+      accentColor="#22313F"
+      appName={`${merchantName}'s own website`}
+      navLabel="Checkout widget"
+      merchantName={merchantName}
+      pspName={`Checkout by ${pspName} · payments by Orki`}
+      ribbon={
+        <>
+          You are a <strong className="text-white">shopper</strong> on <strong className="text-white">{merchantName}</strong>'s{' '}
+          <strong className="text-white">own website</strong>. {merchantName} added <strong className="text-white">{pspName}</strong>'s checkout widget to it.
+          The widget shows the button and opens checkout; {merchantName}'s server prices your cart and {pspName}'s server creates the Orki charge.
+        </>
+      }
+      merchants={merchants}
+      selectedMerchantId={selectedMerchantId}
+      onSelectMerchant={setSelectedMerchantId}
+      manualExternalId={manualExternalId}
+      onManualExternalIdChange={setManualExternalId}
+      loadingMerchants={loadingMerchants}
+      onReloadMerchants={() => void reloadMerchants()}
+      exchanges={exchanges}
+      behindDescription="Live calls made when the widget calls createCharge({ idempotencyKey })."
+    >
+      {error && <div className="mb-4"><ErrorBanner message={error} onDismiss={() => setError(null)} /></div>}
 
-      {error && <ErrorBanner message={error} onDismiss={() => setError(null)} />}
+      <div className="grid grid-cols-1 lg:grid-cols-[1.2fr_0.95fr] gap-6 items-start">
+        {/* Left: Simulated Browser Window */}
+        <div className="rounded-xl border border-slate-300 bg-white overflow-hidden shadow-sm">
+          <div className="flex items-center gap-3 bg-[#E9ECEF] px-3.5 py-2 border-b border-slate-200">
+            <div className="flex gap-1.5" aria-hidden="true">
+              <span className="w-2.5 h-2.5 rounded-full bg-[#C5CBD1]" />
+              <span className="w-2.5 h-2.5 rounded-full bg-[#C5CBD1]" />
+              <span className="w-2.5 h-2.5 rounded-full bg-[#C5CBD1]" />
+            </div>
+            <div className="flex-1 rounded-full bg-white px-3 py-1 text-xs font-mono text-slate-600 truncate">
+              <span className="text-slate-400">https://</span>
+              <strong className="font-normal text-slate-900">{merchantSlug}.example</strong>
+            </div>
+          </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-        <div className="space-y-4">
-          <Card
-            title="Iframe embed snippet"
-            actions={
-              <button
-                type="button"
-                onClick={() => copyText(iframeSnippet, 'iframe')}
-                className="inline-flex items-center gap-1 text-[11px] text-slate-500 hover:text-slate-800"
-              >
-                <Copy className="w-3.5 h-3.5" />
-                {copied === 'iframe' ? 'Copied' : 'Copy'}
-              </button>
-            }
-          >
-            <JsonBlock label="HTML" value={iframeSnippet} collapsed={false} />
-          </Card>
+          <div className="bg-[#FBF5F0] p-5 space-y-4">
+            <div>
+              <h2 className="text-2xl font-bold font-serif text-[#7A3B1D]">{merchantName}</h2>
+              <p className="text-xs text-slate-600 mt-0.5 font-serif">
+                Order for collection at the shop. Pay with crypto through our checkout widget.
+              </p>
+            </div>
 
-          <Card
-            title="Script tag snippet (/orki-widget.js)"
-            actions={
-              <button
-                type="button"
-                onClick={() => copyText(scriptSnippet, 'script')}
-                className="inline-flex items-center gap-1 text-[11px] text-slate-500 hover:text-slate-800"
-              >
-                <Copy className="w-3.5 h-3.5" />
-                {copied === 'script' ? 'Copied' : 'Copy'}
-              </button>
-            }
-          >
-            <JsonBlock label="HTML + JS" value={scriptSnippet} collapsed={false} />
-          </Card>
-
-          {widgetEvents.length > 0 && (
-            <Card title="Live postMessage events from iframe">
-              <div className="space-y-1 text-[11px] font-mono">
-                {widgetEvents.map((ev, idx) => (
-                  <div key={idx} className="text-emerald-700">
-                    [{ev.time}] {ev.type}
+            <div className="space-y-2">
+              {WIDGET_PRODUCTS.map((product) => (
+                <div
+                  key={product.sku}
+                  className="grid grid-cols-[1fr_auto_auto] gap-3 items-center rounded-lg border border-[#EADBCF] bg-white px-3.5 py-2.5"
+                >
+                  <div>
+                    <div className="text-sm font-bold text-slate-900 font-serif">{product.name}</div>
+                    <div className="text-[11px] text-slate-500">{product.detail}</div>
                   </div>
-                ))}
+                  <div className="text-xs font-mono font-semibold text-slate-800">${product.price.toFixed(2)}</div>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => adjustQty(product.sku, -1)}
+                      className="w-6 h-6 rounded border border-[#EADBCF] bg-white text-[#7A3B1D] text-xs font-bold hover:bg-[#FBF5F0]"
+                    >
+                      −
+                    </button>
+                    <span className="w-5 text-center text-xs font-mono font-semibold">{basket[product.sku] || 0}</span>
+                    <button
+                      type="button"
+                      onClick={() => adjustQty(product.sku, 1)}
+                      className="w-6 h-6 rounded border border-[#EADBCF] bg-white text-[#7A3B1D] text-xs font-bold hover:bg-[#FBF5F0]"
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-[#EADBCF]">
+              <div>
+                <div className="text-base font-bold text-slate-900">
+                  Total <span className="font-mono">${totalAmount}</span>
+                </div>
+                <div className="flex items-center gap-1.5 mt-1">
+                  <span className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold">Display:</span>
+                  {(['new-tab', 'popup', 'iframe'] as const).map((mode) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      onClick={() => setDisplayMode(mode)}
+                      className={`text-[10px] px-2 py-0.5 rounded border font-medium ${
+                        displayMode === mode
+                          ? 'bg-[#22313F] text-white border-[#22313F]'
+                          : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50'
+                      }`}
+                    >
+                      {mode}
+                    </button>
+                  ))}
+                </div>
               </div>
-            </Card>
-          )}
+
+              <button
+                type="button"
+                disabled={busy || Number(totalAmount) <= 0 || !merchantExternalId}
+                onClick={() => void triggerWidgetPay()}
+                className="rounded-lg bg-[#22313F] px-4 py-2.5 text-xs font-semibold text-white hover:bg-[#19242e] disabled:opacity-45 transition"
+              >
+                {busy ? 'Processing…' : `Pay $${totalAmount}`}
+              </button>
+            </div>
+
+            {lastOrder && (
+              <div className="rounded-lg border border-emerald-200 bg-white p-3 text-xs space-y-1">
+                <div className="font-semibold text-emerald-800">
+                  Charge <span className="font-mono">{lastOrder.chargeToken}</span> created ({lastOrder.status})
+                </div>
+                {lastOrder.checkoutUrl && (
+                  <a
+                    href={lastOrder.checkoutUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1 text-[#22313F] font-semibold hover:underline"
+                  >
+                    Open checkout URL
+                    <ExternalLink className="w-3 h-3" />
+                  </a>
+                )}
+              </div>
+            )}
+          </div>
         </div>
 
-        <Card title="Live preview" padded={false}>
-          {loading ? (
-            <div className="p-5">
-              <Spinner label="Loading charges & payment links…" />
+        {/* Right: What merchant added + Callbacks */}
+        <aside className="space-y-4">
+          <section className="space-y-2">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-bold text-slate-900">What {merchantName} added</h3>
+              <button
+                type="button"
+                onClick={() => void copyClientSnippet()}
+                className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-600 hover:text-slate-900"
+              >
+                {copiedClient ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
+                {copiedClient ? 'Copied' : 'Copy snippet'}
+              </button>
             </div>
-          ) : targets.length === 0 ? (
-            <div className="p-5">
-              <EmptyState
-                title="No charge or payment link to preview"
-                hint="Issue one from Shoplane, Invoicely, or Headless console first."
-              />
-            </div>
-          ) : (
-            <div className="space-y-3 p-5">
-              <div className="flex flex-wrap gap-1.5">
-                {targets.map((target) => (
-                  <button
-                    key={target.id}
-                    type="button"
-                    onClick={() => setSelectedId(target.id)}
-                    className={`px-2 py-1 rounded-lg text-[11px] font-mono border ${
-                      activeTarget?.id === target.id
-                        ? 'bg-onion text-white border-onion'
-                        : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
-                    }`}
-                  >
-                    {target.id}
-                  </button>
+            <p className="text-[11px] text-slate-500">On its page, {pspName}'s widget:</p>
+            <pre className="rounded-xl bg-[#16202B] text-[#E5E9ED] p-3.5 text-[11px] font-mono overflow-x-auto leading-relaxed">
+              {clientSnippet}
+            </pre>
+            <p className="text-[11px] text-slate-500">
+              On its server, one route that prices the cart and asks {pspName} for the charge:
+            </p>
+            <pre className="rounded-xl bg-[#16202B] text-[#E5E9ED] p-3.5 text-[11px] font-mono overflow-x-auto leading-relaxed">
+              {serverSnippet}
+            </pre>
+          </section>
+
+          <section className="rounded-xl border border-slate-200 bg-white p-4 space-y-2">
+            <h3 className="text-sm font-bold text-slate-900">Widget callbacks</h3>
+            {callbacks.length === 0 ? (
+              <p className="text-xs text-slate-400">Nothing yet. Add items and press Pay.</p>
+            ) : (
+              <ul className="divide-y divide-slate-100 max-h-52 overflow-auto text-xs font-mono">
+                {callbacks.map((cb) => (
+                  <li key={cb.id} className="py-1.5">
+                    <span className="text-slate-400 mr-2">{cb.when}</span>
+                    <span className="font-semibold text-slate-900">{cb.name}</span>
+                    {cb.detail && <div className="text-[11px] text-slate-500 break-all">{cb.detail}</div>}
+                  </li>
                 ))}
-              </div>
-
-              {activeTarget && (
-                <div className="flex items-center gap-2">
-                  <Badge tone="neutral">{activeTarget.kind === 'charge' ? 'Charge' : 'Link'}</Badge>
-                  <Badge tone="neutral">{activeTarget.currency}</Badge>
-                  <span className="text-xs font-mono tabular-nums">{activeTarget.amount ?? 'dynamic'}</span>
-                </div>
-              )}
-
-              {activeTarget && (
-                <iframe
-                  title="Orki checkout preview"
-                  src={activeTarget.localPath}
-                  className="w-full h-[520px] rounded-xl border border-slate-200 bg-white"
-                />
-              )}
-            </div>
-          )}
-        </Card>
+              </ul>
+            )}
+          </section>
+        </aside>
       </div>
-    </div>
+    </DemoPerspectiveShell>
   )
 }
