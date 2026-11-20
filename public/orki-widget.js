@@ -125,9 +125,16 @@
       }
 
       const targetUrl = this._resolveUrl();
+      const display = this.options.display || (this.options.embedded ? 'iframe' : 'new-tab');
 
-      // If embedded is false, open in a new tab!
-      if (!this.options.embedded) {
+      if (display === 'popup') {
+        const left = Math.max(0, Math.round(window.screenX + (window.outerWidth - 460) / 2));
+        const top = Math.max(0, Math.round(window.screenY + (window.outerHeight - 720) / 2));
+        window.open(targetUrl, 'OrkiCheckout', `width=460,height=720,left=${left},top=${top},resizable=yes,scrollbars=yes`);
+        return;
+      }
+
+      if (display !== 'iframe') {
         window.open(targetUrl, '_blank', 'noopener,noreferrer');
         return;
       }
@@ -250,6 +257,11 @@
           this.close();
         }
       }
+    }
+    static open(options = {}) {
+      const modal = new OrkiCheckoutModal(options);
+      void modal.open();
+      return modal;
     }
   }
 
@@ -375,10 +387,12 @@
   };
 
   // Export
+  global.OrkiCheckoutModal = OrkiCheckoutModal;
   global.OrkiPayButton = OrkiPayButton;
   global.OrkiWidget = {
     renderButton: OrkiPayButton.mount,
-    init: OrkiPayButton.mount
+    init: OrkiPayButton.mount,
+    open: OrkiCheckoutModal.open,
   };
 
 })(typeof window !== 'undefined' ? window : this);
