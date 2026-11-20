@@ -1,8 +1,8 @@
 import React from 'react'
-import { Check, Copy, ExternalLink } from 'lucide-react'
+import { Check, Copy, ExternalLink, ShieldCheck } from 'lucide-react'
 import { createCharge, resolveLocalCheckoutHref } from '../../../services/pspConsoleService'
 import { ErrorBanner } from '../../../components/ui/StateBlocks'
-import { DemoPerspectiveShell, useLivePspMerchant } from './DemoConsoleChrome'
+import { DemoPerspectiveShell, LiveQuoteAndStatusCard, useLivePspMerchant } from './DemoConsoleChrome'
 import type { ApiExchange } from './DemoConsoleChrome'
 
 const WIDGET_PRODUCTS = [
@@ -33,10 +33,17 @@ export const CheckoutWidgetView: React.FC = () => {
   } = useLivePspMerchant()
 
   const [basket, setBasket] = React.useState<Record<string, number>>({ espresso: 1, cup: 0, tote: 0 })
-  const [displayMode, setDisplayMode] = React.useState<'new-tab' | 'popup' | 'iframe'>('new-tab')
+  const [displayMode, setDisplayMode] = React.useState<'new-tab' | 'popup' | 'iframe'>('iframe')
+  const [showTechnicalTrace, setShowTechnicalTrace] = React.useState(false)
   const [busy, setBusy] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
-  const [lastOrder, setLastOrder] = React.useState<{ chargeToken: string; checkoutUrl?: string | null; status: string } | null>(null)
+  const [lastOrder, setLastOrder] = React.useState<{
+    chargeToken: string
+    amount: string
+    currency: string
+    checkoutUrl?: string | null
+    status: string
+  } | null>(null)
   const [callbacks, setCallbacks] = React.useState<CallbackLogItem[]>([])
   const [exchanges, setExchanges] = React.useState<ApiExchange[]>([])
   const [copiedClient, setCopiedClient] = React.useState(false)
@@ -174,12 +181,15 @@ Idempotency-Key: <forwarded from widget>
         onChargeCreated: (charge) => {
           setLastOrder({
             chargeToken: charge.chargeToken || 'chg_...',
+            amount: totalAmount,
+            currency: 'USD',
             checkoutUrl: charge.checkoutUrl,
             status: charge.status || 'open',
           })
           pushCallback('onChargeCreated', `Charge ${charge.chargeToken || ''} ready`)
         },
         onSuccess: (payload) => {
+          setLastOrder((prev) => (prev ? { ...prev, status: 'paid' } : prev))
           pushCallback('onSuccess', JSON.stringify(payload))
         },
         onError: (err) => {
@@ -212,15 +222,15 @@ Idempotency-Key: <forwarded from widget>
   return (
     <DemoPerspectiveShell
       accentColor="#22313F"
-      appName={`${merchantName}'s own website`}
-      navLabel="Checkout widget"
+      appName={`${merchantName}'s website`}
+      navLabel="Embedded Widget"
       merchantName={merchantName}
-      pspName={`Checkout by ${pspName} · payments by Orki`}
+      pspName={`Widget by ${pspName}`}
       ribbon={
         <>
-          You are a <strong className="text-white">shopper</strong> on <strong className="text-white">{merchantName}</strong>'s{' '}
-          <strong className="text-white">own website</strong>. {merchantName} added <strong className="text-white">{pspName}</strong>'s checkout widget to it.
-          The widget shows the button and opens checkout; {merchantName}'s server prices your cart and {pspName}'s server creates the Orki charge.
+          <strong className="text-white">Embedded Widget Demo:</strong> A shopper checks out on{' '}
+          <strong className="text-white">{merchantName}</strong>'s own site using{' '}
+          <strong className="text-white">{pspName}'s</strong> drop-in payment modal—without leaving the page.
         </>
       }
       merchants={merchants}
@@ -231,11 +241,13 @@ Idempotency-Key: <forwarded from widget>
       loadingMerchants={loadingMerchants}
       onReloadMerchants={() => void reloadMerchants()}
       exchanges={exchanges}
-      behindDescription="Live calls made when the widget calls createCharge({ idempotencyKey })."
+      showTechnicalTrace={showTechnicalTrace}
+      onToggleTechnicalTrace={setShowTechnicalTrace}
+      behindDescription="Live calls made when the widget opens and creates a charge."
     >
       {error && <div className="mb-4"><ErrorBanner message={error} onDismiss={() => setError(null)} /></div>}
 
-      <div className="grid grid-cols-1 lg:grid-cols-[1.2fr_0.95fr] gap-6 items-start">
+      <div className="grid grid-cols-1 lg:grid-cols-[1.15fr_0.95fr] gap-6 items-start">
         {/* Left: Simulated Browser Window */}
         <div className="rounded-xl border border-slate-300 bg-white overflow-hidden shadow-sm">
           <div className="flex items-center gap-3 bg-[#E9ECEF] px-3.5 py-2 border-b border-slate-200">
@@ -254,7 +266,7 @@ Idempotency-Key: <forwarded from widget>
             <div>
               <h2 className="text-2xl font-bold font-serif text-[#7A3B1D]">{merchantName}</h2>
               <p className="text-xs text-slate-600 mt-0.5 font-serif">
-                Order for collection at the shop. Pay with crypto through our checkout widget.
+                Order for collection at the shop. Pay with crypto right inside our checkout.
               </p>
             </div>
 
@@ -296,19 +308,25 @@ Idempotency-Key: <forwarded from widget>
                   Total <span className="font-mono">${totalAmount}</span>
                 </div>
                 <div className="flex items-center gap-1.5 mt-1">
-                  <span className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold">Display:</span>
-                  {(['new-tab', 'popup', 'iframe'] as const).map((mode) => (
+                  <span className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold">Experience:</span>
+                  {(
+                    [
+                      { id: 'iframe', label: 'In-page Modal' },
+                      { id: 'popup', label: 'Popup' },
+                      { id: 'new-tab', label: 'New Tab' },
+                    ] as const
+                  ).map((mode) => (
                     <button
-                      key={mode}
+                      key={mode.id}
                       type="button"
-                      onClick={() => setDisplayMode(mode)}
+                      onClick={() => setDisplayMode(mode.id)}
                       className={`text-[10px] px-2 py-0.5 rounded border font-medium ${
-                        displayMode === mode
+                        displayMode === mode.id
                           ? 'bg-[#22313F] text-white border-[#22313F]'
                           : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50'
                       }`}
                     >
-                      {mode}
+                      {mode.label}
                     </button>
                   ))}
                 </div>
@@ -320,73 +338,94 @@ Idempotency-Key: <forwarded from widget>
                 onClick={() => void triggerWidgetPay()}
                 className="rounded-lg bg-[#22313F] px-4 py-2.5 text-xs font-semibold text-white hover:bg-[#19242e] disabled:opacity-45 transition"
               >
-                {busy ? 'Processing…' : `Pay $${totalAmount}`}
+                {busy ? 'Opening Checkout…' : `Pay with Orki · $${totalAmount}`}
               </button>
             </div>
 
-            {lastOrder && (
-              <div className="rounded-lg border border-emerald-200 bg-white p-3 text-xs space-y-1">
-                <div className="font-semibold text-emerald-800">
-                  Charge <span className="font-mono">{lastOrder.chargeToken}</span> created ({lastOrder.status})
-                </div>
-                {lastOrder.checkoutUrl && (
-                  <a
-                    href={lastOrder.checkoutUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex items-center gap-1 text-[#22313F] font-semibold hover:underline"
-                  >
-                    Open checkout URL
-                    <ExternalLink className="w-3 h-3" />
-                  </a>
-                )}
+            {lastOrder && lastOrder.checkoutUrl && (
+              <div className="rounded-lg border border-emerald-200 bg-white p-3 text-xs flex items-center justify-between">
+                <span className="font-semibold text-emerald-800">
+                  {lastOrder.status === 'paid' ? 'Order Confirmed & Paid!' : 'Checkout opened for your order.'}
+                </span>
+                <a
+                  href={lastOrder.checkoutUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1 text-[#22313F] font-semibold hover:underline"
+                >
+                  Open in tab
+                  <ExternalLink className="w-3 h-3" />
+                </a>
               </div>
             )}
           </div>
         </div>
 
-        {/* Right: What merchant added + Callbacks */}
+        {/* Right: Business Summary + Live Quote (or Technical Code Snippets when Technical Trace is On) */}
         <aside className="space-y-4">
-          <section className="space-y-2">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-bold text-slate-900">What {merchantName} added</h3>
-              <button
-                type="button"
-                onClick={() => void copyClientSnippet()}
-                className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-600 hover:text-slate-900"
-              >
-                {copiedClient ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
-                {copiedClient ? 'Copied' : 'Copy snippet'}
-              </button>
+          <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-2.5 shadow-sm">
+            <div className="flex items-center gap-2 text-xs font-bold text-slate-900">
+              <ShieldCheck className="w-4 h-4 text-[#22313F]" />
+              Why merchants use the Embedded Widget
             </div>
-            <p className="text-[11px] text-slate-500">On its page, {pspName}'s widget:</p>
-            <pre className="rounded-xl bg-[#16202B] text-[#E5E9ED] p-3.5 text-[11px] font-mono overflow-x-auto leading-relaxed">
-              {clientSnippet}
-            </pre>
-            <p className="text-[11px] text-slate-500">
-              On its server, one route that prices the cart and asks {pspName} for the charge:
-            </p>
-            <pre className="rounded-xl bg-[#16202B] text-[#E5E9ED] p-3.5 text-[11px] font-mono overflow-x-auto leading-relaxed">
-              {serverSnippet}
-            </pre>
-          </section>
+            <ul className="space-y-1.5 text-xs text-slate-600 list-disc pl-4">
+              <li>Shoppers stay on <strong>{merchantName}</strong>'s website inside an in-page modal.</li>
+              <li>Supports all active chains and tokens with real-time quotes.</li>
+              <li>{pspName} prices the order on the server so shoppers cannot tamper with the amount.</li>
+            </ul>
+          </div>
 
-          <section className="rounded-xl border border-slate-200 bg-white p-4 space-y-2">
-            <h3 className="text-sm font-bold text-slate-900">Widget callbacks</h3>
-            {callbacks.length === 0 ? (
-              <p className="text-xs text-slate-400">Nothing yet. Add items and press Pay.</p>
-            ) : (
-              <ul className="divide-y divide-slate-100 max-h-52 overflow-auto text-xs font-mono">
-                {callbacks.map((cb) => (
-                  <li key={cb.id} className="py-1.5">
-                    <span className="text-slate-400 mr-2">{cb.when}</span>
-                    <span className="font-semibold text-slate-900">{cb.name}</span>
-                    {cb.detail && <div className="text-[11px] text-slate-500 break-all">{cb.detail}</div>}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
+          {lastOrder && (
+            <LiveQuoteAndStatusCard
+              identifier={lastOrder.chargeToken}
+              amount={lastOrder.amount}
+              currency={lastOrder.currency}
+              checkoutUrl={lastOrder.checkoutUrl}
+              initialStatus={lastOrder.status}
+              onPaid={(c) => setLastOrder((prev) => (prev ? { ...prev, status: c.status } : prev))}
+            />
+          )}
+
+          {showTechnicalTrace && (
+            <>
+              <section className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-bold text-slate-900">What {merchantName} added</h3>
+                  <button
+                    type="button"
+                    onClick={() => void copyClientSnippet()}
+                    className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-600 hover:text-slate-900"
+                  >
+                    {copiedClient ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
+                    {copiedClient ? 'Copied' : 'Copy snippet'}
+                  </button>
+                </div>
+                <pre className="rounded-xl bg-[#16202B] text-[#E5E9ED] p-3.5 text-[11px] font-mono overflow-x-auto leading-relaxed">
+                  {clientSnippet}
+                </pre>
+                <pre className="rounded-xl bg-[#16202B] text-[#E5E9ED] p-3.5 text-[11px] font-mono overflow-x-auto leading-relaxed">
+                  {serverSnippet}
+                </pre>
+              </section>
+
+              <section className="rounded-xl border border-slate-200 bg-white p-4 space-y-2">
+                <h3 className="text-sm font-bold text-slate-900">Widget callbacks</h3>
+                {callbacks.length === 0 ? (
+                  <p className="text-xs text-slate-400">Nothing yet. Add items and press Pay.</p>
+                ) : (
+                  <ul className="divide-y divide-slate-100 max-h-52 overflow-auto text-xs font-mono">
+                    {callbacks.map((cb) => (
+                      <li key={cb.id} className="py-1.5">
+                        <span className="text-slate-400 mr-2">{cb.when}</span>
+                        <span className="font-semibold text-slate-900">{cb.name}</span>
+                        {cb.detail && <div className="text-[11px] text-slate-500 break-all">{cb.detail}</div>}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
+            </>
+          )}
         </aside>
       </div>
     </DemoPerspectiveShell>

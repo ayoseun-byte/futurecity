@@ -1,15 +1,15 @@
 import React from 'react'
 import { Link } from 'react-router-dom'
-import { Activity, ArrowRight, Code2, FileText, LayoutTemplate, ShoppingBag } from 'lucide-react'
+import { Activity, ArrowRight, Code2, FileText, LayoutTemplate, Link2, Plug } from 'lucide-react'
 import { RailsScenarioBoard } from '../../components/rails/RailsScenarioBoard'
 import { scenariosForRole } from '../../services/scenarios'
 import { Card } from '../../components/ui/Card'
 import { useAuth } from '../../context/AuthContext'
 
 /**
- * The Rails Lab (PSP).
+ * Executive Showcase & Rails Lab (PSP).
  *
- * Mirrors the Blade demo's four counterparty perspectives while connected
+ * Presents all 5 real-world merchant payment collection models connected
  * to the logged-in PSP and its live merchants.
  */
 export const PspRailsView: React.FC = () => {
@@ -17,103 +17,122 @@ export const PspRailsView: React.FC = () => {
   const { user } = useAuth()
   const pspName = user?.name || 'Your PSP'
 
-  const counterpartyScenarios = [
+  const useCases = [
     {
+      number: '01',
       to: '/psp/console/shoplane',
-      kicker: 'Hosted payment page',
-      title: 'Storefront on Shoplane',
-      icon: <ShoppingBag className="w-4 h-4 text-[#7A3B1D]" />,
+      kicker: 'Checkout Paylink & Hosted Store',
+      title: 'Pay with Checkout Paylink',
+      pitch: 'No website required — share a reusable link for drops, tickets, or hosted store checkouts.',
+      icon: <Link2 className="w-4 h-4 text-[#7A3B1D]" />,
       steps: [
-        `Your live merchant's store is hosted by Shoplane (${pspName}). At checkout, the shopper goes to Shoplane's payment page.`,
-        "The shopper picks Pay with Orki. Only then does Shoplane's server create an Orki charge and send the shopper to Orki's page.",
-        'A limited-edition print sells from a reusable payment link until stock runs out.',
+        `A merchant under ${pspName} sells items or a limited-stock drop using a shareable payment link.`,
+        'The customer opens the link, chooses Base or Solana and their preferred token (USDC, USDT, EURC), and sees a live quote.',
+        'Once paid, stock and settlement status update automatically.',
       ],
-      api: 'POST /api/v1/psp/charges\nwhen the shopper picks Pay with Orki',
-      cta: 'Open the Shoplane store',
+      cta: 'Launch Paylink Demo',
     },
     {
+      number: '02',
       to: '/psp/console/widget',
-      kicker: "Plugin or the PSP's script",
-      title: "Merchant's website, with checkout widget",
+      kicker: 'Drop-In Embedded Widget',
+      title: 'Pay with Embedded Widget',
+      pitch: "Keep shoppers on the merchant's own website with a drop-in Orki payment modal.",
       icon: <LayoutTemplate className="w-4 h-4 text-[#22313F]" />,
       steps: [
-        `Your merchant runs its own site and embeds ${pspName}'s checkout widget, as a shop adds a PSP plugin.`,
-        "On Pay, the merchant's server prices the cart and your PSP creates the charge; the widget never sets the amount.",
-        'Checkout opens in a new tab, popup, or modal and reports callbacks back to the page.',
+        `The merchant adds ${pspName}'s checkout widget to their site in minutes.`,
+        'When the shopper clicks Pay, checkout opens right inside the page (or in a popup/tab) with live multi-chain quotes.',
+        'The merchant storefront updates to Confirmed as soon as payment settles.',
       ],
-      api: 'POST /api/v1/psp/charges\nfrom your PSP backend, triggered by createCharge({ idempotencyKey })',
-      cta: "Open merchant's site (widget)",
+      cta: 'Launch Widget Demo',
     },
     {
-      to: '/psp/console/headless',
-      kicker: "Headless: the merchant's own form",
-      title: "Merchant's website, with its own button",
-      icon: <Code2 className="w-4 h-4 text-emerald-700" />,
-      steps: [
-        `The merchant builds its own Pay button. Nothing from ${pspName} or Orki's script is on the page.`,
-        `On Pay, the merchant's server asks ${pspName}'s API for a charge and sends the shopper straight to Orki's page.`,
-        'After paying, Orki returns the shopper to the merchant order page.',
-      ],
-      api: `POST /api/v1/psp/charges\nfrom ${pspName}'s API, called by the merchant's server`,
-      cta: "Open merchant's site (headless)",
-    },
-    {
+      number: '03',
       to: '/psp/console/invoicely',
-      kicker: 'Invoices and payment links',
-      title: 'Invoicely',
+      kicker: 'B2B & Client Billing',
+      title: 'Pay with Invoice',
+      pitch: 'Send branded invoices with due dates, link expiry, and per-invoice token/network rules.',
       icon: <FileText className="w-4 h-4 text-[#0F5C5A]" />,
       steps: [
-        'Your live merchant creates an invoice in Invoicely and ticks which tokens & networks it accepts.',
-        "Invoicely turns it into a charge. The link opens Invoicely's payment page, with Pay with Orki as one option.",
-        "The client picks Pay with Orki, pays on Orki's hosted page, and returns to Invoicely's page.",
+        'A business creates an invoice and chooses which tokens and networks the client may use.',
+        'The client opens the branded invoice page, compares Card vs. Pay with Orki, and previews the live quote.',
+        'After payment on-chain, the invoice flips to Paid automatically.',
       ],
-      api: 'POST /api/v1/psp/charges\ninvoice: { ... }, expiresInMinutes, acceptedTokens, acceptedChains',
-      cta: 'Open Invoicely',
+      cta: 'Launch Invoice Demo',
+    },
+    {
+      number: '04',
+      to: '/psp/console/headless',
+      kicker: 'Custom Branded Checkout',
+      title: 'Pay with Headless Payment',
+      pitch: 'Enterprise merchants keep 100% control of their own UI while your PSP powers settlement silently.',
+      icon: <Code2 className="w-4 h-4 text-emerald-700" />,
+      steps: [
+        'The merchant builds its own checkout button and order experience with zero third-party branding.',
+        `Clicking Pay asks ${pspName} for a live charge and multi-chain quote behind the scenes.`,
+        'The shopper pays and lands back on the merchant’s own order confirmation.',
+      ],
+      cta: 'Launch Headless Demo',
+    },
+    {
+      number: '05',
+      to: '/psp/console/plugin',
+      kicker: 'Shopify / WooCommerce Style',
+      title: 'Pay with Plugin',
+      pitch: 'Zero-code store plugin: merchants enable Orki in settings and accept crypto alongside cards.',
+      icon: <Plug className="w-4 h-4 text-indigo-600" />,
+      steps: [
+        `The merchant installs ${pspName}'s store plugin and toggles "Enable Pay with Orki" on.`,
+        'Shoppers see Pay with Orki at checkout with the merchant’s active chains and tokens.',
+        'Webhooks mark the store order Paid automatically once confirmed on-chain.',
+      ],
+      cta: 'Launch Plugin Demo',
     },
   ]
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       <div>
-        <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
-          <Activity className="w-4 h-4 text-onion" />
-          Orki behind a PSP
+        <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+          <Activity className="w-5 h-5 text-onion" />
+          {pspName} — Live Merchant Payment Showcase
         </h2>
-        <p className="text-[11px] text-slate-500 mt-0.5">
-          Interactive counterparty consoles connected to <span className="font-semibold text-slate-700">{pspName}</span> and your live merchants.
+        <p className="text-xs text-slate-600 mt-1">
+          Interactive real-world demos connected to <span className="font-semibold text-slate-800">{pspName}</span> and your live merchants.
+          Each demo supports multi-chain &amp; multi-token quotes and live settlement tracking.
         </p>
       </div>
 
       <Card
-        title="Counterparty perspectives"
-        subtitle="Step into the shoes of the shopper, merchant, or platform. Every action calls your live PSP API."
+        title="5 Ways Merchants Collect Payments"
+        subtitle="Pick any scenario to walk through the customer and merchant experience live."
       >
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {counterpartyScenarios.map((item) => (
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          {useCases.map((item) => (
             <article
               key={item.to}
-              className="rounded-xl border border-slate-200 bg-[#FAF9F6] p-4 flex flex-col gap-3"
+              className="rounded-xl border border-slate-200 bg-[#FAF9F6] p-4 flex flex-col gap-3 hover:border-slate-300 transition"
             >
               <div className="flex items-center justify-between gap-2">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                <span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                  <span className="rounded bg-slate-200 px-1.5 py-0.5 text-slate-700">{item.number}</span>
                   {item.kicker}
                 </span>
                 {item.icon}
               </div>
 
-              <h3 className="text-sm font-bold text-slate-900">{item.title}</h3>
+              <div>
+                <h3 className="text-sm font-bold text-slate-900">{item.title}</h3>
+                <p className="text-xs text-slate-700 font-medium mt-1 leading-snug">{item.pitch}</p>
+              </div>
 
-              <ol className="list-decimal pl-4 space-y-1.5 text-xs text-slate-600 leading-relaxed">
+              <ol className="list-decimal pl-4 space-y-1 text-[11px] text-slate-600 leading-relaxed">
                 {item.steps.map((step, idx) => (
                   <li key={idx}>{step}</li>
                 ))}
               </ol>
 
-              <pre className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px] font-mono text-slate-800 whitespace-pre-wrap">
-                {item.api}
-              </pre>
-
-              <div className="mt-auto pt-1">
+              <div className="mt-auto pt-2">
                 <Link
                   to={item.to}
                   className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-3.5 py-2 text-xs font-semibold text-white hover:bg-slate-800 transition"

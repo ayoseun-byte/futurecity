@@ -8,7 +8,7 @@ import {
 } from '../../../services/pspConsoleService'
 import type { PaymentLinkSummary } from '../../../services/pspConsoleService'
 import { ErrorBanner } from '../../../components/ui/StateBlocks'
-import { DemoPerspectiveShell, useLivePspMerchant } from './DemoConsoleChrome'
+import { DemoPerspectiveShell, LiveQuoteAndStatusCard, useLivePspMerchant } from './DemoConsoleChrome'
 import type { ApiExchange } from './DemoConsoleChrome'
 
 const SHOPLANE_PRODUCTS = [
@@ -320,6 +320,17 @@ export const ShoplaneConsoleView: React.FC = () => {
                 </div>
               </div>
             </article>
+
+            {dropLink && !dropSoldOut && (
+              <LiveQuoteAndStatusCard
+                identifier={dropLink.id}
+                isCharge={false}
+                amount={dropLink.amount || '1.00'}
+                currency={dropLink.currency || 'USD'}
+                checkoutUrl={dropLink.checkoutUrl}
+                initialStatus={dropLink.status === 'active' ? 'open' : dropLink.status}
+              />
+            )}
           </div>
 
           {/* Right: Sticky Basket */}

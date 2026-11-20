@@ -1,9 +1,9 @@
 import React from 'react'
-import { Check, Copy, ExternalLink } from 'lucide-react'
+import { Check, Copy, ExternalLink, ShieldCheck } from 'lucide-react'
 import { createCharge, resolveLocalCheckoutHref } from '../../../services/pspConsoleService'
 import type { ChargeSummary } from '../../../services/pspConsoleService'
 import { ErrorBanner } from '../../../components/ui/StateBlocks'
-import { DemoPerspectiveShell, useLivePspMerchant } from './DemoConsoleChrome'
+import { DemoPerspectiveShell, LiveQuoteAndStatusCard, useLivePspMerchant } from './DemoConsoleChrome'
 import type { ApiExchange } from './DemoConsoleChrome'
 
 const HEADLESS_PRODUCTS = [
@@ -27,6 +27,7 @@ export const CornerShopHeadlessView: React.FC = () => {
   } = useLivePspMerchant()
 
   const [basket, setBasket] = React.useState<Record<string, number>>({ espresso: 1, cup: 0, tote: 0 })
+  const [showTechnicalTrace, setShowTechnicalTrace] = React.useState(false)
   const [result, setResult] = React.useState<ChargeSummary | null>(null)
   const [busy, setBusy] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
@@ -143,15 +144,14 @@ Authorization: Bearer <your PSP key>
   return (
     <DemoPerspectiveShell
       accentColor="#22313F"
-      appName={`${merchantName}'s own website`}
-      navLabel="Headless API"
+      appName={`${merchantName}'s own checkout`}
+      navLabel="Headless Payment"
       merchantName={merchantName}
-      pspName={`Payments by Orki, through ${pspName}`}
+      pspName={`Powered silently by ${pspName}`}
       ribbon={
         <>
-          You are a <strong className="text-white">shopper</strong> on <strong className="text-white">{merchantName}</strong>'s{' '}
-          <strong className="text-white">own website</strong>. {merchantName} built its own Pay button, with nothing from{' '}
-          <strong className="text-white">{pspName}</strong> on the page. {merchantName}'s server asks {pspName}'s API for the Orki charge and sends you straight to Orki.
+          <strong className="text-white">Headless Payment Demo:</strong> <strong className="text-white">{merchantName}</strong> owns
+          100% of its checkout UI and Pay button—<strong className="text-white">{pspName}</strong> processes the payment silently in the background.
         </>
       }
       merchants={merchants}
@@ -162,11 +162,13 @@ Authorization: Bearer <your PSP key>
       loadingMerchants={loadingMerchants}
       onReloadMerchants={() => void reloadMerchants()}
       exchanges={exchanges}
+      showTechnicalTrace={showTechnicalTrace}
+      onToggleTechnicalTrace={setShowTechnicalTrace}
       behindDescription="No script tag or widget is loaded here: the merchant server calls POST /api/v1/psp/charges directly."
     >
       {error && <div className="mb-4"><ErrorBanner message={error} onDismiss={() => setError(null)} /></div>}
 
-      <div className="grid grid-cols-1 lg:grid-cols-[1.2fr_0.95fr] gap-6 items-start">
+      <div className="grid grid-cols-1 lg:grid-cols-[1.15fr_0.95fr] gap-6 items-start">
         {/* Left: Simulated Browser Window */}
         <div className="rounded-xl border border-slate-300 bg-white overflow-hidden shadow-sm">
           <div className="flex items-center gap-3 bg-[#E9ECEF] px-3.5 py-2 border-b border-slate-200">
@@ -185,7 +187,7 @@ Authorization: Bearer <your PSP key>
             <div>
               <h2 className="text-2xl font-bold font-serif text-[#7A3B1D]">{merchantName}</h2>
               <p className="text-xs text-slate-600 mt-0.5 font-serif">
-                Order for collection at the shop. Pay with crypto through our own button.
+                Custom-branded checkout experience. Complete your order below.
               </p>
             </div>
 
@@ -232,56 +234,75 @@ Authorization: Bearer <your PSP key>
                 onClick={() => void payHeadless()}
                 className="rounded-lg bg-[#7A3B1D] px-4 py-2.5 text-xs font-semibold text-white hover:bg-[#612d15] disabled:opacity-45 transition"
               >
-                {busy ? 'Creating charge…' : `Pay $${totalAmount} with crypto`}
+                {busy ? 'Preparing Payment…' : `Pay $${totalAmount} Now`}
               </button>
             </div>
 
-            {result && (
+            {result && result.checkoutUrl && (
               <div className="rounded-lg border border-[#EADBCF] bg-white p-3.5 space-y-1.5 text-xs">
                 <div className="font-semibold text-emerald-800">
-                  Order charge <span className="font-mono">{result.chargeToken}</span> created ({result.status}).
+                  {result.status === 'paid' ? 'Order Confirmed & Paid!' : 'Order ready for payment.'}
                 </div>
-                {result.checkoutUrl && (
-                  <a
-                    href={resolveLocalCheckoutHref(result.checkoutUrl)}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex items-center gap-1.5 font-semibold text-[#7A3B1D] hover:underline"
-                  >
-                    Redirect shopper to Orki checkout
-                    <ExternalLink className="w-3.5 h-3.5" />
-                  </a>
-                )}
+                <a
+                  href={resolveLocalCheckoutHref(result.checkoutUrl)}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1.5 font-semibold text-[#7A3B1D] hover:underline"
+                >
+                  Continue to payment screen
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </a>
               </div>
             )}
           </div>
         </div>
 
-        {/* Right: What merchant added */}
+        {/* Right: Business Summary + Live Quote (or Code Snippets when Technical Trace is On) */}
         <aside className="space-y-4">
-          <section className="space-y-2">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-bold text-slate-900">What {merchantName} added</h3>
-              <button
-                type="button"
-                onClick={() => void copyClientSnippet()}
-                className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-600 hover:text-slate-900"
-              >
-                {copiedClient ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
-                {copiedClient ? 'Copied' : 'Copy snippet'}
-              </button>
+          <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-2.5 shadow-sm">
+            <div className="flex items-center gap-2 text-xs font-bold text-slate-900">
+              <ShieldCheck className="w-4 h-4 text-emerald-700" />
+              Why enterprise merchants choose Headless
             </div>
-            <p className="text-[11px] text-slate-500">On its page, a button of its own:</p>
-            <pre className="rounded-xl bg-[#16202B] text-[#E5E9ED] p-3.5 text-[11px] font-mono overflow-x-auto leading-relaxed">
-              {clientSnippet}
-            </pre>
-            <p className="text-[11px] text-slate-500">
-              On its server, one route that prices the cart and asks {pspName} for the payment:
-            </p>
-            <pre className="rounded-xl bg-[#16202B] text-[#E5E9ED] p-3.5 text-[11px] font-mono overflow-x-auto leading-relaxed">
-              {serverSnippet}
-            </pre>
-          </section>
+            <ul className="space-y-1.5 text-xs text-slate-600 list-disc pl-4">
+              <li>Zero third-party scripts or widgets on <strong>{merchantName}</strong>'s website or mobile app.</li>
+              <li>Full control over brand, cart UX, and post-payment order receipts.</li>
+              <li>{pspName} handles multi-chain routing, live quotes, and settlement behind the scenes.</li>
+            </ul>
+          </div>
+
+          {result && (
+            <LiveQuoteAndStatusCard
+              identifier={result.chargeToken}
+              amount={result.amount}
+              currency={result.currency}
+              checkoutUrl={result.checkoutUrl}
+              initialStatus={result.status}
+              onPaid={(c) => setResult(c)}
+            />
+          )}
+
+          {showTechnicalTrace && (
+            <section className="space-y-2">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-bold text-slate-900">What {merchantName} added</h3>
+                <button
+                  type="button"
+                  onClick={() => void copyClientSnippet()}
+                  className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-600 hover:text-slate-900"
+                >
+                  {copiedClient ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
+                  {copiedClient ? 'Copied' : 'Copy snippet'}
+                </button>
+              </div>
+              <pre className="rounded-xl bg-[#16202B] text-[#E5E9ED] p-3.5 text-[11px] font-mono overflow-x-auto leading-relaxed">
+                {clientSnippet}
+              </pre>
+              <pre className="rounded-xl bg-[#16202B] text-[#E5E9ED] p-3.5 text-[11px] font-mono overflow-x-auto leading-relaxed">
+                {serverSnippet}
+              </pre>
+            </section>
+          )}
         </aside>
       </div>
     </DemoPerspectiveShell>

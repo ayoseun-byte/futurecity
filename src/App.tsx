@@ -9,6 +9,7 @@ import { MerchantRailsView } from './views/Rails/MerchantRailsView'
 import { InvoicelyConsoleView } from './views/Rails/consoles/InvoicelyConsoleView'
 import { ShoplaneConsoleView } from './views/Rails/consoles/ShoplaneConsoleView'
 import { CornerShopHeadlessView } from './views/Rails/consoles/CornerShopHeadlessView'
+import { PluginConsoleView } from './views/Rails/consoles/PluginConsoleView'
 import { CheckoutWidgetView } from './views/Rails/consoles/CheckoutWidgetView'
 import { PspLayout } from './components/layout/PspLayout'
 import { MerchantLayout } from './components/layout/MerchantLayout'
@@ -650,6 +651,16 @@ function MainRoutes() {
           <ProtectedRoute allowedRoles={['org']}>
             <PspLayout>
               <CheckoutWidgetView />
+            </PspLayout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/psp/console/plugin"
+        element={
+          <ProtectedRoute allowedRoles={['org']}>
+            <PspLayout>
+              <PluginConsoleView />
             </PspLayout>
           </ProtectedRoute>
         }

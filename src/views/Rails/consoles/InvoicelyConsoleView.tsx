@@ -9,7 +9,7 @@ import {
 } from '../../../services/pspConsoleService'
 import type { ChargeSummary } from '../../../services/pspConsoleService'
 import { ErrorBanner } from '../../../components/ui/StateBlocks'
-import { DemoPerspectiveShell, useLivePspMerchant } from './DemoConsoleChrome'
+import { DemoPerspectiveShell, LiveQuoteAndStatusCard, useLivePspMerchant } from './DemoConsoleChrome'
 import type { ApiExchange } from './DemoConsoleChrome'
 
 const ALL_TOKENS = ['USDC', 'USDT', 'ETH', 'SOL']
@@ -567,7 +567,7 @@ export const InvoicelyConsoleView: React.FC = () => {
               </div>
 
               {pspPayModalCharge.status === 'open' && (
-                <div className="space-y-2.5">
+                <div className="space-y-3">
                   <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">Choose how to pay</h4>
                   <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-white p-3.5 opacity-55">
                     <div>
@@ -599,6 +599,18 @@ export const InvoicelyConsoleView: React.FC = () => {
                       <span className="text-xs text-slate-400">No checkoutUrl</span>
                     )}
                   </div>
+
+                  <LiveQuoteAndStatusCard
+                    identifier={pspPayModalCharge.chargeToken}
+                    amount={pspPayModalCharge.amount}
+                    currency={pspPayModalCharge.currency}
+                    checkoutUrl={pspPayModalCharge.checkoutUrl}
+                    initialStatus={pspPayModalCharge.status}
+                    onPaid={(updated) => {
+                      setPspPayModalCharge(updated)
+                      void loadInvoices()
+                    }}
+                  />
                 </div>
               )}
             </div>

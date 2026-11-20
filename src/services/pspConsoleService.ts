@@ -67,6 +67,49 @@ export async function cancelCharge(chargeToken: string, config: ApiConfig = getA
   return requestApi<ChargeSummary>(config, 'PATCH', `/api/v1/psp/charges/${chargeToken}`, { status: 'cancelled' }, 'psp')
 }
 
+export async function fetchCharge(chargeToken: string, config: ApiConfig = getApiConfig()): Promise<ChargeSummary> {
+  return requestApi<ChargeSummary>(config, 'GET', `/api/v1/psp/charges/${chargeToken}`, undefined, 'psp')
+}
+
+export interface PayAssetsResponse {
+  assets?: Array<{
+    chain?: string
+    network?: string
+    chainName?: string
+    token?: string
+    symbol?: string
+    [key: string]: unknown
+  }>
+  [key: string]: unknown
+}
+
+export async function fetchPayAssets(identifier: string, config: ApiConfig = getApiConfig()): Promise<PayAssetsResponse> {
+  return requestApi<PayAssetsResponse>(config, 'GET', `/api/v1/pay/${identifier}/assets`, undefined, 'none')
+}
+
+export interface PayQuoteResponse {
+  amount?: string
+  cryptoAmount?: string
+  tokenAmount?: string
+  token?: string
+  chain?: string
+  rate?: string
+  exchangeRate?: string
+  feeAmount?: string
+  expiresAt?: string
+  [key: string]: unknown
+}
+
+export async function fetchPayQuote(
+  identifier: string,
+  chain: string,
+  token: string,
+  config: ApiConfig = getApiConfig(),
+): Promise<PayQuoteResponse> {
+  const query = new URLSearchParams({ chain, token })
+  return requestApi<PayQuoteResponse>(config, 'GET', `/api/v1/pay/${identifier}/quote?${query.toString()}`, undefined, 'none')
+}
+
 export async function listPaymentLinks(
   filters: { merchantExternalId?: string } = {},
   config: ApiConfig = getApiConfig(),
