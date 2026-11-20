@@ -65,9 +65,15 @@ export const PluginConsoleView: React.FC = () => {
     }
   }, [selectedMerchant?.id])
 
+  const isMerchantActive = selectedMerchant ? selectedMerchant.status === 'active' : Boolean(merchantExternalId)
+
   const completeOrder = async () => {
     if (!merchantExternalId) {
       setError('Select a live merchant first.')
+      return
+    }
+    if (!isMerchantActive) {
+      setError(`${merchantName} is not active yet. Orki is only shown in the plugin once the merchant completes verification & wallet setup.`)
       return
     }
     if (!pluginEnabled) {
@@ -85,6 +91,8 @@ export const PluginConsoleView: React.FC = () => {
       amount: '1.50',
       currency: 'USD',
       description: `${merchantName} Store Order #${nextOrder}`,
+      returnUrl: `${window.location.origin}/psp/console/plugin?order=${nextOrder}&status=return`,
+      cancelUrl: `${window.location.origin}/psp/console/plugin?order=${nextOrder}&status=cancelled`,
       orderMetadata: {
         orderId: nextOrder,
         source: 'store_plugin',
@@ -235,6 +243,13 @@ export const PluginConsoleView: React.FC = () => {
             <div className="space-y-2.5">
               <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">Select Payment Method</h3>
 
+              {!isMerchantActive && (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+                  <strong>Pay with Orki hidden:</strong> {merchantName} is not yet active ({selectedMerchant?.status || 'pending'}).
+                  The plugin only shows Orki once the merchant completes verification &amp; wallet setup in {pspName}.
+                </div>
+              )}
+
               <div className="flex items-center justify-between rounded-xl border border-slate-200 p-3.5 opacity-55">
                 <div>
                   <div className="text-xs font-bold text-slate-800">Credit or Debit Card</div>
@@ -243,26 +258,28 @@ export const PluginConsoleView: React.FC = () => {
                 <input type="radio" disabled name="pm" />
               </div>
 
-              <div className={`rounded-xl border p-4 space-y-2 ${pluginEnabled ? 'border-indigo-500 bg-indigo-50/40' : 'border-slate-200 opacity-50'}`}>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="text-xs font-bold text-slate-900">Pay with Orki</div>
-                    <div className="text-[11px] text-slate-600">
-                      Pay instantly with {acceptedTokens.join(', ')} on {acceptedChains.map((c) => c.charAt(0).toUpperCase() + c.slice(1)).join(' & ')}.
+              {isMerchantActive && (
+                <div className={`rounded-xl border p-4 space-y-2 ${pluginEnabled ? 'border-indigo-500 bg-indigo-50/40' : 'border-slate-200 opacity-50'}`}>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-xs font-bold text-slate-900">Pay with Orki</div>
+                      <div className="text-[11px] text-slate-600">
+                        Pay instantly with {acceptedTokens.join(', ')} on {acceptedChains.map((c) => c.charAt(0).toUpperCase() + c.slice(1)).join(' & ')}.
+                      </div>
                     </div>
+                    <input type="radio" checked={pluginEnabled} readOnly name="pm" className="text-indigo-600" />
                   </div>
-                  <input type="radio" checked={pluginEnabled} readOnly name="pm" className="text-indigo-600" />
+                  <div className="flex items-center gap-1.5 text-[11px] text-indigo-700 font-medium">
+                    <ShieldCheck className="w-3.5 h-3.5" />
+                    Powered by {pspName} Plugin — redirects to Orki, then webhooks update the store order status.
+                  </div>
                 </div>
-                <div className="flex items-center gap-1.5 text-[11px] text-indigo-700 font-medium">
-                  <ShieldCheck className="w-3.5 h-3.5" />
-                  Powered by {pspName} Plugin — order status updates automatically upon confirmation.
-                </div>
-              </div>
+              )}
             </div>
 
             <button
               type="button"
-              disabled={busy || !pluginEnabled || !merchantExternalId}
+              disabled={busy || !pluginEnabled || !merchantExternalId || !isMerchantActive}
               onClick={() => void completeOrder()}
               className="w-full rounded-xl bg-indigo-600 px-4 py-2.5 text-xs font-semibold text-white hover:bg-indigo-700 disabled:opacity-45 transition"
             >
@@ -276,6 +293,7 @@ export const PluginConsoleView: React.FC = () => {
                 currency={charge.currency}
                 checkoutUrl={charge.checkoutUrl}
                 initialStatus={charge.status}
+                onPaid={(updated) => setCharge(updated)}
               />
             )}
           </div>
