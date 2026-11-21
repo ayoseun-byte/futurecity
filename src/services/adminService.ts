@@ -196,6 +196,9 @@ export interface PspDetailResponse {
   feeWallet?: string | null
   solanaFeeWallet?: string | null
   onChainRegistration?: { status?: string; txHash?: string | null; error?: string; [key: string]: unknown }
+  onChainSolanaRegistration?: { status?: string; txHash?: string | null; error?: string; [key: string]: unknown }
+  processing?: boolean
+  onChainStatus?: string
   contacts?: Array<{ name: string; email: string; role?: string }>
   ndaSignedAt?: string | null
   agreement?: Record<string, unknown> | null

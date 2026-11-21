@@ -1,5 +1,6 @@
 export type MerchantStatus =
   | 'invited'
+  | 'notice'
   | 'terms_accepted'
   | 'verifying'
   | 'verification_action_required'
@@ -10,6 +11,7 @@ export type MerchantStatus =
   | 'disabled'
   | 'suspended'
   | 'INVITED'
+  | 'NOTICE'
   | 'TERMS_ACCEPTED'
   | 'VERIFYING'
   | 'VERIFICATION_ACTION_REQUIRED'

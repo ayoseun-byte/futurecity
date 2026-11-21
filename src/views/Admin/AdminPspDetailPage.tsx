@@ -9,7 +9,6 @@ import {
   deleteAdminPspUbo,
   fetchAdminMerchants,
   updateAdminPspFeeWallets,
-  registerAdminPspOnChain,
   fetchAdminPspOnChainStatus,
   type PspDetailResponse,
   type AdminMerchantRow,
@@ -66,8 +65,6 @@ export const AdminPspDetailPage: React.FC<AdminPspDetailPageProps> = ({
 
   // On-chain registration status + actions
   const [chainStatus, setChainStatus] = useState<Record<'base' | 'solana', AdminPspOnChainResult | undefined>>({ base: undefined, solana: undefined })
-  const [chainBusy, setChainBusy] = useState<'base' | 'solana' | null>(null)
-  const [chainMessage, setChainMessage] = useState<string | null>(null)
 
   const refreshOnChainStatus = useCallback(async (detail: PspDetailResponse) => {
     const evmWallet = detail.feeWallet || undefined
@@ -167,52 +164,74 @@ export const AdminPspDetailPage: React.FC<AdminPspDetailPageProps> = ({
     }
     setWalletBusy(true)
     setWalletError(null)
-    setWalletMessage(null)
+    setWalletMessage('Processing on-chain registration… (Base: processing · Solana: processing)')
+
     try {
       const detail = await updateAdminPspFeeWallets(id, {
         feeWallet: trimmedEvm || null,
         solanaFeeWallet: trimmedSol || null,
       })
       applyDetail(detail)
-      const reg = detail.onChainRegistration
-      setWalletMessage(
-        reg
-          ? `Fee wallets saved — EVM registration executed (${reg.status ?? 'unknown'}${reg.txHash ? `, tx ${String(reg.txHash).slice(0, 10)}…` : ''}).`
-          : 'Fee wallets saved.',
-      )
+
+      const baseReg = detail.onChainRegistration
+      const solReg = detail.onChainSolanaRegistration
+
+      const isBaseSuccess = baseReg && ['confirmed', 'already_synced', 'already_registered', 'prepared', 'saved'].includes(baseReg.status ?? '')
+      const isSolSuccess = solReg && ['confirmed', 'already_synced', 'already_registered', 'prepared', 'saved'].includes(solReg.status ?? '')
+      const isBaseProcessing = baseReg?.status === 'processing'
+      const isSolProcessing = solReg?.status === 'processing'
+
+      if (isBaseProcessing || isSolProcessing) {
+        setWalletMessage(`Processing on-chain registration… (Base: ${baseReg?.status || 'processing'} · Solana: ${solReg?.status || 'processing'})`)
+      }
+
+      if (trimmedEvm && trimmedSol) {
+        if (isBaseSuccess && isSolSuccess) {
+          setWalletMessage('Saved ✓: Both Base and Solana fee wallets registered on-chain.')
+          setChainStatus({
+            base: { network: 'base', registered: true, status: baseReg?.status, txHash: (baseReg?.txHash as string) || undefined },
+            solana: { network: 'solana', registered: true, status: solReg?.status, txHash: (solReg?.txHash as string) || undefined },
+          })
+        } else if (isBaseSuccess && !isSolSuccess && !isSolProcessing) {
+          setWalletMessage(`Saved with partial failure: Base registered on-chain ✓, but Solana registration failed: ${solReg?.error || solReg?.status || 'unconfirmed'}.`)
+          setChainStatus((curr) => ({
+            ...curr,
+            base: { network: 'base', registered: true, status: baseReg?.status, txHash: (baseReg?.txHash as string) || undefined },
+          }))
+        } else if (!isBaseSuccess && !isBaseProcessing && isSolSuccess) {
+          setWalletMessage(`Saved with partial failure: Solana registered on-chain ✓, but Base registration failed: ${baseReg?.error || baseReg?.status || 'unconfirmed'}.`)
+          setChainStatus((curr) => ({
+            ...curr,
+            solana: { network: 'solana', registered: true, status: solReg?.status, txHash: (solReg?.txHash as string) || undefined },
+          }))
+        } else if (!isBaseProcessing && !isSolProcessing) {
+          setWalletMessage(`Fee wallets saved to profile (${baseReg?.status || 'saved'}).`)
+        }
+      } else if (trimmedEvm) {
+        if (isBaseSuccess) {
+          setWalletMessage(`Saved ✓: Base EVM fee wallet registered on-chain (${baseReg.status}).`)
+          setChainStatus((curr) => ({
+            ...curr,
+            base: { network: 'base', registered: true, status: baseReg?.status, txHash: (baseReg?.txHash as string) || undefined },
+          }))
+        } else {
+          setWalletMessage('Fee wallet saved to profile.')
+        }
+      } else if (trimmedSol) {
+        if (isSolSuccess) {
+          setWalletMessage(`Saved ✓: Solana fee wallet registered on-chain (${solReg.status}).`)
+          setChainStatus((curr) => ({
+            ...curr,
+            solana: { network: 'solana', registered: true, status: solReg?.status, txHash: (solReg?.txHash as string) || undefined },
+          }))
+        } else {
+          setWalletMessage('Solana fee wallet saved to profile.')
+        }
+      }
     } catch (err) {
       setWalletError(err instanceof Error ? err.message : 'Failed to save fee wallets.')
     } finally {
       setWalletBusy(false)
-    }
-  }
-
-  const handleRegisterOnChain = async (network: 'base' | 'solana') => {
-    if (!id) return
-    const wallet = (network === 'base' ? feeWalletDraft : solanaWalletDraft).trim()
-    if (!wallet) {
-      setWalletError(`A fee wallet is required before registering on ${network === 'base' ? 'Base' : 'Solana'}.`)
-      return
-    }
-    setChainBusy(network)
-    setWalletError(null)
-    setChainMessage(null)
-    try {
-      const result = await registerAdminPspOnChain(id, network, wallet)
-      const statusLabels: Record<string, string> = {
-        already_synced: 'already registered on-chain ✓',
-        confirmed: 'confirmed on-chain ✓',
-        prepared: 'prepared calldata (no operator broadcast)',
-        pending_retry: 'deferred — will retry on next attempt',
-      }
-      const label = network === 'base' ? 'EVM splitter' : 'Solana program'
-      const hashSuffix = result.txHash ? ` · tx ${result.txHash.slice(0, 10)}…` : ''
-      setChainMessage(`${label}: ${statusLabels[result.status ?? ''] ?? result.status ?? 'ok'}${hashSuffix}`)
-      setChainStatus((current) => ({ ...current, [network]: result }))
-    } catch (err) {
-      setChainMessage(`Registration failed: ${err instanceof Error ? err.message : 'unknown error'}`)
-    } finally {
-      setChainBusy(null)
     }
   }
 
@@ -661,69 +680,48 @@ export const AdminPspDetailPage: React.FC<AdminPspDetailPageProps> = ({
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="p-3 bg-slate-50 border border-slate-200/80 rounded-xl space-y-2">
-                <label className="text-[10px] uppercase font-semibold text-slate-500">EVM Fee Wallet (Base)</label>
+              <div className="p-3.5 bg-slate-50 border border-slate-200/80 rounded-xl space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-[10px] uppercase font-semibold text-slate-500">EVM Fee Wallet (Base)</label>
+                  <span className={`text-[10px] font-medium ${chainStatus.base?.registered ? 'text-emerald-700' : (walletBusy ? 'text-onion font-medium' : 'text-slate-500')}`}>
+                    {chainStatus.base?.registered
+                      ? '✓ Registered in splitter'
+                      : (walletBusy ? 'Processing registration…' : (pspDetail.feeWallet ? 'Configured in profile' : 'Not set'))}
+                  </span>
+                </div>
                 <input
                   type="text"
                   value={feeWalletDraft}
                   onChange={(e) => setFeeWalletDraft(e.target.value)}
                   placeholder="0x…"
-                  className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs font-mono text-slate-800"
+                  className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs font-mono text-slate-800 focus:outline-none focus:ring-1 focus:ring-onion"
                 />
-                <div className="flex items-center justify-between gap-2">
-                  <span className={`text-[10px] ${chainStatus.base?.registered ? 'text-emerald-700' : 'text-amber-700'}`}>
-                    {pspDetail.feeWallet
-                      ? chainStatus.base?.registered
-                        ? '✓ Registered in splitter'
-                        : 'Not yet registered on-chain (prepared calldata only)'
-                      : 'No EVM wallet set'}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => void handleRegisterOnChain('base')}
-                    disabled={chainBusy !== null || !feeWalletDraft.trim()}
-                    className="px-2.5 py-1 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 text-[10px] font-bold text-slate-700 disabled:opacity-50"
-                  >
-                    {chainBusy === 'base' ? 'Registering…' : 'Register on Base'}
-                  </button>
-                </div>
               </div>
 
-              <div className="p-3 bg-slate-50 border border-slate-200/80 rounded-xl space-y-2">
-                <label className="text-[10px] uppercase font-semibold text-slate-500">Solana Fee Wallet (SVM)</label>
+              <div className="p-3.5 bg-slate-50 border border-slate-200/80 rounded-xl space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-[10px] uppercase font-semibold text-slate-500">Solana Fee Wallet (SVM)</label>
+                  <span className={`text-[10px] font-medium ${chainStatus.solana?.registered ? 'text-emerald-700' : (walletBusy ? 'text-onion font-medium' : 'text-slate-500')}`}>
+                    {chainStatus.solana?.registered
+                      ? '✓ Registered on Solana'
+                      : (walletBusy ? 'Processing registration…' : (pspDetail.solanaFeeWallet ? 'Configured in profile' : 'Not set'))}
+                  </span>
+                </div>
                 <input
                   type="text"
                   value={solanaWalletDraft}
                   onChange={(e) => setSolanaWalletDraft(e.target.value)}
-                  placeholder="Base58…"
-                  className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs font-mono text-slate-800"
+                  placeholder="Base58 address…"
+                  className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs font-mono text-slate-800 focus:outline-none focus:ring-1 focus:ring-onion"
                 />
-                <div className="flex items-center justify-between gap-2">
-                  <span className={`text-[10px] ${chainStatus.solana?.registered ? 'text-emerald-700' : 'text-amber-700'}`}>
-                    {pspDetail.solanaFeeWallet
-                      ? chainStatus.solana?.registered
-                        ? '✓ Registered on Solana'
-                        : 'Not yet registered on Solana'
-                      : 'No Solana wallet set'}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => void handleRegisterOnChain('solana')}
-                    disabled={chainBusy !== null || !solanaWalletDraft.trim()}
-                    className="px-2.5 py-1 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 text-[10px] font-bold text-slate-700 disabled:opacity-50"
-                  >
-                    {chainBusy === 'solana' ? 'Registering…' : 'Register on Solana'}
-                  </button>
-                </div>
               </div>
             </div>
 
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1">
               <div className="text-[11px]">
-                {walletError && <span className="text-red-600">{walletError}</span>}
-                {chainMessage && <span className="text-slate-600">{chainMessage}</span>}
-                {!walletError && !chainMessage && walletMessage && <span className="text-emerald-700">{walletMessage}</span>}
-                {!walletError && !chainMessage && !walletMessage && (
+                {walletError && <span className="text-red-600 font-medium">{walletError}</span>}
+                {!walletError && walletMessage && <span className="text-emerald-700 font-medium">{walletMessage}</span>}
+                {!walletError && !walletMessage && (
                   <span className="text-slate-400">
                     {feeWalletDraft !== (pspDetail.feeWallet ?? '') || solanaWalletDraft !== (pspDetail.solanaFeeWallet ?? '')
                       ? 'Unsaved wallet changes'
@@ -734,10 +732,10 @@ export const AdminPspDetailPage: React.FC<AdminPspDetailPageProps> = ({
               <button
                 type="button"
                 onClick={() => void handleSaveWallets()}
-                disabled={walletBusy}
-                className="px-4 py-2 rounded-xl bg-slate-900 text-white text-xs font-bold hover:bg-black disabled:opacity-50 shadow-xs"
+                disabled={walletBusy || (!feeWalletDraft.trim() && !solanaWalletDraft.trim())}
+                className="px-5 py-2.5 rounded-xl bg-slate-900 text-white text-xs font-bold hover:bg-black disabled:opacity-50 shadow-xs flex items-center justify-center space-x-2 transition"
               >
-                {walletBusy ? 'Saving…' : 'Save Fee Wallets'}
+                <span>{walletBusy ? 'Saving & Registering On-Chain…' : 'Save & Register Fee Wallets'}</span>
               </button>
             </div>
 

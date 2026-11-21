@@ -436,7 +436,7 @@ function WalletSetup({
     baseSmartAccountAddress: string
     solanaWalletAddress?: string
     solanaSignature?: string
-    evmSignerAddress: string
+    evmSignerAddress?: string
     merchantEmail?: string
     idToken?: string
     challenge: string
@@ -631,15 +631,7 @@ function WalletSetup({
         return
       }
 
-      // 3. Require the signing key address.
-      if (!evmSignerAddress) {
-        setZeroDevError(
-          'Your sign-in session is still initializing your signing key. Please wait a moment and retry.',
-        )
-        return
-      }
-
-      // 4. Get a fresh server-issued challenge.
+      // 3. Get a fresh server-issued challenge.
       let challenge =
         onboarding.walletSetupChallenge ||
         `orki_wallet_setup:${onboarding.merchantId}`
@@ -718,7 +710,7 @@ function WalletSetup({
 
   const canActivate =
     isConnected &&
-    Boolean(evmSignerAddress) &&
+    Boolean(zeroDevSmartAccount) &&
     Boolean(solanaAddress) &&
     !enrollingPasskey &&
     !emailMismatch
@@ -940,14 +932,13 @@ function WalletSetup({
 
             {(() => {
               const readiness = [
-                { key: 'zerodev', label: 'ZeroDev', ready: Boolean(zeroDevSmartAccount) },
-                { key: 'solana', label: 'Solana', ready: Boolean(solanaAddress) },
-                { key: 'signer', label: 'Signer', ready: Boolean(evmSignerAddress) },
+                { key: 'zerodev', label: 'ZeroDev Smart Account', ready: Boolean(zeroDevSmartAccount) },
+                { key: 'solana', label: 'Solana Settlement', ready: Boolean(solanaAddress) },
               ]
               const readyCount = readiness.filter((item) => item.ready).length
               return (
                 <div className="flex items-center justify-between border-t border-slate-800/80 pt-2.5">
-                  <div className="flex items-center gap-2" aria-label={`${readyCount} of 3 addresses generated`}>
+                  <div className="flex items-center gap-2" aria-label={`${readyCount} of 2 addresses generated`}>
                     <div className="flex items-center gap-1.5">
                       {readiness.map((item) => (
                         <span
@@ -962,13 +953,13 @@ function WalletSetup({
                       ))}
                     </div>
                     <span className="text-[11px] font-medium text-slate-400">
-                      {readyCount === 3
-                        ? 'All 3 wallet addresses generated'
-                        : `${readyCount} of 3 addresses generated`}
+                      {readyCount === 2
+                        ? 'All 2 wallet addresses generated'
+                        : `${readyCount} of 2 addresses generated`}
                     </span>
                   </div>
                   <span className="font-mono text-[10px] text-slate-500">
-                    {readyCount}/3
+                    {readyCount}/2
                   </span>
                 </div>
               )

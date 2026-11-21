@@ -67,6 +67,24 @@ export function clearAdminSessionToken(): void {
   }
 }
 
+export function savePspSessionToken(token: string): void {
+  const current = getApiConfig()
+  saveApiConfig({ ...current, pspKey: token })
+  sessionStorage.setItem('orki_psp_session_token', token)
+}
+
+export function getPspSessionToken(): string {
+  return sessionStorage.getItem('orki_psp_session_token') || getApiConfig().pspKey || ''
+}
+
+export function clearPspSessionToken(): void {
+  sessionStorage.removeItem('orki_psp_session_token')
+  const current = getApiConfig()
+  if (current.pspKey.startsWith('orki_psp_sess_')) {
+    saveApiConfig({ ...current, pspKey: '' })
+  }
+}
+
 export function clearAllMerchantSessions(): void {
   sessionStorage.removeItem('orki_active_merchant_session')
   sessionStorage.removeItem(ACTIVE_MERCHANT_ID_KEY)

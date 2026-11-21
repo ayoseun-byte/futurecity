@@ -593,9 +593,9 @@ export const OrgDashboard: React.FC<OrgDashboardProps> = ({
                 className="py-1.5 px-3 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none text-slate-700 font-medium"
               >
                 <option value="all">All Statuses</option>
-                <option value="concerns">⚠️ Action Required & Holds</option>
+                <option value="concerns">⚠️ Action Required &amp; Holds</option>
                 <option value="active">Active</option>
-                <option value="invited">Setup Pending</option>
+                <option value="notice">Notice Accepted</option>
                 <option value="verifying">Verifying</option>
                 <option value="verification_action_required">Action Required</option>
                 <option value="on_hold">Compliance Review</option>

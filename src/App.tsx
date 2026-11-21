@@ -44,7 +44,6 @@ import {
   getStoredTransactions,
   saveStoredTransactions,
   ensureMerchantsForOrganization,
-  generateMerchantsForPsp,
 } from './services/storageService'
 import { fetchPspDashboard, type PspDashboardMetrics } from './services/pspMerchantService'
 import { resolveMonotonicStep } from './services/onboardingStepService'
@@ -277,11 +276,6 @@ function MainRoutes() {
 
   const handleAddOrganization = (newOrg: Organization) => {
     setOrganizations([newOrg, ...organizations])
-    const generatedMerchants = generateMerchantsForPsp(newOrg.id, newOrg.name)
-    setMerchants((current) => [
-      ...generatedMerchants,
-      ...current.filter((merchant) => merchant.organizationId !== newOrg.id),
-    ])
   }
 
   const handleRequestFeeChange = async (

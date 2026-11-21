@@ -236,19 +236,13 @@ export function generateMerchantsForPsp(organizationId = 'psp_default', orgName?
   })
 }
 
-export function ensureMerchantsForOrganization(organizationId: string, orgName?: string): Merchant[] {
+export function ensureMerchantsForOrganization(organizationId: string, _orgName?: string): Merchant[] {
   const storedMerchants = getStoredMerchants()
-  const existing = storedMerchants.filter((m) => m.organizationId === organizationId)
-  if (existing.length > 0) {
-    return existing
-  }
-  const generated = generateMerchantsForPsp(organizationId, orgName)
-  saveStoredMerchants([...generated, ...storedMerchants])
-  return generated
+  return storedMerchants.filter((m) => m.organizationId === organizationId)
 }
 
-export function ensureDemoDataForOrganization(organizationId: string, orgName?: string): void {
-  ensureMerchantsForOrganization(organizationId, orgName)
+export function ensureDemoDataForOrganization(_organizationId: string, _orgName?: string): void {
+  // Mock merchants are not auto-generated
 }
 
 export function addStoredMerchant(merchant: Merchant): void {
