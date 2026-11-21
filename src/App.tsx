@@ -29,6 +29,7 @@ import { AdminMerchantDetailPage } from './views/Admin/AdminMerchantDetailPage'
 import { AdminPspDetailPage } from './views/Admin/AdminPspDetailPage'
 import { TransactionDetailPage } from './views/Transactions/TransactionDetailPage'
 import { PasskeyCeremonyPage } from './views/Onboarding/PasskeyCeremonyPage'
+import { SignTransferPage } from './views/Merchant/SignTransferPage'
 import { HostedTosPage } from './views/Onboarding/HostedTosPage'
 import { LegalDocumentPage } from './views/Legal/LegalDocumentPage'
 import { ApiWorkbench } from './views/ApiWorkbench'
@@ -440,6 +441,9 @@ function MainRoutes() {
           </Web3AuthShell>
         }
       />
+      <Route path="/sign" element={<SignTransferPage />} />
+      <Route path="/transfers/sign" element={<SignTransferPage />} />
+      <Route path="/merchant/sign" element={<SignTransferPage />} />
       <Route path="/legal/:doc" element={<LegalDocumentPage />} />
       <Route path="/legal/terms" element={<LegalDocumentPage documentType="terms" />} />
       <Route path="/legal/privacy" element={<LegalDocumentPage documentType="privacy" />} />
