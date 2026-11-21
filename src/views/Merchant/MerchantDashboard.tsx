@@ -585,9 +585,6 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
       if (!config.pspKey && !config.merchantSession) {
         throw new Error('Set the PSP API key in the Backend API workbench before starting merchant onboarding.')
       }
-      if (config.merchantSession && merchant.id.startsWith('mrch_')) {
-        await requestApi(config, 'POST', '/api/v1/merchant/accept-usdc', {}, 'merchant')
-      }
       const fetchedNotice = await requestApi<typeof notice>(config, 'GET', '/api/v1/merchant/notice', undefined, 'merchant')
       setNotice(fetchedNotice)
       onUpdateMerchant({ nextStep: resolveMonotonicStep(merchant, 'NOTICE') })

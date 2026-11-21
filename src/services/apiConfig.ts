@@ -12,7 +12,6 @@ const ACTIVE_MERCHANT_ID_KEY = 'orki_active_merchant_id'
 
 const MERCHANT_ONBOARDING_PATHS = [
   '/v1/merchant/onboarding',
-  '/v1/merchant/accept-usdc',
   '/v1/merchant/kyb-information',
   '/v1/merchant/terms',
   '/v1/merchant/sumsub/token',

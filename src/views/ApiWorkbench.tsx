@@ -87,7 +87,6 @@ const endpoints: Endpoint[] = [
   // 6. Merchant Self-Service Endpoints
   ...[
     ['GET', '/api/v1/merchant/onboarding', undefined],
-    ['POST', '/api/v1/merchant/accept-usdc', '{}'],
     ['GET', '/api/v1/merchant/notice', undefined],
     ['POST', '/api/v1/merchant/notice/acknowledge', JSON.stringify({ isAuthorisedSignatory: true, signatoryName: 'Ada Example', signatoryEmail: 'ada@example.com', signatoryTitle: 'Director', merchantExternalId: 'EXT-MERCH-1001', legalBusinessName: 'Example Trading Ltd', tradeLicenseNumber: 'DMCC-1001', jurisdiction: 'Dubai DMCC', returnUrl: 'http://localhost:5173/merchant' }, null, 2), 'Merged Register Merchant + Notice Acknowledgement: when called with a PSP API key (or existing onboarding session), registers the merchant in Orki upon signatory notice consent, issues an onb_sec_... onboarding session secret, and advances nextStep to KYB_INFORMATION.'],
     ['POST', '/api/v1/merchant/kyb-information', JSON.stringify({ companyInfo: { companyName: 'Example Trading Ltd', registrationNumber: 'RC-001', country: 'NGA', incorporatedOn: '2020-01-01', type: 'Private company', legalAddress: 'Example address' } }, null, 2)],
@@ -129,7 +128,7 @@ for (const endpoint of endpoints) {
   if (
     endpoint.group === 'Merchant' &&
     endpoint.body === '{}' &&
-    ['/api/v1/merchant/accept-usdc', '/api/v1/merchant/sumsub/token', '/api/v1/merchant/sumsub/complete', '/api/v1/merchant/conversions'].includes(endpoint.path)
+    ['/api/v1/merchant/sumsub/token', '/api/v1/merchant/sumsub/complete', '/api/v1/merchant/conversions'].includes(endpoint.path)
   ) {
     endpoint.note = NO_BODY_NOTE
   }
