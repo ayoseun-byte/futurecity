@@ -196,6 +196,7 @@ export const ShoplaneConsoleView: React.FC = () => {
   return (
     <>
       <DemoPerspectiveShell
+        useCaseKey="hosted"
         accentColor="#7A3B1D"
         appName={merchantName}
         navLabel="Shop"

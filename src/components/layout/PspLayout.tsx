@@ -61,11 +61,11 @@ export const PspLayout: React.FC<{ children: React.ReactNode }> = ({ children })
               </Link>
               <Link
                 to="/psp/rails"
-                className="hidden sm:inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-slate-600 hover:text-slate-900 bg-slate-50 hover:bg-slate-100 border border-slate-200 transition"
-                title="Integration test bench"
+                className="hidden sm:inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-indigo-700 hover:text-indigo-900 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 transition"
+                title="Executive Showcase & Rails Lab"
               >
-                <Activity className="w-3.5 h-3.5" />
-                <span>Test Bench</span>
+                <Activity className="w-3.5 h-3.5 text-indigo-600" />
+                <span>Executive Showcase</span>
               </Link>
               <Link
                 to="/api-workbench"

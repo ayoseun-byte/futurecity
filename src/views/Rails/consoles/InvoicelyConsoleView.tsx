@@ -1,36 +1,51 @@
 import React from 'react'
-import { Check, Copy, ExternalLink, RefreshCw, XCircle } from 'lucide-react'
+import {
+  FileText,
+  CheckCircle2,
+  ExternalLink,
+  Copy,
+  RefreshCw,
+  XCircle,
+  Building2,
+  Calendar,
+  Send,
+} from 'lucide-react'
+import { QRCodeSVG } from 'qrcode.react'
 import {
   cancelCharge,
   createCharge,
   fetchMerchantSettings,
   listCharges,
   resolveLocalCheckoutHref,
+  type ChargeSummary,
 } from '../../../services/pspConsoleService'
-import type { ChargeSummary } from '../../../services/pspConsoleService'
 import { ErrorBanner } from '../../../components/ui/StateBlocks'
-import { DemoPerspectiveShell, LiveQuoteAndStatusCard, useLivePspMerchant } from './DemoConsoleChrome'
-import type { ApiExchange } from './DemoConsoleChrome'
+import {
+  DemoPerspectiveShell,
+  LiveQuoteAndStatusCard,
+  useLivePspMerchant,
+  type ApiExchange,
+} from './DemoConsoleChrome'
 
-const ALL_TOKENS = ['USDC', 'USDT', 'ETH', 'SOL']
-const ALL_CHAINS: { id: string; label: string }[] = [
+const ALL_TOKENS = ['USDC', 'USDT', 'EURC']
+const ALL_CHAINS = [
   { id: 'base', label: 'Base' },
   { id: 'solana', label: 'Solana' },
 ]
 
-function statusDisplay(status: string): { label: string; cls: string } {
+function statusBadge(status: string) {
   switch (status) {
     case 'paid':
-      return { label: 'Paid', cls: 'bg-emerald-100 text-emerald-800' }
+      return { label: 'Paid ✓', cls: 'bg-emerald-100 text-emerald-800 border-emerald-300' }
     case 'pending_confirmation':
     case 'payment_received':
-      return { label: 'Payment on its way', cls: 'bg-amber-100 text-amber-800' }
+      return { label: 'Payment Incoming', cls: 'bg-amber-100 text-amber-800 border-amber-300' }
     case 'cancelled':
-      return { label: 'Void', cls: 'bg-slate-200 text-slate-600' }
+      return { label: 'Void', cls: 'bg-slate-100 text-slate-500 border-slate-200' }
     case 'expired':
-      return { label: 'Expired', cls: 'bg-slate-200 text-slate-600' }
+      return { label: 'Expired', cls: 'bg-rose-50 text-rose-600 border-rose-200' }
     default:
-      return { label: 'Awaiting payment', cls: 'bg-[#E6F1F0] text-[#0F5C5A]' }
+      return { label: 'Awaiting Payment', cls: 'bg-teal-50 text-teal-800 border-teal-200' }
   }
 }
 
@@ -50,29 +65,29 @@ export const InvoicelyConsoleView: React.FC = () => {
   } = useLivePspMerchant()
 
   const [form, setForm] = React.useState({
-    number: `INV-${Math.floor(1000 + Math.random() * 9000)}`,
-    currency: 'usd',
-    clientName: 'Acme GmbH',
-    clientEmail: 'ap@acme.example',
-    description: 'Brand refresh, phase 1',
+    number: `INV-${Math.floor(2000 + Math.random() * 8000)}`,
+    currency: 'USD',
+    clientName: 'Acme International Corp',
+    clientEmail: 'billing@acme-corp.example',
+    description: 'Q4 Enterprise Cloud Infrastructure & Architecture Consulting',
     amount: '1.00',
     dueInDays: 14,
-    expiresInMinutes: 60 * 24 * 7,
+    expiresInMinutes: 60 * 24 * 14,
   })
 
-  const [availableTokens, setAvailableTokens] = React.useState<string[]>(['USDC', 'USDT'])
+  const [availableTokens, setAvailableTokens] = React.useState<string[]>(['USDC', 'USDT', 'EURC'])
   const [availableChains, setAvailableChains] = React.useState<string[]>(['base', 'solana'])
-  const [acceptedTokens, setAcceptedTokens] = React.useState<string[]>(['USDC', 'USDT'])
+  const [acceptedTokens, setAcceptedTokens] = React.useState<string[]>(['USDC', 'USDT', 'EURC'])
   const [acceptedChains, setAcceptedChains] = React.useState<string[]>(['base', 'solana'])
 
   const [charges, setCharges] = React.useState<ChargeSummary[]>([])
-  const [justSent, setJustSent] = React.useState<ChargeSummary | null>(null)
-  const [pspPayModalCharge, setPspPayModalCharge] = React.useState<ChargeSummary | null>(null)
+  const [activeInvoice, setActiveInvoice] = React.useState<ChargeSummary | null>(null)
   const [copiedToken, setCopiedToken] = React.useState<string | null>(null)
   const [loading, setLoading] = React.useState(false)
   const [busy, setBusy] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
   const [exchanges, setExchanges] = React.useState<ApiExchange[]>([])
+  const [step, setStep] = React.useState<1 | 2 | 3 | 4>(1)
 
   const pushExchange = React.useCallback((entry: Omit<ApiExchange, 'id' | 'timestamp'>) => {
     setExchanges((prev) => [
@@ -90,18 +105,30 @@ export const InvoicelyConsoleView: React.FC = () => {
     const path = `/api/v1/psp/merchants/${selectedMerchant.id}`
     try {
       const settings = await fetchMerchantSettings(selectedMerchant.id)
-      const tokens = Array.isArray(settings.acceptedTokens) && settings.acceptedTokens.length > 0 ? settings.acceptedTokens : ['USDC', 'USDT']
-      const chains = Array.isArray(settings.acceptedChains) && settings.acceptedChains.length > 0 ? settings.acceptedChains : ['base', 'solana']
+      const tokens =
+        Array.isArray(settings.acceptedTokens) && settings.acceptedTokens.length > 0
+          ? settings.acceptedTokens
+          : ['USDC', 'USDT', 'EURC']
+      const chains =
+        Array.isArray(settings.acceptedChains) && settings.acceptedChains.length > 0
+          ? settings.acceptedChains
+          : ['base', 'solana']
       setAvailableTokens(tokens)
       setAvailableChains(chains)
       setAcceptedTokens(tokens)
       setAcceptedChains(chains)
-      pushExchange({ title: "Read the merchant's payment settings", method: 'GET', path, status: 200, response: settings })
+      pushExchange({
+        title: `Loaded merchant payment acceptance rules for ${selectedMerchant.legalBusinessName || merchantName}`,
+        method: 'GET',
+        path,
+        status: 200,
+        response: settings,
+      })
     } catch {
       setAvailableTokens(ALL_TOKENS)
       setAvailableChains(ALL_CHAINS.map((c) => c.id))
     }
-  }, [selectedMerchant?.id, pushExchange])
+  }, [selectedMerchant?.id, selectedMerchant?.legalBusinessName, merchantName, pushExchange])
 
   const loadInvoices = React.useCallback(async () => {
     if (!merchantExternalId) {
@@ -113,16 +140,27 @@ export const InvoicelyConsoleView: React.FC = () => {
     const path = `/api/v1/psp/charges?merchantExternalId=${encodeURIComponent(merchantExternalId)}`
     try {
       const page = await listCharges({ merchantExternalId })
-      setCharges(page.data || [])
-      pushExchange({ title: 'List invoices', method: 'GET', path, status: 200, response: { total: page.data?.length ?? 0 } })
+      const list = page.data || []
+      setCharges(list)
+      if (list.length > 0 && !activeInvoice) {
+        setActiveInvoice(list[0])
+        setStep(list[0].status === 'paid' ? 4 : 2)
+      }
+      pushExchange({
+        title: `Listed ${list.length} invoices`,
+        method: 'GET',
+        path,
+        status: 200,
+        response: { count: list.length },
+      })
     } catch (cause) {
       const msg = cause instanceof Error ? cause.message : String(cause)
       setError(msg)
-      pushExchange({ title: 'List invoices', method: 'GET', path, error: msg })
+      pushExchange({ title: 'List invoices failed', method: 'GET', path, error: msg })
     } finally {
       setLoading(false)
     }
-  }, [merchantExternalId, pushExchange])
+  }, [merchantExternalId, activeInvoice, pushExchange])
 
   React.useEffect(() => {
     void loadMerchantAcceptance()
@@ -132,32 +170,37 @@ export const InvoicelyConsoleView: React.FC = () => {
     void loadInvoices()
   }, [loadInvoices])
 
-  const toggleItem = (
-    item: string,
-    selected: string[],
-    setSelected: React.Dispatch<React.SetStateAction<string[]>>,
-  ) => {
-    setSelected(selected.includes(item) ? selected.filter((v) => v !== item) : [...selected, item])
+  const toggleToken = (token: string) => {
+    setAcceptedTokens((prev) =>
+      prev.includes(token) ? prev.filter((t) => t !== token) : [...prev, token]
+    )
   }
 
-  const raiseInvoice = async (event: React.FormEvent) => {
-    event.preventDefault()
+  const toggleChain = (chain: string) => {
+    setAcceptedChains((prev) =>
+      prev.includes(chain) ? prev.filter((c) => c !== chain) : [...prev, chain]
+    )
+  }
+
+  const handleRaiseInvoice = async (e: React.FormEvent) => {
+    e.preventDefault()
     if (!merchantExternalId) {
-      setError('Select a live merchant (or enter a merchantExternalId) first.')
+      setError('Select a live merchant first.')
       return
     }
     if (acceptedTokens.length === 0 || acceptedChains.length === 0) {
-      setError('Tick at least one token and one network.')
+      setError('Select at least one token and one network.')
       return
     }
     setBusy(true)
     setError(null)
+
     const now = new Date()
     const due = new Date(now.getTime() + form.dueInDays * 24 * 60 * 60 * 1000)
     const body = {
       merchantExternalId,
-      amount: form.amount,
-      currency: form.currency.toUpperCase(),
+      amount: Number(form.amount).toFixed(2),
+      currency: form.currency,
       description: form.description,
       expiresInMinutes: form.expiresInMinutes,
       acceptedTokens,
@@ -167,456 +210,502 @@ export const InvoicelyConsoleView: React.FC = () => {
         issuedAt: now.toISOString(),
         dueAt: due.toISOString(),
         billTo: {
-          name: form.clientName.trim() || 'Acme GmbH',
-          email: form.clientEmail.trim() || 'ap@acme.example',
+          name: form.clientName.trim() || 'Acme International Corp',
+          email: form.clientEmail.trim() || 'billing@acme-corp.example',
         },
       },
     }
 
     try {
       const created = await createCharge(body)
-      setJustSent(created)
-      setForm((prev) => ({ ...prev, number: `INV-${Math.floor(1000 + Math.random() * 9000)}` }))
-      pushExchange({ title: `Create invoice ${form.number}`, method: 'POST', path: '/api/v1/psp/charges', status: 201, request: body, response: created })
+      setActiveInvoice(created)
+      setStep(2)
+      setForm((prev) => ({ ...prev, number: `INV-${Math.floor(2000 + Math.random() * 8000)}` }))
+      pushExchange({
+        title: `Created B2B Invoice ${form.number}`,
+        method: 'POST',
+        path: '/api/v1/psp/charges',
+        status: 201,
+        request: body,
+        response: created,
+      })
       await loadInvoices()
     } catch (cause) {
       const msg = cause instanceof Error ? cause.message : String(cause)
       setError(msg)
-      pushExchange({ title: `Create invoice ${form.number}`, method: 'POST', path: '/api/v1/psp/charges', request: body, error: msg })
+      pushExchange({
+        title: `Failed to create invoice ${form.number}`,
+        method: 'POST',
+        path: '/api/v1/psp/charges',
+        request: body,
+        error: msg,
+      })
     } finally {
       setBusy(false)
     }
   }
 
-  const voidInvoice = async (chargeToken: string) => {
+  const handleVoidInvoice = async (chargeToken: string) => {
     setBusy(true)
     setError(null)
     const path = `/api/v1/psp/charges/${chargeToken}`
     try {
       const res = await cancelCharge(chargeToken)
-      pushExchange({ title: `Void invoice (${chargeToken})`, method: 'PATCH', path, status: 200, request: { status: 'cancelled' }, response: res })
+      if (activeInvoice?.chargeToken === chargeToken) {
+        setActiveInvoice(res)
+      }
+      pushExchange({
+        title: `Voided Invoice ${chargeToken}`,
+        method: 'PATCH',
+        path,
+        status: 200,
+        request: { status: 'cancelled' },
+        response: res,
+      })
       await loadInvoices()
     } catch (cause) {
       const msg = cause instanceof Error ? cause.message : String(cause)
       setError(msg)
-      pushExchange({ title: `Void invoice (${chargeToken})`, method: 'PATCH', path, error: msg })
+      pushExchange({ title: `Failed to void invoice ${chargeToken}`, method: 'PATCH', path, error: msg })
     } finally {
       setBusy(false)
     }
   }
 
-  const copyLink = async (token: string, url: string) => {
-    try {
-      await navigator.clipboard.writeText(url)
-      setCopiedToken(token)
-      setTimeout(() => setCopiedToken((curr) => (curr === token ? null : curr)), 1500)
-    } catch {
-      // ignore clipboard errors
-    }
+  const handleCopyLink = (token: string, url: string) => {
+    navigator.clipboard.writeText(url).catch(() => {})
+    setCopiedToken(token)
+    setTimeout(() => setCopiedToken(null), 2000)
   }
 
+  const resolvedCheckoutUrl = activeInvoice?.checkoutUrl
+    ? resolveLocalCheckoutHref(activeInvoice.checkoutUrl)
+    : ''
+
   return (
-    <>
-      <DemoPerspectiveShell
-        accentColor="#0F5C5A"
-        appName="Invoicely"
-        navLabel="Invoices"
-        merchantName={merchantName}
-        pspName={pspName}
-        ribbon={
-          <>
-            You are <strong className="text-white">{merchantName}</strong>, a merchant using{' '}
-            <strong className="text-white">Invoicely</strong> ({pspName}). Invoicely calls Orki behind the scenes.
-          </>
-        }
-        merchants={merchants}
-        selectedMerchantId={selectedMerchantId}
-        onSelectMerchant={setSelectedMerchantId}
-        manualExternalId={manualExternalId}
-        onManualExternalIdChange={setManualExternalId}
-        loadingMerchants={loadingMerchants}
-        onReloadMerchants={() => void reloadMerchants()}
-        exchanges={exchanges}
-        behindDescription="What Invoicely's server sent to Orki and what came back. The merchant never sees this; it is how Invoicely uses the Orki API."
-      >
-        <div className="mb-5">
-          <h1 className="text-xl font-bold text-slate-900">Invoices</h1>
-          <p className="text-xs text-slate-600 mt-0.5">
-            Create an invoice, then send its payment link to your client. Your client can pay in crypto; you settle on your configured rails.
-          </p>
+    <DemoPerspectiveShell
+      useCaseKey="invoice"
+      merchantName={merchantName}
+      pspName={pspName}
+      merchants={merchants}
+      selectedMerchantId={selectedMerchantId}
+      onSelectMerchant={setSelectedMerchantId}
+      manualExternalId={manualExternalId}
+      onManualExternalIdChange={setManualExternalId}
+      loadingMerchants={loadingMerchants}
+      onReloadMerchants={() => void reloadMerchants()}
+      exchanges={exchanges}
+      currentStep={step}
+      stepSubtitle={
+        step === 1
+          ? 'Merchant drafts invoice with payment terms and token restrictions'
+          : step === 2
+          ? 'Branded invoice generated with dedicated payment link and QR code'
+          : step === 3
+          ? 'Client reviews invoice details and examines live multi-chain quote'
+          : 'Payment settled on-chain & invoice marked Paid ✓'
+      }
+    >
+      {error && (
+        <div className="mb-4">
+          <ErrorBanner message={error} onDismiss={() => setError(null)} />
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 lg:grid-cols-[1.18fr_0.92fr] gap-6 items-start">
+        {/* Left: Client Branded Invoice Document */}
+        <div className="rounded-3xl border border-slate-200 bg-white p-7 shadow-sm overflow-hidden space-y-6">
+          <div className="flex items-center justify-between pb-4 border-b border-slate-100">
+            <div className="flex items-center gap-2">
+              <FileText className="w-5 h-5 text-teal-600" />
+              <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+                Client Perspective · Formal Invoice
+              </h3>
+            </div>
+            <span className="text-[11px] font-semibold text-teal-800 bg-teal-50 px-3 py-1 rounded-full border border-teal-200/60">
+              B2B Client Portal
+            </span>
+          </div>
+
+          {activeInvoice ? (
+            <div className="rounded-2xl border border-slate-200 bg-slate-50/50 p-6 space-y-6">
+              {/* Invoice Header */}
+              <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 pb-5 border-b border-slate-200">
+                <div>
+                  <div className="text-[11px] font-bold text-teal-700 uppercase tracking-widest">
+                    Commercial Invoice
+                  </div>
+                  <h2 className="text-2xl font-bold font-serif text-slate-900 mt-1">
+                    {activeInvoice.invoice?.number || activeInvoice.chargeToken}
+                  </h2>
+                  <div className="text-xs text-slate-500 mt-1 flex items-center gap-2">
+                    <Building2 className="w-3.5 h-3.5 text-slate-400" />
+                    <span>Issued by <strong>{merchantName}</strong></span>
+                  </div>
+                </div>
+
+                <div className="text-left sm:text-right">
+                  {(() => {
+                    const badge = statusBadge(activeInvoice.status)
+                    return (
+                      <span
+                        className={`inline-block px-3 py-1 rounded-full text-xs font-bold border ${badge.cls}`}
+                      >
+                        {badge.label}
+                      </span>
+                    )
+                  })()}
+                  <div className="text-xs text-slate-500 mt-2 font-mono">
+                    Token: {activeInvoice.chargeToken.slice(0, 14)}…
+                  </div>
+                </div>
+              </div>
+
+              {/* Bill To & Dates */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+                <div className="space-y-1">
+                  <div className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">
+                    Billed To
+                  </div>
+                  <div className="font-bold text-slate-900 text-sm">
+                    {form.clientName || 'Acme International Corp'}
+                  </div>
+                  <div className="text-slate-600">{form.clientEmail || 'billing@acme-corp.example'}</div>
+                </div>
+                <div className="space-y-1 sm:text-right">
+                  <div className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">
+                    Payment Terms
+                  </div>
+                  <div className="font-semibold text-slate-900 flex items-center gap-1 sm:justify-end">
+                    <Calendar className="w-3.5 h-3.5 text-teal-600" />
+                    <span>Net {form.dueInDays} Days</span>
+                  </div>
+                  <div className="text-slate-500">Settles to {merchantName}'s Wallet</div>
+                </div>
+              </div>
+
+              {/* Line Items Table */}
+              <div className="rounded-xl border border-slate-200 bg-white overflow-hidden shadow-xs">
+                <table className="w-full text-xs text-left">
+                  <thead className="bg-slate-100 text-slate-600 uppercase font-bold text-[10px] tracking-wider">
+                    <tr>
+                      <th className="px-4 py-3">Description</th>
+                      <th className="px-4 py-3 text-right">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    <tr>
+                      <td className="px-4 py-3.5 font-medium text-slate-800">
+                        {activeInvoice.description || form.description}
+                      </td>
+                      <td className="px-4 py-3.5 text-right font-bold text-slate-900 font-mono">
+                        ${activeInvoice.amount} {activeInvoice.currency}
+                      </td>
+                    </tr>
+                  </tbody>
+                  <tfoot className="bg-slate-50/80 font-bold border-t border-slate-200">
+                    <tr>
+                      <td className="px-4 py-3 text-slate-700">Total Due</td>
+                      <td className="px-4 py-3 text-right text-base text-slate-900 font-mono">
+                        ${activeInvoice.amount} {activeInvoice.currency}
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+
+              {/* Payment Actions & QR Scan */}
+              {activeInvoice.status === 'open' ? (
+                <div className="space-y-4 pt-2">
+                  <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-teal-50/60 p-4 rounded-xl border border-teal-200/70">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-white rounded-xl shadow-xs border border-teal-200">
+                        {resolvedCheckoutUrl ? (
+                          <QRCodeSVG value={resolvedCheckoutUrl} size={90} />
+                        ) : (
+                          <div className="w-[90px] h-[90px] bg-slate-100 rounded-lg flex items-center justify-center text-[10px] text-slate-400">
+                            QR Ready
+                          </div>
+                        )}
+                      </div>
+                      <div>
+                        <div className="text-xs font-bold text-teal-900">Scan to Pay Invoice</div>
+                        <div className="text-[11px] text-teal-700 mt-0.5">
+                          Direct wallet settlement on Base &amp; Solana
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col gap-2 w-full sm:w-auto">
+                      {resolvedCheckoutUrl && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setStep(3)
+                            window.open(resolvedCheckoutUrl, '_blank', 'noopener,noreferrer')
+                          }}
+                          className="px-4 py-2.5 rounded-xl bg-teal-700 hover:bg-teal-800 text-white font-bold text-xs shadow-sm transition flex items-center justify-center gap-1.5 active:scale-95"
+                        >
+                          <span>Pay Invoice Now</span>
+                          <ExternalLink className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                      {resolvedCheckoutUrl && (
+                        <button
+                          type="button"
+                          onClick={() => handleCopyLink(activeInvoice.chargeToken, resolvedCheckoutUrl)}
+                          className="px-3.5 py-1.5 rounded-xl bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold border border-slate-300 shadow-xs flex items-center justify-center gap-1 transition"
+                        >
+                          {copiedToken === activeInvoice.chargeToken ? (
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                          ) : (
+                            <Copy className="w-3.5 h-3.5" />
+                          )}
+                          <span>
+                            {copiedToken === activeInvoice.chargeToken ? 'Link Copied!' : 'Copy Paylink'}
+                          </span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => void handleVoidInvoice(activeInvoice.chargeToken)}
+                      disabled={busy}
+                      className="text-xs text-rose-600 hover:text-rose-800 font-semibold flex items-center gap-1 transition"
+                    >
+                      <XCircle className="w-3.5 h-3.5" />
+                      <span>Void this invoice</span>
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="rounded-xl bg-emerald-50 border border-emerald-200 p-4 text-center space-y-1">
+                  <div className="text-sm font-bold text-emerald-900 flex items-center justify-center gap-1.5">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                    Invoice Fully Settled On-Chain
+                  </div>
+                  <p className="text-xs text-emerald-700">
+                    Funds released directly into {merchantName}'s configured settlement address.
+                  </p>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="p-8 text-center text-slate-400 text-xs italic">
+              No invoice selected. Draft a new invoice on the right to preview.
+            </div>
+          )}
         </div>
 
-        {error && <div className="mb-4"><ErrorBanner message={error} onDismiss={() => setError(null)} /></div>}
-
-        <div className="grid grid-cols-1 lg:grid-cols-[380px_minmax(0,1fr)] gap-6 items-start">
-          {/* Left: New invoice form */}
-          <form onSubmit={(e) => void raiseInvoice(e)} className="rounded-xl border border-slate-200 bg-white p-5 space-y-3.5 shadow-sm">
-            <h2 className="text-base font-bold text-slate-900">New invoice</h2>
+        {/* Right: Merchant Invoice Generator & Live Status Engine */}
+        <div className="space-y-6">
+          {/* New Invoice Form */}
+          <form
+            onSubmit={(e) => void handleRaiseInvoice(e)}
+            className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-4"
+          >
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <Send className="w-4 h-4 text-teal-600" />
+                <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+                  Create New Client Invoice
+                </h3>
+              </div>
+              <span className="text-[11px] font-semibold text-slate-500">
+                {merchantName}
+              </span>
+            </div>
 
             <div className="grid grid-cols-2 gap-3">
-              <label className="block text-xs font-medium text-slate-700">
-                Invoice number
+              <div>
+                <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
+                  Invoice Number
+                </label>
                 <input
                   required
                   value={form.number}
                   onChange={(e) => setForm((p) => ({ ...p, number: e.target.value }))}
-                  className="mt-1 w-full rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs font-mono"
+                  className="w-full text-xs font-mono font-bold rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-teal-500 focus:outline-none"
                 />
-              </label>
-              <label className="block text-xs font-medium text-slate-700">
-                Currency
-                <select
-                  value={form.currency}
-                  onChange={(e) => setForm((p) => ({ ...p, currency: e.target.value }))}
-                  className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs"
-                >
-                  <option value="usd">USD</option>
-                  <option value="aed">AED</option>
-                  <option value="eur">EUR</option>
-                  <option value="gbp">GBP</option>
-                  <option value="usdc">USDC</option>
-                </select>
-              </label>
+              </div>
+              <div>
+                <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
+                  Amount (USD)
+                </label>
+                <input
+                  required
+                  type="number"
+                  step="0.10"
+                  value={form.amount}
+                  onChange={(e) => setForm((p) => ({ ...p, amount: e.target.value }))}
+                  className="w-full text-xs font-bold rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-teal-500 focus:outline-none"
+                />
+              </div>
             </div>
 
-            <label className="block text-xs font-medium text-slate-700">
-              Client
-              <input
-                required
-                value={form.clientName}
-                onChange={(e) => setForm((p) => ({ ...p, clientName: e.target.value }))}
-                className="mt-1 w-full rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs"
-              />
-            </label>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
+                  Client Name
+                </label>
+                <input
+                  required
+                  value={form.clientName}
+                  onChange={(e) => setForm((p) => ({ ...p, clientName: e.target.value }))}
+                  className="w-full text-xs rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-teal-500 focus:outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
+                  Client Email
+                </label>
+                <input
+                  type="email"
+                  value={form.clientEmail}
+                  onChange={(e) => setForm((p) => ({ ...p, clientEmail: e.target.value }))}
+                  className="w-full text-xs rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-teal-500 focus:outline-none"
+                />
+              </div>
+            </div>
 
-            <label className="block text-xs font-medium text-slate-700">
-              Client email <span className="font-normal text-slate-400">· Shown on the invoice</span>
-              <input
-                type="email"
-                value={form.clientEmail}
-                onChange={(e) => setForm((p) => ({ ...p, clientEmail: e.target.value }))}
-                className="mt-1 w-full rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs"
-              />
-            </label>
-
-            <label className="block text-xs font-medium text-slate-700">
-              What it's for
+            <div>
+              <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
+                Line Item Description
+              </label>
               <input
                 required
                 value={form.description}
                 onChange={(e) => setForm((p) => ({ ...p, description: e.target.value }))}
-                className="mt-1 w-full rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs"
+                className="w-full text-xs rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-teal-500 focus:outline-none"
               />
-            </label>
-
-            <label className="block text-xs font-medium text-slate-700">
-              Amount <span className="font-normal text-slate-400">· Keep small on testnet</span>
-              <input
-                required
-                inputMode="decimal"
-                value={form.amount}
-                onChange={(e) => setForm((p) => ({ ...p, amount: e.target.value }))}
-                className="mt-1 w-full rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs font-mono"
-              />
-            </label>
-
-            <div className="grid grid-cols-2 gap-3">
-              <label className="block text-xs font-medium text-slate-700">
-                Due in
-                <select
-                  value={form.dueInDays}
-                  onChange={(e) => setForm((p) => ({ ...p, dueInDays: Number(e.target.value) }))}
-                  className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs"
-                >
-                  <option value={7}>7 days</option>
-                  <option value={14}>14 days</option>
-                  <option value={30}>30 days</option>
-                </select>
-              </label>
-              <label className="block text-xs font-medium text-slate-700">
-                Link expires
-                <select
-                  value={form.expiresInMinutes}
-                  onChange={(e) => setForm((p) => ({ ...p, expiresInMinutes: Number(e.target.value) }))}
-                  className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs"
-                >
-                  <option value={60}>1 hour</option>
-                  <option value={60 * 24}>24 hours</option>
-                  <option value={60 * 24 * 7}>7 days</option>
-                  <option value={60 * 24 * 30}>30 days</option>
-                </select>
-              </label>
             </div>
 
-            <div className="border-t border-slate-200 pt-3 space-y-2.5">
-              <div>
-                <div className="text-xs font-semibold text-slate-800">Accepted payments</div>
-                <p className="text-[11px] text-slate-500">
-                  Pre-ticked from {merchantName}'s settings. Untick to narrow what this invoice accepts.
-                </p>
+            {/* Token & Network Guardrails */}
+            <div className="pt-2 border-t border-slate-100 space-y-2">
+              <div className="text-[11px] font-bold text-slate-700 uppercase tracking-wide">
+                Invoice Acceptance Guardrails
               </div>
-              <div>
-                <div className="text-[11px] font-medium text-slate-700 mb-1">Stablecoins and tokens</div>
-                <div className="flex flex-wrap gap-3">
-                  {(availableTokens.length > 0 ? availableTokens : ALL_TOKENS).map((token) => (
-                    <label key={token} className="inline-flex items-center gap-1.5 text-xs text-slate-700 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={acceptedTokens.includes(token)}
-                        onChange={() => toggleItem(token, acceptedTokens, setAcceptedTokens)}
-                        className="rounded border-slate-300 text-[#0F5C5A]"
-                      />
-                      {token}
-                    </label>
-                  ))}
-                </div>
+
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="text-[11px] text-slate-500 font-medium">Allowed Tokens:</span>
+                {availableTokens.map((token) => (
+                  <label key={token} className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-800 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={acceptedTokens.includes(token)}
+                      onChange={() => toggleToken(token)}
+                      className="rounded border-slate-300 text-teal-600 focus:ring-teal-500"
+                    />
+                    <span>{token}</span>
+                  </label>
+                ))}
               </div>
-              <div>
-                <div className="text-[11px] font-medium text-slate-700 mb-1">Networks</div>
-                <div className="flex flex-wrap gap-3">
-                  {ALL_CHAINS.filter((c) => availableChains.includes(c.id) || availableChains.length === 0).map((chain) => (
-                    <label key={chain.id} className="inline-flex items-center gap-1.5 text-xs text-slate-700 cursor-pointer">
+
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="text-[11px] text-slate-500 font-medium">Networks:</span>
+                {availableChains.map((chainId) => {
+                  const chain = ALL_CHAINS.find((c) => c.id === chainId) || { id: chainId, label: chainId.toUpperCase() }
+                  return (
+                    <label key={chain.id} className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-800 cursor-pointer">
                       <input
                         type="checkbox"
                         checked={acceptedChains.includes(chain.id)}
-                        onChange={() => toggleItem(chain.id, acceptedChains, setAcceptedChains)}
-                        className="rounded border-slate-300 text-[#0F5C5A]"
+                        onChange={() => toggleChain(chain.id)}
+                        className="rounded border-slate-300 text-teal-600 focus:ring-teal-500"
                       />
-                      {chain.label}
+                      <span>{chain.label}</span>
                     </label>
-                  ))}
-                </div>
+                  )
+                })}
               </div>
             </div>
 
             <button
               type="submit"
               disabled={busy || !merchantExternalId}
-              className="w-full rounded-lg bg-[#0F5C5A] px-4 py-2 text-xs font-semibold text-white hover:bg-[#0c4a48] disabled:opacity-50 transition"
+              className="w-full py-3 rounded-xl bg-gradient-to-r from-teal-700 via-emerald-700 to-teal-800 hover:from-teal-800 hover:to-emerald-900 text-white font-bold text-xs shadow-md transition disabled:opacity-50 flex items-center justify-center gap-2 active:scale-95"
             >
-              {busy ? 'Creating invoice…' : 'Create invoice'}
+              {busy ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+              <span>Issue Invoice &amp; Generate Payment Link</span>
             </button>
           </form>
 
-          {/* Right: Sent callout + Sent invoices list */}
-          <section className="space-y-4">
-            {justSent && (
-              <div className="rounded-xl border border-slate-200 border-l-4 border-l-[#0F5C5A] bg-white p-4 space-y-2 shadow-sm">
-                <div className="flex items-center justify-between gap-2">
-                  <strong className="text-xs text-slate-900">
-                    Invoice {justSent.invoice?.number || justSent.chargeToken} created — send this payment link to {form.clientName}:
-                  </strong>
-                  <button
-                    type="button"
-                    onClick={() => setPspPayModalCharge(justSent)}
-                    className="rounded-lg bg-[#0F5C5A] px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-[#0c4a48]"
-                  >
-                    Open Invoicely pay page
-                  </button>
-                </div>
-                {justSent.checkoutUrl && (
-                  <div className="flex items-center gap-2 rounded-lg bg-[#E6F1F0] px-3 py-1.5 text-xs">
-                    <span className="font-mono text-[#0F5C5A] truncate flex-1">
-                      {resolveLocalCheckoutHref(justSent.checkoutUrl)}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => void copyLink(justSent.chargeToken, resolveLocalCheckoutHref(justSent.checkoutUrl!))}
-                      className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#0F5C5A] hover:underline"
-                    >
-                      {copiedToken === justSent.chargeToken ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
-                      {copiedToken === justSent.chargeToken ? 'Copied' : 'Copy'}
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
+          {/* Live Multi-Chain Quoting & Settlement Card */}
+          <LiveQuoteAndStatusCard
+            activeCharge={activeInvoice}
+            onSettled={(updated: ChargeSummary) => {
+              setActiveInvoice(updated)
+              setStep(4)
+              void loadInvoices()
+            }}
+          />
 
+          {/* Recent Invoices Ledger */}
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-4">
             <div className="flex items-center justify-between">
-              <h2 className="text-base font-bold text-slate-900">Sent invoices</h2>
+              <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wide">
+                Invoice Ledger ({charges.length})
+              </h4>
               <button
                 type="button"
                 onClick={() => void loadInvoices()}
                 disabled={loading}
-                className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-600 hover:text-slate-900"
+                className="text-xs text-teal-700 hover:text-teal-900 font-semibold flex items-center gap-1"
               >
-                <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-                Refresh
+                <RefreshCw className={`w-3 h-3 ${loading ? 'animate-spin' : ''}`} />
+                <span>Refresh</span>
               </button>
             </div>
 
-            <div className="rounded-xl border border-slate-200 bg-white divide-y divide-slate-200">
-              {charges.length === 0 ? (
-                <p className="p-6 text-center text-xs text-slate-400">
-                  {loading ? 'Loading invoices…' : 'No invoices yet for this merchant. Create one on the left.'}
-                </p>
-              ) : (
-                charges.map((charge) => {
-                  const badge = statusDisplay(charge.status)
-                  const href = charge.checkoutUrl ? resolveLocalCheckoutHref(charge.checkoutUrl) : null
+            {charges.length === 0 ? (
+              <p className="text-xs text-slate-400 italic py-3 text-center">
+                No invoices found for this merchant.
+              </p>
+            ) : (
+              <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                {charges.map((charge) => {
+                  const isCurrent = activeInvoice?.chargeToken === charge.chargeToken
+                  const badge = statusBadge(charge.status)
                   return (
-                    <div key={charge.chargeToken} className="p-4 space-y-2">
-                      <div className="flex items-start justify-between gap-4">
-                        <div className="min-w-0 space-y-0.5">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="font-mono text-xs font-semibold text-slate-900">
-                              {charge.invoice?.number || charge.chargeToken}
-                            </span>
-                            <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${badge.cls}`}>
-                              {badge.label}
-                            </span>
-                          </div>
-                          <div className="text-xs text-slate-600 truncate">
-                            {charge.description || 'Invoice charge'}
-                          </div>
-                          <div className="text-[11px] text-slate-400 font-mono">{charge.chargeToken}</div>
+                    <div
+                      key={charge.chargeToken}
+                      onClick={() => {
+                        setActiveInvoice(charge)
+                        setStep(charge.status === 'paid' ? 4 : 2)
+                      }}
+                      className={`p-3 rounded-xl border text-xs cursor-pointer transition flex items-center justify-between ${
+                        isCurrent
+                          ? 'border-teal-500 bg-teal-50/50 ring-1 ring-teal-500'
+                          : 'border-slate-200 hover:bg-slate-50'
+                      }`}
+                    >
+                      <div className="min-w-0 pr-3">
+                        <div className="font-bold text-slate-900 truncate">
+                          {charge.invoice?.number || charge.chargeToken}
                         </div>
-                        <div className="text-right shrink-0">
-                          <div className="text-lg font-bold text-slate-900 font-mono">
-                            {charge.amount} {charge.currency}
-                          </div>
+                        <div className="text-[11px] text-slate-500 truncate mt-0.5">
+                          {charge.description || 'Invoice'}
                         </div>
                       </div>
-
-                      {href && charge.status === 'open' && (
-                        <div className="flex items-center gap-2 rounded-lg bg-[#E6F1F0] px-2.5 py-1.5 text-[11px]">
-                          <span className="font-mono text-[#0F5C5A] truncate flex-1">{href}</span>
-                          <button
-                            type="button"
-                            onClick={() => void copyLink(charge.chargeToken, href)}
-                            className="font-semibold text-[#0F5C5A] hover:underline shrink-0"
-                          >
-                            {copiedToken === charge.chargeToken ? 'Copied' : 'Copy'}
-                          </button>
+                      <div className="text-right shrink-0">
+                        <div className="font-extrabold text-slate-900 font-mono">
+                          ${charge.amount} {charge.currency}
                         </div>
-                      )}
-
-                      <div className="flex items-center gap-3 flex-wrap pt-0.5">
-                        <button
-                          type="button"
-                          onClick={() => setPspPayModalCharge(charge)}
-                          className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-100"
-                        >
-                          Open pay page
-                        </button>
-                        {href && (
-                          <a
-                            href={href}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="inline-flex items-center gap-1 text-[11px] font-medium text-[#0F5C5A] hover:underline"
-                          >
-                            Direct Orki checkout
-                            <ExternalLink className="w-3 h-3" />
-                          </a>
-                        )}
-                        {charge.status === 'open' && (
-                          <button
-                            type="button"
-                            onClick={() => void voidInvoice(charge.chargeToken)}
-                            disabled={busy}
-                            className="inline-flex items-center gap-1 text-[11px] font-medium text-rose-600 hover:underline ml-auto"
-                          >
-                            <XCircle className="w-3 h-3" />
-                            Void
-                          </button>
-                        )}
+                        <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold mt-1 border ${badge.cls}`}>
+                          {badge.label}
+                        </span>
                       </div>
                     </div>
                   )
-                })
-              )}
-            </div>
-          </section>
-        </div>
-      </DemoPerspectiveShell>
-
-      {/* Invoicely Payment Page Modal (mirrors psp-payment-page.blade.php) */}
-      {pspPayModalCharge && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4">
-          <div className="w-full max-w-lg rounded-2xl bg-white shadow-xl border border-slate-200 overflow-hidden">
-            <div className="px-5 py-3 flex items-center justify-between text-white" style={{ backgroundColor: '#0F5C5A' }}>
-              <span className="font-bold text-sm">Invoicely · Secure payment</span>
-              <button
-                type="button"
-                onClick={() => setPspPayModalCharge(null)}
-                className="text-xs text-white/80 hover:text-white"
-              >
-                Close ✕
-              </button>
-            </div>
-
-            <div className="p-5 space-y-5 bg-[#FAF9F6]">
-              <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
-                <h3 className="text-base font-bold text-slate-900">
-                  Invoice {pspPayModalCharge.invoice?.number || pspPayModalCharge.chargeToken} from {merchantName}
-                </h3>
-                <dl className="grid grid-cols-[1fr_auto] gap-y-1.5 gap-x-4 text-xs">
-                  <dt className="text-slate-500">{pspPayModalCharge.description || 'Invoice payment'}</dt>
-                  <dd className="text-right text-slate-700" />
-                  <dt className="text-slate-500 border-t border-slate-200 pt-2 font-bold">Amount due</dt>
-                  <dd className="text-right border-t border-slate-200 pt-2 font-bold text-slate-900 font-mono">
-                    {pspPayModalCharge.amount} {pspPayModalCharge.currency}
-                  </dd>
-                </dl>
-                {pspPayModalCharge.status !== 'open' && (
-                  <p className="rounded-lg bg-slate-100 px-3 py-2 text-xs text-slate-700">
-                    Status: <span className="font-semibold">{statusDisplay(pspPayModalCharge.status).label}</span>
-                  </p>
-                )}
+                })}
               </div>
-
-              {pspPayModalCharge.status === 'open' && (
-                <div className="space-y-3">
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">Choose how to pay</h4>
-                  <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-white p-3.5 opacity-55">
-                    <div>
-                      <div className="text-xs font-bold text-slate-800">Card</div>
-                      <div className="text-[11px] text-slate-500">Visa, Mastercard. Not part of this demo.</div>
-                    </div>
-                    <button type="button" disabled className="rounded-lg bg-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-500">
-                      Pay by card
-                    </button>
-                  </div>
-                  <div className="flex items-center justify-between rounded-xl border border-[#0F5C5A]/30 bg-white p-3.5">
-                    <div>
-                      <div className="text-xs font-bold text-slate-900">Pay with Orki</div>
-                      <div className="text-[11px] text-slate-500">
-                        Pay in crypto from your wallet. You go to Orki's page, then return here.
-                      </div>
-                    </div>
-                    {pspPayModalCharge.checkoutUrl ? (
-                      <a
-                        href={resolveLocalCheckoutHref(pspPayModalCharge.checkoutUrl)}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center gap-1.5 rounded-lg bg-[#0F5C5A] px-3.5 py-2 text-xs font-semibold text-white hover:bg-[#0c4a48]"
-                      >
-                        Pay with Orki
-                        <ExternalLink className="w-3.5 h-3.5" />
-                      </a>
-                    ) : (
-                      <span className="text-xs text-slate-400">No checkoutUrl</span>
-                    )}
-                  </div>
-
-                  <LiveQuoteAndStatusCard
-                    identifier={pspPayModalCharge.chargeToken}
-                    amount={pspPayModalCharge.amount}
-                    currency={pspPayModalCharge.currency}
-                    checkoutUrl={pspPayModalCharge.checkoutUrl}
-                    initialStatus={pspPayModalCharge.status}
-                    onPaid={(updated) => {
-                      setPspPayModalCharge(updated)
-                      void loadInvoices()
-                    }}
-                  />
-                </div>
-              )}
-            </div>
+            )}
           </div>
         </div>
-      )}
-    </>
+      </div>
+    </DemoPerspectiveShell>
   )
 }

@@ -7,7 +7,8 @@ import { RailsLabView } from './views/Rails/RailsLabView'
 import { PspRailsView } from './views/Rails/PspRailsView'
 import { MerchantRailsView } from './views/Rails/MerchantRailsView'
 import { InvoicelyConsoleView } from './views/Rails/consoles/InvoicelyConsoleView'
-import { ShoplaneConsoleView } from './views/Rails/consoles/ShoplaneConsoleView'
+import { HostedCheckoutConsoleView } from './views/Rails/consoles/HostedCheckoutConsoleView'
+import { PaylinkConsoleView } from './views/Rails/consoles/PaylinkConsoleView'
 import { CornerShopHeadlessView } from './views/Rails/consoles/CornerShopHeadlessView'
 import { PluginConsoleView } from './views/Rails/consoles/PluginConsoleView'
 import { CheckoutWidgetView } from './views/Rails/consoles/CheckoutWidgetView'
@@ -616,6 +617,26 @@ function MainRoutes() {
 
       {/* Counterparty consoles: the integration styles, as the platforms that use them */}
       <Route
+        path="/psp/console/hosted"
+        element={
+          <ProtectedRoute allowedRoles={['org']}>
+            <PspLayout>
+              <HostedCheckoutConsoleView />
+            </PspLayout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/psp/console/paylink"
+        element={
+          <ProtectedRoute allowedRoles={['org']}>
+            <PspLayout>
+              <PaylinkConsoleView />
+            </PspLayout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
         path="/psp/console/invoicely"
         element={
           <ProtectedRoute allowedRoles={['org']}>
@@ -630,7 +651,7 @@ function MainRoutes() {
         element={
           <ProtectedRoute allowedRoles={['org']}>
             <PspLayout>
-              <ShoplaneConsoleView />
+              <HostedCheckoutConsoleView />
             </PspLayout>
           </ProtectedRoute>
         }
