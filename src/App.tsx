@@ -138,6 +138,7 @@ function PspMerchantConsoleRoute({
         </span>
       </div>
       <MerchantDashboard
+        key={merchant.id}
         merchant={merchant}
         onUpdateMerchant={(updated) => {
           onUpdateMerchantById(merchant.id, updated)

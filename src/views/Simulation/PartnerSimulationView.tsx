@@ -349,6 +349,10 @@ export const PartnerSimulationView: React.FC<{
               onClick={() => {
                 setSelectedMerchant(null)
                 setMerchantSection('overview')
+                setEnableError('')
+                sessionStorage.removeItem('orki_active_merchant_session')
+                saveActiveMerchantId('')
+                saveApiConfig({ ...getApiConfig(), merchantId: '', merchantSession: '' })
               }}
               className="inline-flex items-center space-x-1 text-xs font-medium text-slate-600 hover:text-slate-900"
             >
@@ -492,6 +496,7 @@ export const PartnerSimulationView: React.FC<{
 
           {merchantSection === 'oski_onboarding' && orkiM && (
             <MerchantDashboard
+              key={orkiM.id}
               merchant={orkiM}
               onUpdateMerchant={(updated) => {
                 const nextMerchant = { ...orkiM, ...updated }
@@ -636,6 +641,25 @@ export const PartnerSimulationView: React.FC<{
                     <button
                       type="button"
                       onClick={() => {
+                        setEnableError('')
+                        if (sm.orkiMerchant) {
+                          const existingId = sm.orkiMerchant.id
+                          const existingSession =
+                            sessionStorage.getItem(`orki_merchant_session:${existingId}`) ||
+                            sessionStorage.getItem(`orki_merchant_session:${sm.externalId}`) ||
+                            ''
+                          saveActiveMerchantId(existingId)
+                          saveApiConfig({ ...getApiConfig(), merchantId: existingId, merchantSession: existingSession })
+                          if (existingSession) {
+                            sessionStorage.setItem('orki_active_merchant_session', existingSession)
+                          } else {
+                            sessionStorage.removeItem('orki_active_merchant_session')
+                          }
+                        } else {
+                          saveActiveMerchantId('')
+                          saveApiConfig({ ...getApiConfig(), merchantId: '', merchantSession: '' })
+                          sessionStorage.removeItem('orki_active_merchant_session')
+                        }
                         setSelectedMerchant(sm)
                         setMerchantSection('overview')
                       }}
