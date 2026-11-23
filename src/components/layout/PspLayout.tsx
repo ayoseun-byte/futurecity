@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import type { Merchant, Organization } from '../../types'
 import { getStoredOrganizations, getStoredMerchants } from '../../services/storageService'
+import orkiLogoWhite from '../../assets/logo-white-svg.svg'
 import {
   LayoutGrid,
   BarChart3,
@@ -100,11 +101,8 @@ export const PspLayout: React.FC<PspLayoutProps> = ({
       <header className="bg-[#0B0F19] text-white sticky top-0 z-40 h-14 border-b border-slate-800/80 px-4 flex items-center justify-between">
         <div className="flex items-center space-x-3">
           {/* Solely Orki Brand Mark */}
-          <Link to="/psp" className="flex items-center space-x-2 pr-2 focus:outline-none">
-            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-indigo-500 to-onion-600 flex items-center justify-center font-extrabold text-sm text-white shadow-xs">
-              O
-            </div>
-            <span className="font-extrabold text-lg tracking-tight text-white">orki</span>
+          <Link to="/psp" className="flex items-center pr-3 focus:outline-none">
+            <img src={orkiLogoWhite} alt="Orki" className="h-6 w-auto" />
           </Link>
 
           {/* Logged-in PSP Organization Badge */}
