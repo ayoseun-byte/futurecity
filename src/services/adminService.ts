@@ -23,7 +23,8 @@ export interface AdminMetrics {
   merchants: {
     total: number
     active: number
-    invited: number
+    notice?: number
+    invited?: number
     disabled: number
   }
   settlement: {

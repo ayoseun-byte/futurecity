@@ -745,7 +745,7 @@ export const OrkiAdminPortal: React.FC<OrkiAdminPortalProps> = ({
           <div className="flex items-center space-x-2 text-[11px] text-slate-500">
             <span className="text-emerald-600 font-medium">{metrics?.merchants.active ?? '—'} Active</span>
             <span>·</span>
-            <span className="text-slate-400 font-medium">{metrics?.merchants.invited ?? '—'} Invited</span>
+            <span className="text-slate-400 font-medium">{metrics?.merchants.notice ?? '—'} Onboarding</span>
           </div>
         </div>
 
@@ -1105,7 +1105,7 @@ export const OrkiAdminPortal: React.FC<OrkiAdminPortalProps> = ({
                 <option value="all">All Merchant Statuses</option>
                 <option value="active">Active</option>
                 <option value="disabled">Disabled / Frozen</option>
-                <option value="invited">Invited / Onboarding</option>
+                <option value="notice">Notice / Onboarding</option>
               </select>
             </div>
 

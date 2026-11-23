@@ -64,7 +64,7 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({ status, nextStep }) =>
         </span>
       )
     case 'invited': {
-      let label = 'Invited'
+      let label = 'Notice Accepted'
       if (stepUpper === 'KYB_INFORMATION') {
         label = 'Notice Signed'
       } else if (stepUpper === 'TERMS') {
