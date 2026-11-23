@@ -322,7 +322,7 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
   const [offrampStatus, setOfframpStatus] = useState<OfframpStatusResponse | null>(null)
   const [offrampNotice, setOfframpNotice] = useState<string | null>(null)
   const [notice, setNotice] = useState<{ title?: string; sections?: { heading: string; content: string }[] } | null>(null)
-  const [termsData, setTermsData] = useState<{ tos?: { token?: string; entityName?: string; status?: string; documentLinks?: { tos?: string; privacyPolicy?: string } }; title?: string; clauses?: string[] } | null>(null)
+  const [termsData, setTermsData] = useState<{ tos?: { token?: string; entityName?: string; status?: string; acceptedAt?: string | null; documentLinks?: { tos?: string; privacyPolicy?: string } }; title?: string; clauses?: string[] } | null>(null)
   const [signatory, setSignatory] = useState({
     name: merchant.representativeName || '',
     email: merchant.representativeEmail || '',
@@ -703,11 +703,8 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
     try {
       const config = await ensureMerchantSession()
       await requestApi(config, 'POST', '/api/v1/merchant/kyb-information', { companyInfo: kybData }, 'merchant')
-      const fetchedTerms = await requestApi<typeof termsData>(config, 'GET', '/api/v1/merchant/terms', undefined, 'merchant')
-      setTermsData(fetchedTerms)
       onUpdateMerchant({ kybInformationSubmittedAt: new Date().toISOString(), nextStep: resolveMonotonicStep(merchant, 'TERMS') })
       setShowKybModal(false)
-      setShowTermsModal(true)
     } catch (reason) {
       setApiError(reason instanceof Error ? reason.message : 'Could not submit KYB information.')
     } finally {
@@ -716,9 +713,10 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
   }
 
   const handleAcceptTerms = async () => {
-    // If terms were already accepted on backend, advance directly
-    if (merchant.termsAcceptedAt || termsData?.tos?.status === 'accepted') {
-      onUpdateMerchant({ termsAcceptedAt: merchant.termsAcceptedAt || new Date().toISOString(), status: 'terms_accepted', nextStep: resolveMonotonicStep(merchant, 'SUMSUB') })
+    // Only skip submission when the backend has actually persisted termsAcceptedAt
+    const alreadyAcceptedAt = merchant.termsAcceptedAt || termsData?.tos?.acceptedAt
+    if (alreadyAcceptedAt) {
+      onUpdateMerchant({ termsAcceptedAt: alreadyAcceptedAt, status: 'terms_accepted', nextStep: resolveMonotonicStep(merchant, 'SUMSUB') })
       setShowTermsModal(false)
       return
     }
@@ -2138,7 +2136,7 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
               <div className="flex items-center space-x-2.5">
                 <Building className="w-5 h-5 text-onion-300" />
                 <div>
-                  <h3 className="font-bold text-sm tracking-tight">Step 2 of 4: Submit Company KYB Information</h3>
+                  <h3 className="font-bold text-sm tracking-tight">Step 2 of 5: Submit Company KYB Information</h3>
                   <p className="text-[11px] text-slate-400 mt-0.5">Prefilled from your PSP registration record. Review and confirm below.</p>
                 </div>
               </div>
@@ -2351,7 +2349,7 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
             <div className="bg-slate-900 text-white p-5 flex items-center justify-between">
               <div className="flex items-center space-x-2.5">
                 <ShieldCheck className="w-5 h-5 text-emerald-400" />
-                <h3 className="font-bold text-sm tracking-tight">Step 1 of 4: Regulatory Notice</h3>
+                <h3 className="font-bold text-sm tracking-tight">Step 1 of 5: Regulatory Notice</h3>
               </div>
               <button onClick={() => setShowNoticeModal(false)} className="text-slate-400 hover:text-white">
                 <X className="w-5 h-5" />
@@ -2397,7 +2395,7 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
               <div className="flex items-center space-x-2.5">
                 <Lock className="w-5 h-5 text-onion-300" />
                 <div>
-                  <h3 className="font-bold text-sm tracking-tight">Step 2 of 4: Terms of Service Acceptance</h3>
+                  <h3 className="font-bold text-sm tracking-tight">Step 3 of 5: Terms of Service Acceptance</h3>
                   <p className="text-[10px] text-slate-400 font-mono">Entity: {termsData?.tos?.entityName || 'Loading legal entity'}</p>
                 </div>
               </div>
@@ -2417,7 +2415,7 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
                 </div>
               )}
 
-              {(merchant.termsAcceptedAt || termsData?.tos?.status === 'accepted') ? (
+              {(merchant.termsAcceptedAt || termsData?.tos?.acceptedAt) ? (
                 <div className="space-y-4">
                   <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-800 text-xs flex items-start space-x-2">
                     <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
