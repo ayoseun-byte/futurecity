@@ -1338,7 +1338,9 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
           )}
           {derivedStep === 'PASSKEY' && (
             <a
-              href={`/setup${merchantApiConfig().merchantSession ? `#session=${encodeURIComponent(merchantApiConfig().merchantSession)}` : ''}`}
+              href={`${(import.meta.env.VITE_WALLET_SETUP_URL || 'http://localhost:5174').replace(/\/$/, '')}/?merchantId=${encodeURIComponent(merchant.id)}&returnUrl=${encodeURIComponent(window.location.href)}${merchantApiConfig().merchantSession ? `#session=${encodeURIComponent(merchantApiConfig().merchantSession)}` : ''}`}
+              target="_blank"
+              rel="noopener noreferrer"
               className="mat-btn-primary px-3 py-1.5 text-xs font-medium ml-2 shadow-xs inline-flex items-center"
             >
               Setup Wallets
@@ -1531,7 +1533,9 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
               )}
               {derivedStep === 'PASSKEY' && (
                 <a
-                  href={`/setup${merchantApiConfig().merchantSession ? `#session=${encodeURIComponent(merchantApiConfig().merchantSession)}` : ''}`}
+                  href={`${(import.meta.env.VITE_WALLET_SETUP_URL || 'http://localhost:5174').replace(/\/$/, '')}/?merchantId=${encodeURIComponent(merchant.id)}&returnUrl=${encodeURIComponent(window.location.href)}${merchantApiConfig().merchantSession ? `#session=${encodeURIComponent(merchantApiConfig().merchantSession)}` : ''}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
                   className="mat-btn-primary px-5 py-2.5 text-xs font-semibold inline-flex items-center space-x-2 shadow-sm"
                 >
                   <span>Set Up Wallets & Passkey</span>

@@ -36,9 +36,18 @@ const defaults: ApiConfig = {
 export function getApiConfig(): ApiConfig {
   try {
     const saved = sessionStorage.getItem(STORAGE_KEY)
-    return saved ? { ...defaults, ...JSON.parse(saved) } : defaults
+    const base: ApiConfig = saved ? { ...defaults, ...JSON.parse(saved) } : { ...defaults }
+    const adminSessionToken = sessionStorage.getItem('orki_admin_session_token')
+    if (adminSessionToken && !base.adminKey) {
+      base.adminKey = adminSessionToken
+    }
+    const pspSessionToken = sessionStorage.getItem('orki_psp_session_token')
+    if (pspSessionToken && !base.pspKey) {
+      base.pspKey = pspSessionToken
+    }
+    return base
   } catch {
-    return defaults
+    return { ...defaults }
   }
 }
 

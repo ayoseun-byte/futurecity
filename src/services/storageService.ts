@@ -1,12 +1,4 @@
 import type { Organization, Merchant, Paylink, Transaction } from '../types'
-import {
-  INITIAL_PAYLINKS,
-  INITIAL_TRANSACTIONS,
-} from './mockData'
-
-const DEMO_ORGANIZATION_IDS = new Set(['psp_xsquare01', 'psp_sandbox02', 'psp_gulfpay03'])
-const DEMO_PAYLINK_IDS = new Set(INITIAL_PAYLINKS.map((paylink) => paylink.id))
-const DEMO_TRANSACTION_IDS = new Set(INITIAL_TRANSACTIONS.map((transaction) => transaction.id))
 
 const STORAGE_KEYS = {
   ORGANIZATIONS: 'orki_organizations_v2',
@@ -24,11 +16,9 @@ export function getStoredOrganizations(): Organization[] {
     if (raw) {
       const parsed = JSON.parse(raw)
       if (Array.isArray(parsed)) {
-        const organizations = parsed.filter((organization): organization is Organization =>
-          organization && typeof organization.id === 'string' && !DEMO_ORGANIZATION_IDS.has(organization.id)
+        return parsed.filter((organization): organization is Organization =>
+          Boolean(organization && typeof organization.id === 'string')
         )
-        if (organizations.length !== parsed.length) saveStoredOrganizations(organizations)
-        return organizations
       }
     }
     return []
@@ -38,9 +28,7 @@ export function getStoredOrganizations(): Organization[] {
 }
 
 export function saveStoredOrganizations(orgs: Organization[]): void {
-  localStorage.setItem(STORAGE_KEYS.ORGANIZATIONS, JSON.stringify(
-    orgs.filter((organization) => !DEMO_ORGANIZATION_IDS.has(organization.id))
-  ))
+  localStorage.setItem(STORAGE_KEYS.ORGANIZATIONS, JSON.stringify(orgs))
 }
 
 export function addStoredOrganization(org: Organization): void {
@@ -78,17 +66,9 @@ export function getStoredMerchants(): Merchant[] {
     if (raw) {
       const parsed = JSON.parse(raw)
       if (Array.isArray(parsed)) {
-        const cleaned = parsed.filter((merchant): merchant is Merchant =>
-          merchant &&
-          typeof merchant.id === 'string' &&
-          !merchant.representativeEmail?.endsWith('.example') &&
-          !merchant.id.includes('_template_') &&
-          !merchant.id.includes('mrch_org_')
+        return parsed.filter((merchant): merchant is Merchant =>
+          Boolean(merchant && typeof merchant.id === 'string')
         )
-        if (cleaned.length !== parsed.length) {
-          saveStoredMerchants(cleaned)
-        }
-        return cleaned
       }
     }
     return []
@@ -98,142 +78,7 @@ export function getStoredMerchants(): Merchant[] {
 }
 
 export function saveStoredMerchants(merchants: Merchant[]): void {
-  const filtered = merchants.filter(
-    (m) => !m.representativeEmail?.endsWith('.example') && !m.id.includes('_template_')
-  )
-  localStorage.setItem(STORAGE_KEYS.MERCHANTS, JSON.stringify(filtered))
-}
-
-const RANDOM_MERCHANT_CANDIDATES: Array<{
-  legalBusinessName: string
-  tradeLicensePrefix: string
-  jurisdiction: string
-  representativeName: string
-  emailDomain: string
-}> = [
-  {
-    legalBusinessName: 'Almas Jewels & Bullion DMCC',
-    tradeLicensePrefix: 'DMCC',
-    jurisdiction: 'Dubai DMCC',
-    representativeName: 'Fatima Al-Mansoor',
-    emailDomain: 'almasbullion.ae',
-  },
-  {
-    legalBusinessName: 'Falcon Maritime Logistics LLC',
-    tradeLicensePrefix: 'DED',
-    jurisdiction: 'Dubai DED',
-    representativeName: 'Tariq Al-Hashimi',
-    emailDomain: 'falconmaritime.ae',
-  },
-  {
-    legalBusinessName: 'Oasis Cloud Infrastructure FZCO',
-    tradeLicensePrefix: 'IFZA',
-    jurisdiction: 'Dubai IFZA',
-    representativeName: 'Nadia El-Masri',
-    emailDomain: 'oasiscloud.io',
-  },
-  {
-    legalBusinessName: 'Crescent Capital Advisory Ltd',
-    tradeLicensePrefix: 'DIFC',
-    jurisdiction: 'DIFC',
-    representativeName: 'Omar Al-Suwaidi',
-    emailDomain: 'crescentadvisory.ae',
-  },
-  {
-    legalBusinessName: 'Maryah Digital Commerce Ltd',
-    tradeLicensePrefix: 'ADGM',
-    jurisdiction: 'Abu Dhabi ADGM',
-    representativeName: 'Layla Al-Ketbi',
-    emailDomain: 'maryahcommerce.ae',
-  },
-  {
-    legalBusinessName: 'Veridian Luxury Hospitality LLC',
-    tradeLicensePrefix: 'DED',
-    jurisdiction: 'Dubai DED',
-    representativeName: 'Zayd Al-Maktoum',
-    emailDomain: 'veridianhospitality.ae',
-  },
-  {
-    legalBusinessName: 'SilkRoad Commodities Trading DMCC',
-    tradeLicensePrefix: 'DMCC',
-    jurisdiction: 'Dubai DMCC',
-    representativeName: 'Rohan Malhotra',
-    emailDomain: 'silkroadcommodities.ae',
-  },
-  {
-    legalBusinessName: 'GulfStream Aviation Parts FZ-LLC',
-    tradeLicensePrefix: 'IFZA',
-    jurisdiction: 'Dubai IFZA',
-    representativeName: 'Kareem Nassar',
-    emailDomain: 'gulfstreamaviation.ae',
-  },
-  {
-    legalBusinessName: 'Bishopsgate FinTech Solutions Ltd',
-    tradeLicensePrefix: 'CH',
-    jurisdiction: 'United Kingdom',
-    representativeName: 'Eleanor Vance',
-    emailDomain: 'bishopsgatefintech.co.uk',
-  },
-  {
-    legalBusinessName: 'Marina Bay Global Exports Pte Ltd',
-    tradeLicensePrefix: 'UEN',
-    jurisdiction: 'Singapore',
-    representativeName: 'Marcus Tan',
-    emailDomain: 'marinabayexports.sg',
-  },
-  {
-    legalBusinessName: 'Qaryat Fine Art & Collectibles Ltd',
-    tradeLicensePrefix: 'ADGM',
-    jurisdiction: 'Abu Dhabi ADGM',
-    representativeName: 'Amira Khoury',
-    emailDomain: 'qaryatart.ae',
-  },
-  {
-    legalBusinessName: 'Atlas Medical Supplies FZCO',
-    tradeLicensePrefix: 'IFZA',
-    jurisdiction: 'Dubai IFZA',
-    representativeName: 'Dr. Bilal Haddad',
-    emailDomain: 'atlasmedical.ae',
-  },
-]
-
-export function generateMerchantsForPsp(organizationId = 'psp_default', orgName?: string): Merchant[] {
-  const cleanOrgPrefix = (orgName || organizationId)
-    .toUpperCase()
-    .replace(/[^A-Z0-9]/g, '')
-    .slice(0, 4) || 'PSP'
-  const orgSlug = organizationId.replace(/[^a-zA-Z0-9]/g, '').slice(-8) || 'org'
-
-  // Shuffle candidate pool so each PSP gets 5 random pre-Orki merchants
-  const pool = [...RANDOM_MERCHANT_CANDIDATES]
-  for (let i = pool.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1))
-    ;[pool[i], pool[j]] = [pool[j], pool[i]]
-  }
-
-  const now = Date.now()
-  return pool.slice(0, 5).map((candidate, index) => {
-    const randNum = Math.floor(100000 + Math.random() * 900000)
-    const extRand = Math.floor(1000 + Math.random() * 9000)
-    const firstName = candidate.representativeName.toLowerCase().replace(/[^a-z]/g, '').slice(0, 8) || 'rep'
-    return {
-      // Pre-Orki PSP roster ID (becomes mrch_... only when the merchant reads and accepts the notice)
-      id: `psp_roster_${orgSlug}_${index + 1}_${extRand}`,
-      organizationId,
-      externalId: `${cleanOrgPrefix}-MERCH-${extRand}`,
-      legalBusinessName: candidate.legalBusinessName,
-      tradeLicenseNumber: `${candidate.tradeLicensePrefix}-${randNum}`,
-      jurisdiction: candidate.jurisdiction,
-      representativeName: candidate.representativeName,
-      representativeEmail: `${firstName}@${candidate.emailDomain}`,
-      status: 'invited',
-      nextStep: 'OPT_IN',
-      settlementMode: 'hold_as_received',
-      createdAt: new Date(now - index * 3600_000).toISOString(),
-      volumeUsdc: 0,
-      balanceUsdc: 0,
-    }
-  })
+  localStorage.setItem(STORAGE_KEYS.MERCHANTS, JSON.stringify(merchants))
 }
 
 export function ensureMerchantsForOrganization(organizationId: string, _orgName?: string): Merchant[] {
@@ -242,7 +87,7 @@ export function ensureMerchantsForOrganization(organizationId: string, _orgName?
 }
 
 export function ensureDemoDataForOrganization(_organizationId: string, _orgName?: string): void {
-  // Mock merchants are not auto-generated
+  // Pure real data only - no demo generation
 }
 
 export function addStoredMerchant(merchant: Merchant): void {
@@ -281,7 +126,7 @@ export function getStoredPaylinks(): Paylink[] {
       const parsed = JSON.parse(raw)
       if (Array.isArray(parsed)) {
         return parsed.filter((paylink): paylink is Paylink =>
-          paylink && typeof paylink.id === 'string' && !DEMO_PAYLINK_IDS.has(paylink.id)
+          Boolean(paylink && typeof paylink.id === 'string')
         )
       }
     }
@@ -292,9 +137,7 @@ export function getStoredPaylinks(): Paylink[] {
 }
 
 export function saveStoredPaylinks(paylinks: Paylink[]): void {
-  localStorage.setItem(STORAGE_KEYS.PAYLINKS, JSON.stringify(
-    paylinks.filter((paylink) => !DEMO_PAYLINK_IDS.has(paylink.id))
-  ))
+  localStorage.setItem(STORAGE_KEYS.PAYLINKS, JSON.stringify(paylinks))
 }
 
 export function addStoredPaylink(paylink: Paylink): void {
@@ -312,7 +155,7 @@ export function getStoredTransactions(): Transaction[] {
       const parsed = JSON.parse(raw)
       if (Array.isArray(parsed)) {
         return parsed.filter((transaction): transaction is Transaction =>
-          transaction && typeof transaction.id === 'string' && !DEMO_TRANSACTION_IDS.has(transaction.id)
+          Boolean(transaction && typeof transaction.id === 'string')
         )
       }
     }
@@ -323,9 +166,7 @@ export function getStoredTransactions(): Transaction[] {
 }
 
 export function saveStoredTransactions(txs: Transaction[]): void {
-  localStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(
-    txs.filter((transaction) => !DEMO_TRANSACTION_IDS.has(transaction.id))
-  ))
+  localStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(txs))
 }
 
 export function addStoredTransaction(tx: Transaction): void {
@@ -334,7 +175,7 @@ export function addStoredTransaction(tx: Transaction): void {
 }
 
 // ---------------------------------------------------------------------------
-// RESET & SEEDING UTILITIES
+// RESET UTILITIES
 // ---------------------------------------------------------------------------
 export function clearAllStoredData(): void {
   localStorage.removeItem(STORAGE_KEYS.ORGANIZATIONS)

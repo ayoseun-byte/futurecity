@@ -46,6 +46,7 @@ import {
   ensureMerchantsForOrganization,
 } from './services/storageService'
 import { fetchPspDashboard, type PspDashboardMetrics } from './services/pspMerchantService'
+import { fetchAdminPsps } from './services/adminService'
 import { resolveMonotonicStep } from './services/onboardingStepService'
 import { getApiConfig, requestApi } from './services/apiConfig'
 import { AlertCircle, ArrowRight } from 'lucide-react'
@@ -256,6 +257,21 @@ function MainRoutes() {
     void loadPspData()
   }, [user?.role, user?.organizationId, loadPspData])
 
+  useEffect(() => {
+    if (user?.role !== 'admin') return
+
+    void fetchAdminPsps()
+      .then((livePsps) => {
+        if (livePsps.length > 0) {
+          setOrganizations(livePsps)
+          saveStoredOrganizations(livePsps)
+        }
+      })
+      .catch((err) => {
+        console.warn('Failed to fetch real admin PSPs from DB:', err)
+      })
+  }, [user?.role])
+
   // Derive active organization for org view based on auth user
   const activeOrg = organizations.find((o) => o.id === user?.organizationId)
 
@@ -447,7 +463,7 @@ function MainRoutes() {
         path="/psp"
         element={
           <ProtectedRoute allowedRoles={['org']}>
-            <PspLayout>
+            <PspLayout organization={activeOrg} merchants={merchants}>
               {activeOrg ? (
                 <OrgDashboard
                   organization={activeOrg}
@@ -493,7 +509,7 @@ function MainRoutes() {
         path="/psp/merchants/:id"
         element={
           <ProtectedRoute allowedRoles={['org']}>
-            <PspLayout>
+            <PspLayout organization={activeOrg} merchants={merchants}>
               <MerchantDetailPage
                 merchants={merchants}
                 paylinks={paylinks}
@@ -509,7 +525,7 @@ function MainRoutes() {
         path="/psp/merchants/:id/console"
         element={
           <ProtectedRoute allowedRoles={['org']}>
-            <PspLayout>
+            <PspLayout organization={activeOrg} merchants={merchants}>
               <PspMerchantConsoleRoute
                 merchants={merchants}
                 onUpdateMerchantById={(merchantId, updated) => updateMerchantRecord(merchantId, updated)}
@@ -531,7 +547,7 @@ function MainRoutes() {
         path="/psp/transactions/:id"
         element={
           <ProtectedRoute allowedRoles={['org']}>
-            <PspLayout>
+            <PspLayout organization={activeOrg} merchants={merchants}>
               <TransactionDetailPage role="org" transactions={transactions} />
             </PspLayout>
           </ProtectedRoute>

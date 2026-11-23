@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import type { Merchant, Paylink, Transaction, Organization } from '../../types'
+import { PspEnterpriseDashboard } from './PspEnterpriseDashboard'
 import {
   type PspDashboardMetrics,
   type PspWebhookEndpoint,
@@ -108,7 +109,21 @@ export const OrgDashboard: React.FC<OrgDashboardProps> = ({
   onRefreshDashboard,
 }) => {
   const navigate = useNavigate()
-  const [activeTab, setActiveTab] = useState<'merchants' | 'webhooks' | 'logs' | 'notifications' | 'transactions' | 'config'>('merchants')
+  const [searchParams, setSearchParams] = useSearchParams()
+  const rawTab = searchParams.get('tab') || 'dashboard'
+  const activeTab = rawTab as
+    | 'dashboard'
+    | 'merchants'
+    | 'webhooks'
+    | 'logs'
+    | 'notifications'
+    | 'transactions'
+    | 'config'
+    | 'reports'
+    | 'settlement'
+    | 'fraud'
+    | 'channels'
+  const setActiveTab = (tab: string) => setSearchParams({ tab })
   const [unreadNotificationsCount, setUnreadNotificationsCount] = useState(0)
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
@@ -356,8 +371,19 @@ export const OrgDashboard: React.FC<OrgDashboardProps> = ({
         </div>
       )}
 
-      {/* PSP Title & Profile Card */}
-      <div className="mat-card p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+      {activeTab === 'dashboard' ? (
+        <PspEnterpriseDashboard
+          organization={organization}
+          merchants={orgMerchants}
+          transactions={orgTransactions}
+          dashboardMetrics={dashboardMetrics}
+          onNavigateTab={(tab) => setActiveTab(tab)}
+          onOpenAddMerchant={() => setIsAddModalOpen(true)}
+        />
+      ) : (
+        <>
+          {/* PSP Title & Profile Card */}
+          <div className="mat-card p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <div className="flex items-center space-x-4">
           <div className="w-12 h-12 rounded-xl bg-onion-50 text-onion-800 border border-onion-200 flex items-center justify-center font-bold text-xl shadow-xs">
             {organization.name.charAt(0)}
@@ -758,7 +784,8 @@ export const OrgDashboard: React.FC<OrgDashboardProps> = ({
                               merchantId={merchant.id}
                               externalId={merchant.externalId}
                               onCopyOnboardingLink={() => {
-                                const link = `${window.location.origin}/setup?merchantId=${merchant.id}`
+                                const walletSetupBase = (import.meta.env.VITE_WALLET_SETUP_URL || 'http://localhost:5174').replace(/\/$/, '')
+                                const link = `${walletSetupBase}/?merchantId=${encodeURIComponent(merchant.id)}&returnUrl=${encodeURIComponent(window.location.origin + '/psp')}`
                                 copyText(link, `setup_${merchant.id}`)
                               }}
                             />
@@ -1363,6 +1390,57 @@ export const OrgDashboard: React.FC<OrgDashboardProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {/* REPORTS / SETTLEMENT / FRAUD / CHANNELS TABS */}
+      {(activeTab === 'reports' || activeTab === 'settlement' || activeTab === 'fraud' || activeTab === 'channels') && (
+        <div className="mat-card p-6 space-y-4">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+            <div>
+              <h3 className="text-sm font-bold text-slate-900 capitalize">
+                {activeTab === 'reports'
+                  ? 'Reports & Analytics'
+                  : activeTab === 'settlement'
+                    ? 'Settlement & Split Fee Report'
+                    : activeTab === 'fraud'
+                      ? 'Fraud & Compliance Monitoring'
+                      : 'Settlement Channels (Base EVM & Solana SVM)'}
+              </h3>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Live telemetry scoped to {organization.name} ({orgMerchants.length} notice-accepted merchants)
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setActiveTab('dashboard')}
+              className="px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-medium text-slate-700 hover:bg-slate-50"
+            >
+              Back to Dashboard
+            </button>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+            <div className="p-4 rounded-xl bg-slate-50 border border-slate-200">
+              <div className="text-slate-500 font-medium">Gross Settled Volume</div>
+              <div className="text-lg font-bold text-slate-900 mt-1 font-mono">
+                ${totalVolume.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </div>
+            </div>
+            <div className="p-4 rounded-xl bg-slate-50 border border-slate-200">
+              <div className="text-slate-500 font-medium">Accrued PSP Markup</div>
+              <div className="text-lg font-bold text-emerald-700 mt-1 font-mono">
+                +${accruedMarkup.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </div>
+            </div>
+            <div className="p-4 rounded-xl bg-slate-50 border border-slate-200">
+              <div className="text-slate-500 font-medium">Active Merchants</div>
+              <div className="text-lg font-bold text-slate-900 mt-1 font-mono">
+                {activeCount} / {orgMerchants.length}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+        </>
       )}
 
       {/* REGISTER WEBHOOK MODAL */}

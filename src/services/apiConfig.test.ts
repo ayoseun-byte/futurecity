@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { apiRequest, isMerchantOnboardingPath, type ApiConfig } from './apiConfig'
 import { resolveLocalCheckoutHref } from './pspConsoleService'
-import { generateMerchantsForPsp } from './storageService'
 
 function createMemoryStorage(): Storage {
   const store = new Map<string, string>()
@@ -162,19 +161,6 @@ describe('apiConfig merchant auth routing', () => {
     const headers = init.headers as Record<string, string>
     expect(headers.Authorization).toBe('Bearer onb_sec_standalone_1')
     expect(headers['X-Merchant-Id']).toBeUndefined()
-  })
-
-  it('generates 5 random pre-Orki roster merchants when a PSP is added in Admin', () => {
-    const merchants = generateMerchantsForPsp('psp_new01', 'AlphaPay')
-    expect(merchants).toHaveLength(5)
-    const names = new Set(merchants.map((m) => m.legalBusinessName))
-    expect(names.size).toBe(5)
-    for (const merchant of merchants) {
-      expect(merchant.organizationId).toBe('psp_new01')
-      expect(merchant.id.startsWith('psp_roster_')).toBe(true)
-      expect(merchant.status).toBe('invited')
-      expect(merchant.nextStep).toBe('OPT_IN')
-    }
   })
 
   it('preserves explicit hosted checkout URLs instead of rewriting them to the portal origin', () => {
