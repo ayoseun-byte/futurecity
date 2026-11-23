@@ -177,6 +177,7 @@ export const PartnerSimulationView: React.FC<{
         const ackRes = await requestApi<{
           merchantId: string
           sessionSecret?: string
+          onboardingSession?: { clientSecret?: string }
           status?: string
           nextStep?: string
         }>(
@@ -184,13 +185,17 @@ export const PartnerSimulationView: React.FC<{
           'POST',
           '/api/v1/merchant/notice/acknowledge',
           {
+            isAuthorisedSignatory: true,
+            signatoryName: sm.representativeName,
+            signatoryEmail: sm.representativeEmail,
+            signatoryTitle: 'Authorized Signatory',
             merchantExternalId: sm.externalId,
             legalBusinessName: sm.legalBusinessName,
             tradeLicenseNumber: sm.tradeLicenseNumber,
             jurisdiction: sm.jurisdiction,
             representativeName: sm.representativeName,
             representativeEmail: sm.representativeEmail,
-            consentGiven: true,
+            returnUrl: window.location.href,
           },
           'psp'
         )
@@ -211,8 +216,9 @@ export const PartnerSimulationView: React.FC<{
           volumeUsdc: 0,
         }
 
-        if (ackRes.sessionSecret) {
-          sessionStorage.setItem(`orki_merchant_session:${createdMerchant.id}`, ackRes.sessionSecret)
+        const issuedSecret = ackRes.onboardingSession?.clientSecret || ackRes.sessionSecret
+        if (issuedSecret) {
+          sessionStorage.setItem(`orki_merchant_session:${createdMerchant.id}`, issuedSecret)
         }
 
         const updated = { ...sm, orkiMerchant: createdMerchant }
@@ -238,9 +244,7 @@ export const PartnerSimulationView: React.FC<{
           <h1 className="mt-4 text-2xl font-bold tracking-tight text-slate-900">
             Existing Partner Platform Simulator
           </h1>
-          <p className="mt-1 text-xs text-slate-600">
-            Simulates an existing PSP (e.g. Wafeq / Fazapay) with their 5 merchants &amp; existing payment methods integrating Orki.
-          </p>
+          
         </div>
 
         <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
@@ -297,10 +301,7 @@ export const PartnerSimulationView: React.FC<{
               </button>
             </form>
 
-            <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
-              <Link to="/psp/login" className="hover:text-slate-900">Orki Partner Portal</Link>
-              <Link to="/admin/login" className="hover:text-slate-900">Orki Admin</Link>
-            </div>
+           
           </div>
         </div>
       </div>
