@@ -1196,12 +1196,12 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
       <div className="mat-card p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <div className="flex items-center space-x-4">
           <div className="w-12 h-12 rounded-xl bg-onion-50 text-onion-800 border border-onion-200/80 flex items-center justify-center font-bold text-xl shadow-xs">
-            {merchant.legalBusinessName.charAt(0)}
+            {(merchant.legalBusinessName || 'M').charAt(0)}
           </div>
           <div>
             <div className="flex items-center space-x-2.5">
               <h1 className="text-xl font-bold tracking-tight text-slate-900">
-                {merchant.legalBusinessName}
+                {merchant.legalBusinessName || 'Merchant'}
               </h1>
               <StatusBadge status={merchant.status} nextStep={merchant.nextStep} />
             </div>

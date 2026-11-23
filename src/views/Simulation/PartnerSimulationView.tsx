@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import { Link } from 'react-router-dom'
 import type { Merchant, Paylink } from '../../types'
 import { getApiConfig, requestApi, savePspSessionToken, clearAdminSessionToken } from '../../services/apiConfig'
+import { fetchPspDashboard } from '../../services/pspMerchantService'
 import { MerchantDashboard } from '../Merchant/MerchantDashboard'
 import { HostedCheckoutConsoleView } from '../Rails/consoles/HostedCheckoutConsoleView'
 import { PaylinkConsoleView } from '../Rails/consoles/PaylinkConsoleView'
@@ -129,11 +130,11 @@ export const PartnerSimulationView: React.FC<{
       }
       setPartnerOrg(org)
 
-      // Fetch real notice-accepted merchants already onboarded into Orki
+      // Fetch real notice-accepted merchants already onboarded into Orki (mapped via fetchPspDashboard)
       const generated = buildFivePartnerMerchants(org.id, org.name)
       try {
-        const liveRes = await requestApi<{ data?: Merchant[] }>(getApiConfig(), 'GET', '/api/v1/psp/merchants', undefined, 'psp')
-        const liveMerchants = Array.isArray(liveRes?.data) ? liveRes.data : []
+        const dashboard = await fetchPspDashboard(org.id)
+        const liveMerchants = dashboard?.merchants ?? []
         const merged = generated.map((g) => {
           const match = liveMerchants.find(
             (m) => m.externalId === g.externalId || m.legalBusinessName === g.legalBusinessName
