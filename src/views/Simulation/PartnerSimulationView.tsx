@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { Link } from 'react-router-dom'
 import type { Merchant, Paylink } from '../../types'
-import { getApiConfig, requestApi, savePspSessionToken, clearAdminSessionToken } from '../../services/apiConfig'
+import { getApiConfig, requestApi, saveApiConfig, saveActiveMerchantId, savePspSessionToken, clearAdminSessionToken } from '../../services/apiConfig'
 import { fetchPspDashboard } from '../../services/pspMerchantService'
 import { MerchantDashboard } from '../Merchant/MerchantDashboard'
 import { HostedCheckoutConsoleView } from '../Rails/consoles/HostedCheckoutConsoleView'
@@ -217,14 +217,41 @@ export const PartnerSimulationView: React.FC<{
           volumeUsdc: 0,
         }
 
-        const issuedSecret = ackRes.onboardingSession?.clientSecret || ackRes.sessionSecret
+        const issuedSecret = ackRes.onboardingSession?.clientSecret || ackRes.sessionSecret || ''
+        saveActiveMerchantId(createdMerchant.id)
+        saveApiConfig({
+          ...getApiConfig(),
+          merchantId: createdMerchant.id,
+          merchantSession: issuedSecret,
+        })
         if (issuedSecret) {
+          sessionStorage.setItem(`orki_merchant_session:${createdMerchant.externalId}`, issuedSecret)
           sessionStorage.setItem(`orki_merchant_session:${createdMerchant.id}`, issuedSecret)
+          sessionStorage.setItem('orki_active_merchant_session', issuedSecret)
+        } else {
+          sessionStorage.removeItem('orki_active_merchant_session')
         }
 
         const updated = { ...sm, orkiMerchant: createdMerchant }
         setSimMerchants((prev) => prev.map((m) => (m.id === sm.id ? updated : m)))
         setSelectedMerchant(updated)
+      } else {
+        const existingId = sm.orkiMerchant.id
+        const existingSession =
+          sessionStorage.getItem(`orki_merchant_session:${existingId}`) ||
+          sessionStorage.getItem(`orki_merchant_session:${sm.externalId}`) ||
+          ''
+        saveActiveMerchantId(existingId)
+        saveApiConfig({
+          ...getApiConfig(),
+          merchantId: existingId,
+          merchantSession: existingSession,
+        })
+        if (existingSession) {
+          sessionStorage.setItem('orki_active_merchant_session', existingSession)
+        } else {
+          sessionStorage.removeItem('orki_active_merchant_session')
+        }
       }
       setMerchantSection('oski_onboarding')
     } catch (err) {
