@@ -1,9 +1,7 @@
 import React, { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 import type { Merchant, Organization, Transaction } from '../../types'
 import type { PspDashboardMetrics } from '../../services/pspMerchantService'
 import {
-  Plus,
   Calendar,
   TrendingUp,
   TrendingDown,
@@ -11,7 +9,7 @@ import {
   Sparkles,
   ShieldCheck,
   Zap,
-  ArrowUpRight,
+  Users,
 } from 'lucide-react'
 
 interface PspEnterpriseDashboardProps {
@@ -57,9 +55,7 @@ export const PspEnterpriseDashboard: React.FC<PspEnterpriseDashboardProps> = ({
   transactions,
   dashboardMetrics,
   onNavigateTab,
-  onOpenAddMerchant,
 }) => {
-  const navigate = useNavigate()
   const [dateRange, setDateRange] = useState<'30 Days' | '7 Days' | '90 Days'>('30 Days')
   const [hoveredPoint, setHoveredPoint] = useState<number | null>(null)
 
@@ -215,24 +211,26 @@ export const PspEnterpriseDashboard: React.FC<PspEnterpriseDashboardProps> = ({
           </div>
         </div>
 
-        {/* Card 4: + Onboard Merchant / Add Widget */}
+        {/* Card 4: Active Merchants */}
         <button
           type="button"
-          onClick={() => {
-            if (onOpenAddMerchant && organization.status === 'sandbox') {
-              onOpenAddMerchant()
-            } else {
-              onNavigateTab('merchants')
-            }
-          }}
-          className="bg-white hover:bg-slate-50 rounded-xl border border-dashed border-slate-300 hover:border-indigo-400 p-4 flex flex-col items-center justify-center space-y-2 text-slate-500 hover:text-indigo-700 transition min-h-[118px]"
+          onClick={() => onNavigateTab('merchants')}
+          className="bg-white hover:bg-slate-50 rounded-xl border border-slate-200 border-t-2 border-t-indigo-500 p-4 shadow-2xs flex flex-col justify-between text-left transition"
         >
-          <div className="w-7 h-7 rounded-full bg-slate-100 flex items-center justify-center">
-            <Plus className="w-4 h-4" />
+          <div className="flex items-start justify-between">
+            <div>
+              <p className="text-[11px] font-medium text-slate-500">Notice-Accepted Merchants</p>
+              <p className="text-2xl font-bold text-slate-900 mt-2 tabular-nums">
+                {merchants.length}
+              </p>
+            </div>
+            <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
+              <Users className="w-4 h-4" />
+            </div>
           </div>
-          <span className="text-xs font-medium">
-            {organization.status === 'sandbox' ? 'Onboard Sandbox Merchant' : 'Manage Merchants'}
-          </span>
+          <div className="mt-3 flex items-center space-x-1 text-[11px] font-medium text-indigo-600">
+            <span>{activeMerchantsCount} active · View directory →</span>
+          </div>
         </button>
       </div>
 
@@ -397,15 +395,6 @@ export const PspEnterpriseDashboard: React.FC<PspEnterpriseDashboardProps> = ({
               </div>
             </div>
           </div>
-
-          <button
-            type="button"
-            onClick={() => navigate('/psp/rails')}
-            className="mt-4 w-full py-2 px-3 rounded-lg bg-slate-50 hover:bg-slate-100 border border-slate-200 text-xs font-semibold text-slate-700 flex items-center justify-center space-x-1.5 transition"
-          >
-            <span>Open Orki Direct Rails Lab</span>
-            <ArrowUpRight className="w-3.5 h-3.5" />
-          </button>
         </div>
       </div>
 

@@ -1,14 +1,13 @@
 import React, { useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
-import type { Merchant, Organization } from '../../types'
-import { getStoredOrganizations, getStoredMerchants } from '../../services/storageService'
+import type { Organization } from '../../types'
+import { getStoredOrganizations } from '../../services/storageService'
 import orkiLogoWhite from '../../assets/logo-white-svg.svg'
 import {
   LayoutGrid,
   BarChart3,
   FileCheck2,
-  Send,
   CreditCard,
   AlertTriangle,
   Blocks,
@@ -22,7 +21,6 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   PlayCircle,
-  Store,
   Building2,
   LogOut,
   Key,
@@ -32,34 +30,20 @@ import {
 interface PspLayoutProps {
   children: React.ReactNode
   organization?: Organization | null
-  merchants?: Merchant[]
 }
 
 export const PspLayout: React.FC<PspLayoutProps> = ({
   children,
   organization: propOrg,
-  merchants: propMerchants,
 }) => {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [profileMenuOpen, setProfileMenuOpen] = useState(false)
-  const [merchantMenuOpen, setMerchantMenuOpen] = useState(false)
 
   const storedOrgs = getStoredOrganizations()
   const organization = propOrg ?? storedOrgs.find((o) => o.id === user?.organizationId) ?? storedOrgs[0] ?? null
-  const allMerchants = propMerchants ?? getStoredMerchants()
-  const orgMerchants = organization
-    ? allMerchants.filter((m) => m.organizationId === organization.id)
-    : allMerchants
-
-  // Determine currently selected merchant from URL if on /psp/merchants/:id
-  const merchantMatch = location.pathname.match(/^\/psp\/merchants\/([^/]+)/)
-  const activeMerchantId = merchantMatch ? decodeURIComponent(merchantMatch[1]) : null
-  const activeMerchant = activeMerchantId
-    ? orgMerchants.find((m) => m.id === activeMerchantId || m.externalId === activeMerchantId) ?? null
-    : null
 
   const searchParams = new URLSearchParams(location.search)
   const currentTab = searchParams.get('tab') || 'dashboard'
@@ -71,10 +55,9 @@ export const PspLayout: React.FC<PspLayoutProps> = ({
 
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutGrid, to: '/psp?tab=dashboard' },
-    { id: 'merchants', label: 'Merchants & Onboarding', icon: Users, to: '/psp?tab=merchants', hasChevron: true },
+    { id: 'merchants', label: 'Merchants', icon: Users, to: '/psp?tab=merchants', hasChevron: true },
     { id: 'reports', label: 'Reports & Analytics', icon: BarChart3, to: '/psp?tab=reports', hasChevron: true },
     { id: 'settlement', label: 'Settlement Report', icon: FileCheck2, to: '/psp?tab=settlement', hasChevron: true },
-    { id: 'direct', label: 'Orki Direct', icon: Send, to: '/psp/rails', hasChevron: true, isPath: true },
     { id: 'transactions', label: 'Payments Management', icon: CreditCard, to: '/psp?tab=transactions', hasChevron: true },
     { id: 'fraud', label: 'Fraud Detection', icon: AlertTriangle, to: '/psp?tab=fraud' },
     { id: 'webhooks', label: 'Widgets & Webhooks', icon: Blocks, to: '/psp?tab=webhooks' },
@@ -83,9 +66,6 @@ export const PspLayout: React.FC<PspLayoutProps> = ({
   ]
 
   const isNavActive = (item: (typeof navItems)[number]) => {
-    if (item.isPath) {
-      return location.pathname.startsWith(item.to)
-    }
     if (location.pathname === '/psp') {
       return currentTab === item.id
     }
@@ -97,7 +77,7 @@ export const PspLayout: React.FC<PspLayoutProps> = ({
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] flex flex-col font-sans text-slate-900">
-      {/* Dark Enterprise Topbar (matching reference screenshot) */}
+      {/* Dark Enterprise Topbar */}
       <header className="bg-[#0B0F19] text-white sticky top-0 z-40 h-14 border-b border-slate-800/80 px-4 flex items-center justify-between">
         <div className="flex items-center space-x-3">
           {/* Solely Orki Brand Mark */}
@@ -108,80 +88,12 @@ export const PspLayout: React.FC<PspLayoutProps> = ({
           {/* Logged-in PSP Organization Badge */}
           <div className="hidden sm:flex items-center space-x-2 px-2.5 py-1 rounded-md bg-slate-800/90 border border-slate-700/80 text-xs">
             <Building2 className="w-3.5 h-3.5 text-indigo-400" />
-            <span className="font-semibold text-slate-100 truncate max-w-[180px]">
+            <span className="font-semibold text-slate-100 truncate max-w-[220px]">
               {organization?.name || 'Orki Partner'}
             </span>
             <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-indigo-500/20 text-indigo-300 border border-indigo-400/30">
               PSP
             </span>
-          </div>
-
-          {/* Merchant Context Quick-Switcher Pill */}
-          <div className="relative">
-            <button
-              type="button"
-              onClick={() => setMerchantMenuOpen((o) => !o)}
-              className="flex items-center space-x-2 px-2.5 py-1 rounded-md bg-slate-900 hover:bg-slate-800 border border-slate-700/80 text-xs transition"
-            >
-              <Store className="w-3.5 h-3.5 text-purple-400" />
-              <span className="font-medium text-slate-200 truncate max-w-[180px]">
-                {activeMerchant ? activeMerchant.legalBusinessName : 'All Merchants'}
-              </span>
-              <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-500/20 text-purple-300 border border-purple-400/30">
-                {activeMerchant ? 'Merchant' : `${orgMerchants.length}`}
-              </span>
-              <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
-            </button>
-
-            {merchantMenuOpen && (
-              <div className="absolute left-0 mt-1.5 w-72 rounded-xl bg-white text-slate-900 shadow-xl border border-slate-200 py-1.5 z-50">
-                <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 border-b border-slate-100">
-                  Switch Merchant Workspace
-                </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setMerchantMenuOpen(false)
-                    navigate('/psp?tab=merchants')
-                  }}
-                  className={`w-full text-left px-3 py-2 text-xs flex items-center justify-between hover:bg-slate-50 ${
-                    !activeMerchant ? 'bg-indigo-50/60 font-semibold text-indigo-700' : 'text-slate-700'
-                  }`}
-                >
-                  <span>All PSP Merchants ({orgMerchants.length})</span>
-                  <span className="text-[10px] text-slate-400">Directory</span>
-                </button>
-                <div className="max-h-60 overflow-y-auto divide-y divide-slate-50">
-                  {orgMerchants.length === 0 ? (
-                    <div className="px-3 py-3 text-xs text-slate-400 text-center">
-                      No notice-accepted merchants yet.
-                    </div>
-                  ) : (
-                    orgMerchants.map((m) => (
-                      <button
-                        key={m.id}
-                        type="button"
-                        onClick={() => {
-                          setMerchantMenuOpen(false)
-                          navigate(`/psp/merchants/${encodeURIComponent(m.id)}/console`)
-                        }}
-                        className={`w-full text-left px-3 py-2 text-xs flex items-center justify-between hover:bg-slate-50 ${
-                          activeMerchant?.id === m.id ? 'bg-indigo-50/70 font-semibold text-indigo-700' : 'text-slate-700'
-                        }`}
-                      >
-                        <div className="truncate pr-2">
-                          <div className="truncate font-medium">{m.legalBusinessName}</div>
-                          <div className="text-[10px] text-slate-400 font-mono">{m.id}</div>
-                        </div>
-                        <span className="px-1.5 py-0.5 rounded text-[9px] font-semibold uppercase bg-slate-100 text-slate-600 shrink-0">
-                          {m.status}
-                        </span>
-                      </button>
-                    ))
-                  )}
-                </div>
-              </div>
-            )}
           </div>
         </div>
 
@@ -203,9 +115,6 @@ export const PspLayout: React.FC<PspLayoutProps> = ({
             title="Notifications"
           >
             <Bell className="w-4 h-4" />
-            <span className="absolute -top-0.5 -right-0.5 w-4 h-4 rounded-full bg-rose-500 text-white text-[9px] font-bold flex items-center justify-center">
-              3
-            </span>
           </button>
 
           <div className="relative">
@@ -314,26 +223,23 @@ export const PspLayout: React.FC<PspLayoutProps> = ({
             </nav>
           </div>
 
-          {/* Bottom Demo Videos Card (matching reference screenshot) */}
+          {/* Bottom Demo Link */}
           {!sidebarCollapsed && (
             <div className="p-3">
               <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-3.5 space-y-2">
-                <div className="text-xs font-bold text-slate-900">Orki&apos;s demo videos</div>
+                <div className="text-xs font-bold text-slate-900">Partner Sandbox</div>
                 <p className="text-[11px] text-slate-500 leading-snug">
-                  Unlock Orki&apos;s Potential: Step-by-Step Storefront &amp; Checkout Demo
+                  Simulate an existing PSP &amp; merchant onboarding into Orki
                 </p>
                 <div className="flex items-center justify-between pt-1">
                   <Link
-                    to="/store"
+                    to="/partner-demo"
                     target="_blank"
                     className="inline-flex items-center space-x-1 text-[11px] font-semibold text-indigo-600 hover:text-indigo-800"
                   >
-                    <span>Watch now</span>
+                    <span>Open Simulator</span>
                     <PlayCircle className="w-3.5 h-3.5" />
                   </Link>
-                  <div className="w-7 h-7 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center">
-                    <PlayCircle className="w-4 h-4" />
-                  </div>
                 </div>
               </div>
             </div>

@@ -342,13 +342,16 @@ export const PspLoginView: React.FC = () => {
             </ul>
           </div>
 
-          <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+          <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
             <Link to="/admin" className="hover:text-slate-900 transition flex items-center gap-1">
               <ShieldCheck className="w-3.5 h-3.5" />
               <span>Orki Admin</span>
             </Link>
-            <Link to="/api-workbench" className="hover:text-slate-900 transition flex items-center gap-1">
-              <span>API Workbench</span>
+            <Link to="/merchant/login" className="hover:text-slate-900 transition">
+              Merchant Portal
+            </Link>
+            <Link to="/partner-demo" className="hover:text-slate-900 transition font-medium text-onion-800">
+              Partner Simulator
             </Link>
           </div>
         </div>

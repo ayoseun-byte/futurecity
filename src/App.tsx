@@ -5,6 +5,7 @@ import type { UserRole } from './context/AuthContext'
 import { AdminLayout } from './components/layout/AdminLayout'
 import { RailsLabView } from './views/Rails/RailsLabView'
 import { PspRailsView } from './views/Rails/PspRailsView'
+import { PartnerSimulationView } from './views/Simulation/PartnerSimulationView'
 import { MerchantRailsView } from './views/Rails/MerchantRailsView'
 import { InvoicelyConsoleView } from './views/Rails/consoles/InvoicelyConsoleView'
 import { HostedCheckoutConsoleView } from './views/Rails/consoles/HostedCheckoutConsoleView'
@@ -463,7 +464,7 @@ function MainRoutes() {
         path="/psp"
         element={
           <ProtectedRoute allowedRoles={['org']}>
-            <PspLayout organization={activeOrg} merchants={merchants}>
+            <PspLayout organization={activeOrg}>
               {activeOrg ? (
                 <OrgDashboard
                   organization={activeOrg}
@@ -509,7 +510,7 @@ function MainRoutes() {
         path="/psp/merchants/:id"
         element={
           <ProtectedRoute allowedRoles={['org']}>
-            <PspLayout organization={activeOrg} merchants={merchants}>
+            <PspLayout organization={activeOrg}>
               <MerchantDetailPage
                 merchants={merchants}
                 paylinks={paylinks}
@@ -525,7 +526,7 @@ function MainRoutes() {
         path="/psp/merchants/:id/console"
         element={
           <ProtectedRoute allowedRoles={['org']}>
-            <PspLayout organization={activeOrg} merchants={merchants}>
+            <PspLayout organization={activeOrg}>
               <PspMerchantConsoleRoute
                 merchants={merchants}
                 onUpdateMerchantById={(merchantId, updated) => updateMerchantRecord(merchantId, updated)}
@@ -547,7 +548,7 @@ function MainRoutes() {
         path="/psp/transactions/:id"
         element={
           <ProtectedRoute allowedRoles={['org']}>
-            <PspLayout organization={activeOrg} merchants={merchants}>
+            <PspLayout organization={activeOrg}>
               <TransactionDetailPage role="org" transactions={transactions} />
             </PspLayout>
           </ProtectedRoute>
@@ -629,7 +630,85 @@ function MainRoutes() {
         }
       />
 
-      {/* Counterparty consoles: the integration styles, as the platforms that use them */}
+      {/* Existing Partner + Merchant Simulation (e.g. Wafeq/Fazapay pre-Orki backoffice + Merchant onboarding & collection) */}
+      <Route
+        path="/partner-demo"
+        element={
+          <PartnerSimulationView
+            onPaylinkCreated={handlePaylinkCreated}
+            onLaunchCheckout={(plk) => {
+              const target = plk.checkoutUrl
+                ? resolveLocalCheckoutHref(plk.checkoutUrl)
+                : `/checkout/${plk.slug}`
+              window.open(target, '_blank')
+            }}
+          />
+        }
+      />
+
+      {/* Merchant collection & integration consoles */}
+      <Route
+        path="/merchant/console/hosted"
+        element={
+          <ProtectedRoute allowedRoles={['merchant', 'org']}>
+            <MerchantLayout>
+              <HostedCheckoutConsoleView />
+            </MerchantLayout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/merchant/console/paylink"
+        element={
+          <ProtectedRoute allowedRoles={['merchant', 'org']}>
+            <MerchantLayout>
+              <PaylinkConsoleView />
+            </MerchantLayout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/merchant/console/invoicely"
+        element={
+          <ProtectedRoute allowedRoles={['merchant', 'org']}>
+            <MerchantLayout>
+              <InvoicelyConsoleView />
+            </MerchantLayout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/merchant/console/headless"
+        element={
+          <ProtectedRoute allowedRoles={['merchant', 'org']}>
+            <MerchantLayout>
+              <CornerShopHeadlessView />
+            </MerchantLayout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/merchant/console/widget"
+        element={
+          <ProtectedRoute allowedRoles={['merchant', 'org']}>
+            <MerchantLayout>
+              <CheckoutWidgetView />
+            </MerchantLayout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/merchant/console/plugin"
+        element={
+          <ProtectedRoute allowedRoles={['merchant', 'org']}>
+            <MerchantLayout>
+              <PluginConsoleView />
+            </MerchantLayout>
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Counterparty consoles: legacy aliases */}
       <Route
         path="/psp/console/hosted"
         element={
