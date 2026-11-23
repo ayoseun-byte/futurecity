@@ -102,7 +102,6 @@ export const PartnerSimulationView: React.FC<{
   const [selectedMerchant, setSelectedMerchant] = useState<SimMerchant | null>(null)
   const [merchantSection, setMerchantSection] = useState<'overview' | 'oski_onboarding' | 'collection'>('overview')
   const [collectionConsole, setCollectionConsole] = useState<'hosted' | 'widget' | 'paylink' | 'headless' | 'invoicely' | 'plugin'>('hosted')
-  const [enablingOrki, setEnablingOrki] = useState(false)
   const [enableError, setEnableError] = useState('')
 
   const handlePartnerLogin = async (e: React.FormEvent) => {
@@ -167,98 +166,58 @@ export const PartnerSimulationView: React.FC<{
     }
   }
 
-  const handleEnableOrkiForMerchant = async (sm: SimMerchant) => {
+  const handleEnableOrkiForMerchant = (sm: SimMerchant) => {
     if (!partnerOrg) return
-    setEnablingOrki(true)
     setEnableError('')
-    try {
-      const config = getApiConfig()
-      if (!sm.orkiMerchant) {
-        // Merchant accepts Orki Data-Sharing Notice -> provisions real merchant in DB & appears in /psp
-        const ackRes = await requestApi<{
-          merchantId: string
-          sessionSecret?: string
-          onboardingSession?: { clientSecret?: string }
-          status?: string
-          nextStep?: string
-        }>(
-          config,
-          'POST',
-          '/api/v1/merchant/notice/acknowledge',
-          {
-            isAuthorisedSignatory: true,
-            signatoryName: sm.representativeName,
-            signatoryEmail: sm.representativeEmail,
-            signatoryTitle: 'Authorized Signatory',
-            merchantExternalId: sm.externalId,
-            legalBusinessName: sm.legalBusinessName,
-            tradeLicenseNumber: sm.tradeLicenseNumber,
-            jurisdiction: sm.jurisdiction,
-            representativeName: sm.representativeName,
-            representativeEmail: sm.representativeEmail,
-            returnUrl: window.location.href,
-          },
-          'psp'
-        )
-
-        const createdMerchant: Merchant = {
-          id: ackRes.merchantId,
-          organizationId: partnerOrg.id,
-          externalId: sm.externalId,
-          legalBusinessName: sm.legalBusinessName,
-          tradeLicenseNumber: sm.tradeLicenseNumber,
-          jurisdiction: sm.jurisdiction,
-          representativeName: sm.representativeName,
-          representativeEmail: sm.representativeEmail,
-          status: (ackRes.status as Merchant['status']) || 'notice',
-          nextStep: (ackRes.nextStep as Merchant['nextStep']) || 'KYB_INFORMATION',
-          settlementMode: 'hold_as_received',
-          createdAt: new Date().toISOString(),
-          volumeUsdc: 0,
-        }
-
-        const issuedSecret = ackRes.onboardingSession?.clientSecret || ackRes.sessionSecret || ''
-        saveActiveMerchantId(createdMerchant.id)
-        saveApiConfig({
-          ...getApiConfig(),
-          merchantId: createdMerchant.id,
-          merchantSession: issuedSecret,
-        })
-        if (issuedSecret) {
-          sessionStorage.setItem(`orki_merchant_session:${createdMerchant.externalId}`, issuedSecret)
-          sessionStorage.setItem(`orki_merchant_session:${createdMerchant.id}`, issuedSecret)
-          sessionStorage.setItem('orki_active_merchant_session', issuedSecret)
-        } else {
-          sessionStorage.removeItem('orki_active_merchant_session')
-        }
-
-        const updated = { ...sm, orkiMerchant: createdMerchant }
-        setSimMerchants((prev) => prev.map((m) => (m.id === sm.id ? updated : m)))
-        setSelectedMerchant(updated)
-      } else {
-        const existingId = sm.orkiMerchant.id
-        const existingSession =
-          sessionStorage.getItem(`orki_merchant_session:${existingId}`) ||
-          sessionStorage.getItem(`orki_merchant_session:${sm.externalId}`) ||
-          ''
-        saveActiveMerchantId(existingId)
-        saveApiConfig({
-          ...getApiConfig(),
-          merchantId: existingId,
-          merchantSession: existingSession,
-        })
-        if (existingSession) {
-          sessionStorage.setItem('orki_active_merchant_session', existingSession)
-        } else {
-          sessionStorage.removeItem('orki_active_merchant_session')
-        }
+    if (!sm.orkiMerchant) {
+      // Start at pre-Orki OPT_IN so MerchantDashboard runs every real API step:
+      // 1. GET /merchant/notice -> 2. POST /merchant/notice/acknowledge -> 3. KYB -> 4. Terms -> 5. Sumsub -> 6. Passkey
+      const preOrkiMerchant: Merchant = {
+        id: sm.id,
+        organizationId: partnerOrg.id,
+        externalId: sm.externalId,
+        legalBusinessName: sm.legalBusinessName,
+        tradeLicenseNumber: sm.tradeLicenseNumber,
+        jurisdiction: sm.jurisdiction,
+        representativeName: sm.representativeName,
+        representativeEmail: sm.representativeEmail,
+        status: 'notice',
+        nextStep: 'OPT_IN',
+        settlementMode: 'hold_as_received',
+        createdAt: new Date().toISOString(),
+        volumeUsdc: 0,
       }
-      setMerchantSection('oski_onboarding')
-    } catch (err) {
-      setEnableError(err instanceof Error ? err.message : 'Failed to initiate Orki onboarding.')
-    } finally {
-      setEnablingOrki(false)
+
+      saveActiveMerchantId('')
+      saveApiConfig({
+        ...getApiConfig(),
+        merchantId: '',
+        merchantSession: '',
+      })
+      sessionStorage.removeItem('orki_active_merchant_session')
+
+      const updated = { ...sm, orkiMerchant: preOrkiMerchant }
+      setSimMerchants((prev) => prev.map((m) => (m.id === sm.id ? updated : m)))
+      setSelectedMerchant(updated)
+    } else {
+      const existingId = sm.orkiMerchant.id
+      const existingSession =
+        sessionStorage.getItem(`orki_merchant_session:${existingId}`) ||
+        sessionStorage.getItem(`orki_merchant_session:${sm.externalId}`) ||
+        ''
+      saveActiveMerchantId(existingId.startsWith('mrch_') ? existingId : '')
+      saveApiConfig({
+        ...getApiConfig(),
+        merchantId: existingId.startsWith('mrch_') ? existingId : '',
+        merchantSession: existingSession,
+      })
+      if (existingSession) {
+        sessionStorage.setItem('orki_active_merchant_session', existingSession)
+      } else {
+        sessionStorage.removeItem('orki_active_merchant_session')
+      }
     }
+    setMerchantSection('oski_onboarding')
   }
 
   // 1. Login Screen for Existing Partner (e.g. Wafeq / Fazapay)
@@ -476,17 +435,12 @@ export const PartnerSimulationView: React.FC<{
                   </p>
                   <button
                     type="button"
-                    disabled={enablingOrki}
-                    onClick={() => void handleEnableOrkiForMerchant(selectedMerchant)}
-                    className="w-full py-2 px-3 rounded-lg bg-onion-800 hover:bg-onion-900 text-white text-xs font-semibold flex items-center justify-center space-x-1.5 transition disabled:opacity-50"
+                    onClick={() => handleEnableOrkiForMerchant(selectedMerchant)}
+                    className="w-full py-2 px-3 rounded-lg bg-onion-800 hover:bg-onion-900 text-white text-xs font-semibold flex items-center justify-center space-x-1.5 transition"
                   >
                     <Sparkles className="w-3.5 h-3.5" />
                     <span>
-                      {enablingOrki
-                        ? 'Starting Orki Notice…'
-                        : orkiM
-                          ? 'Open Orki Onboarding & Dashboard'
-                          : 'Enable Orki (Accept Notice & Onboard)'}
+                      {orkiM ? 'Open Orki Onboarding & Dashboard' : 'Enable Orki'}
                     </span>
                   </button>
                 </div>
